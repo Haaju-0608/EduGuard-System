@@ -1,36 +1,54 @@
+using EduGuardProject.Models;
+using Microsoft.EntityFrameworkCore;
 
-namespace EduGuardProject
+var builder = WebApplication.CreateBuilder(args);
+
+// ================= DATABASE =================
+
+builder.Services.AddDbContext<AppDbContext>(options =>
+    options.UseNpgsql(
+        builder.Configuration.GetConnectionString("DefaultConnection")
+    ));
+
+// ================= SERVICES =================
+
+builder.Services.AddControllers();
+
+builder.Services.AddEndpointsApiExplorer();
+
+builder.Services.AddSwaggerGen();
+
+builder.Services.AddMemoryCache();
+
+builder.Services.AddHttpContextAccessor();
+
+// ================= CORS =================
+
+builder.Services.AddCors(options =>
 {
-    public class Program
+    options.AddDefaultPolicy(policy =>
     {
-        public static void Main(string[] args)
-        {
-            var builder = WebApplication.CreateBuilder(args);
+        policy
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowAnyOrigin();
+    });
+});
 
-            // Add services to the container.
+var app = builder.Build();
 
-            builder.Services.AddControllers();
-            // Learn more about configuring Swagger/OpenAPI at https://aka.ms/aspnetcore/swashbuckle
-            builder.Services.AddEndpointsApiExplorer();
-            builder.Services.AddSwaggerGen();
+// ================= PIPELINE =================
 
-            var app = builder.Build();
+app.UseSwagger();
 
-            // Configure the HTTP request pipeline.
-            if (app.Environment.IsDevelopment())
-            {
-                app.UseSwagger();
-                app.UseSwaggerUI();
-            }
+app.UseSwaggerUI();
 
-            app.UseHttpsRedirection();
+app.UseHttpsRedirection();
 
-            app.UseAuthorization();
+app.UseCors();
 
+app.UseAuthorization();
 
-            app.MapControllers();
+app.MapControllers();
 
-            app.Run();
-        }
-    }
-}
+app.Run();
