@@ -41,13 +41,16 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<User> Users { get; set; }
 
+    public virtual DbSet<ContactRequest> ContactRequests { get; set; }
+
     public virtual DbSet<ViolationLog> ViolationLogs { get; set; }
 
     public virtual DbSet<Wallet> Wallets { get; set; }
 
     protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-#warning To protect potentially sensitive information in your connection string, you should move it out of source code. You can avoid scaffolding the connection string by using the Name= syntax to read it from configuration - see https://go.microsoft.com/fwlink/?linkid=2131148. For more guidance on storing connection strings, see https://go.microsoft.com/fwlink/?LinkId=723263.
-        => optionsBuilder.UseNpgsql("Host=db.kgwievkbrjsgtqjyiznn.supabase.co;Port=5432;Database=postgres;Username=postgres;Password=Eduguard@123;SSL Mode=Require;Trust Server Certificate=true");
+    {
+        //Để trống nha má không là lỗi hard code 0đ đóa
+    }
 
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
@@ -191,6 +194,11 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("created_at");
+
+            entity.Property(e => e.FaceVector)
+      .HasColumnType("vector(128)")
+      .HasColumnName("face_vector");
+
             entity.Property(e => e.FaceImageUrl)
                 .HasComment("Bucket: biometric-faces")
                 .HasColumnName("face_image_url");

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using Pgvector;
 
 namespace EduGuardProject.Models;
 
@@ -10,6 +11,8 @@ public partial class BiometricDatum
     public Guid UserId { get; set; }
 
     public Guid? BioRequestId { get; set; }
+
+    public Vector? FaceVector { get; set; } 
 
     /// <summary>
     /// AI model version used to generate embedding

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
@@ -22,6 +23,9 @@ public partial class User
     public DateTime UpdatedAt { get; set; }
 
     public DateTime? DeletedAt { get; set; }
+
+    [Column("role")]
+    public AppRole Role { get; set; } 
 
     public virtual ICollection<AttendanceRecord> AttendanceRecordAdjustedByNavigations { get; set; } = new List<AttendanceRecord>();
 
