@@ -1,11 +1,15 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
 public partial class PricingConfig
 {
     public Guid Id { get; set; }
+
+    [Column("service_type")]
+    public PricingServiceType ServiceType { get; set; }
 
     /// <summary>
     /// Pricing in VND

@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
@@ -23,6 +24,9 @@ public partial class AttendanceSession
     public DateTime StartTime { get; set; }
 
     public DateTime? EndTime { get; set; }
+
+    [Column("status")]
+    public SessionStatus Status { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

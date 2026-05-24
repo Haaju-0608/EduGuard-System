@@ -1,10 +1,12 @@
-﻿using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs; 
+using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers
 {
-    [Route("api/[controller]")]
+    [Route("api/auth")] // Định nghĩa rõ ràng theo số nhiều / quy tắc RESTful trong file 
     [ApiController]
     public class AuthController : ControllerBase
     {
@@ -24,19 +26,20 @@ namespace EduGuardProject.Controllers
 
                 if (loginResult == null)
                 {
-                    return Unauthorized(new { success = false, message = "Sai email hoặc mật khẩu." });
+                    // Trả về Form chuẩn khi Thất bại (Mã 401 Unauthorized)
+                    var failResponse = ApiResponse<object>.OnFail("Wrong email or pass.");
+                    return Unauthorized(failResponse);
                 }
 
-                return Ok(new
-                {
-                    success = true,
-                    message = "Đăng nhập thành công!",
-                    data = loginResult
-                });
+                // Trả về Form chuẩn khi Thành công (Mã 200 OK)
+                var successResponse = ApiResponse<LoginResponseDto>.OnSuccess(loginResult, "Login Success!");
+                return Ok(successResponse);
             }
             catch (Exception ex)
             {
-                return BadRequest(new { success = false, message = "Đăng nhập thất bại: " + ex.Message });
+                // Trả về Form chuẩn khi gặp lỗi Hệ thống / Bad Request (Mã 400 hoặc 500)
+                var errorResponse = ApiResponse<object>.OnFail($"Fail to login: {ex.Message}");
+                return BadRequest(errorResponse);
             }
         }
     }
