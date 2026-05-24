@@ -25,18 +25,18 @@ namespace EduGuardProject.Controllers
 
                 if (!isSaved)
                 {
-                    return BadRequest(new { success = false, message = "Không thể lưu thông tin yêu cầu vào hệ thống." });
+                    return BadRequest(new { success = false, message = "Unable to save the request information to the system." });
                 }
 
                 return Ok(new
                 {
                     success = true,
-                    message = "Gửi yêu cầu thành công! Đội ngũ EduGuard sẽ sớm liên hệ với bạn."
+                    message = "Your request has been submitted! The EduGuard team will contact you soon."
                 });
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, message = "Lỗi hệ thống: " + ex.Message });
+                return StatusCode(500, new { success = false, message = "System error: " + ex.Message });
             }
         }
     }

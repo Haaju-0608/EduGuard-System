@@ -55,7 +55,7 @@ public partial class AppDbContext : DbContext
     protected override void OnModelCreating(ModelBuilder modelBuilder)
     {
         modelBuilder
-            .HasPostgresEnum("app_role", new[] { "SUPER_ADMIN", "SCHOOL_ADMIN", "LECTURER", "STUDENT" })
+            .HasPostgresEnum<AppRole>("app_role")
             .HasPostgresEnum("attendance_method", new[] { "AI", "MANUAL" })
             .HasPostgresEnum("attendance_status", new[] { "PRESENT", "ABSENT", "LATE", "EXCUSED" })
             .HasPostgresEnum("auth", "aal_level", new[] { "aal1", "aal2", "aal3" })
@@ -67,23 +67,23 @@ public partial class AppDbContext : DbContext
             .HasPostgresEnum("auth", "oauth_registration_type", new[] { "dynamic", "manual" })
             .HasPostgresEnum("auth", "oauth_response_type", new[] { "code" })
             .HasPostgresEnum("auth", "one_time_token_type", new[] { "confirmation_token", "reauthentication_token", "recovery_token", "email_change_token_new", "email_change_token_current", "phone_change_token" })
-            .HasPostgresEnum("billing_model_enum", new[] { "PAY_AS_YOU_GO", "SUBSCRIPTION" })
+            .HasPostgresEnum<BillingModel>("billing_model_enum")
             .HasPostgresEnum("biometric_req_status", new[] { "PENDING", "APPROVED", "REJECTED" })
             .HasPostgresEnum("enrollment_status", new[] { "ACTIVE", "DROPPED" })
             .HasPostgresEnum("exam_slot_status", new[] { "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED" })
-            .HasPostgresEnum("institution_status", new[] { "ACTIVE", "INACTIVE", "SUSPENDED" })
-            .HasPostgresEnum("notification_channel", new[] { "PUSH", "EMAIL", "DASHBOARD" })
-            .HasPostgresEnum("notification_type", new[] { "LOW_BALANCE_ALERT", "ATTENDANCE_SESSION_STARTED", "EXAM_REMINDER", "VIOLATION_DETECTED", "BIOMETRIC_REQUEST_STATUS", "SERVICE_SUSPENDED" })
-            .HasPostgresEnum("participation_status", new[] { "JOINED", "SUBMITTED", "DISQUALIFIED", "ABSENT", "LEFT" })
-            .HasPostgresEnum("pricing_service_type", new[] { "ATTENDANCE_UNIT", "PROCTORING_PER_HOUR" })
+            .HasPostgresEnum<InstitutionStatus>("institution_status")
+            .HasPostgresEnum<NotificationChannel>("notification_channel")
+            .HasPostgresEnum<NotificationType>("notification_type")
+            .HasPostgresEnum<ParticipationStatus>("participation_status")
+            .HasPostgresEnum<PricingServiceType>("pricing_service_type")
             .HasPostgresEnum("realtime", "action", new[] { "INSERT", "UPDATE", "DELETE", "TRUNCATE", "ERROR" })
             .HasPostgresEnum("realtime", "equality_op", new[] { "eq", "neq", "lt", "lte", "gt", "gte", "in" })
-            .HasPostgresEnum("reference_type_enum", new[] { "INSTITUTION", "ATTENDANCE_SESSION", "EXAM_SLOT", "TRANSACTION" })
-            .HasPostgresEnum("session_status", new[] { "IN_PROGRESS", "COMPLETED", "CANCELLED" })
+            .HasPostgresEnum<ReferenceTypeEnum>("reference_type_enum")
+            .HasPostgresEnum<SessionStatus>("session_status")
             .HasPostgresEnum("storage", "buckettype", new[] { "STANDARD", "ANALYTICS", "VECTOR" })
-            .HasPostgresEnum("transaction_status", new[] { "PENDING", "SUCCESS", "FAILED" })
-            .HasPostgresEnum("transaction_type", new[] { "TOP_UP", "ATTENDANCE_FEE", "PROCTORING_FEE" })
-            .HasPostgresEnum("user_status", new[] { "ACTIVE", "BLOCKED" })
+            .HasPostgresEnum<TransactionStatus>("transaction_status")
+            .HasPostgresEnum<TransactionType>("transaction_type")
+            .HasPostgresEnum<UserStatus>("user_status")
             .HasPostgresEnum("violation_severity", new[] { "WARNING", "SEVERE" })
             .HasPostgresEnum("violation_type", new[] { "IMPERSONATION", "GAZE_DIVERSION", "MULTIPLE_FACES", "ABSENCE" })
             .HasPostgresExtension("extensions", "pg_stat_statements")
@@ -482,21 +482,33 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
                 .HasColumnName("id");
+
+            // ================= SỬA LẠI ĐOẠN NÀY ĐỂ FIX TRIỆT ĐỂ LỖI TOÁN TỬ =================
+            entity.Property(e => e.ServiceType)
+                .HasColumnName("service_type")
+                .HasColumnType("pricing_service_type"); // Định nghĩa chuẩn kiểu dữ liệu Enum của Postgres
+                                                        // =================================================================================
+
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("created_at");
+
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.EffectiveDate).HasColumnName("effective_date");
+
             entity.Property(e => e.IsActive)
                 .HasDefaultValue(true)
                 .HasColumnName("is_active");
+
             entity.Property(e => e.UnitPrice)
                 .HasPrecision(18, 2)
                 .HasComment("Pricing in VND")
                 .HasColumnName("unit_price");
+
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("updated_at");
+
             entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
 
             entity.HasOne(d => d.CreatedByNavigation).WithMany(p => p.PricingConfigCreatedByNavigations)

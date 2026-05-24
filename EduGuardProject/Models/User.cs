@@ -24,6 +24,9 @@ public partial class User
 
     public DateTime? DeletedAt { get; set; }
 
+    [Column("status")]
+    public UserStatus Status { get; set; }
+
     [Column("role")]
     public AppRole Role { get; set; } 
 

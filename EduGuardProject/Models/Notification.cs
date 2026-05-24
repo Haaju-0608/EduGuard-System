@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
@@ -16,6 +17,15 @@ public partial class Notification
     public bool IsRead { get; set; }
 
     public Guid? ReferenceId { get; set; }
+
+    [Column("type")]
+    public NotificationType Type { get; set; }
+
+    [Column("reference_type")]
+    public ReferenceTypeEnum? ReferenceType { get; set; }
+
+    [Column("sent_via")]
+    public NotificationChannel SentVia { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

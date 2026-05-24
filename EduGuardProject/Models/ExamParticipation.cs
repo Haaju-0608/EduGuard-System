@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
@@ -16,6 +17,9 @@ public partial class ExamParticipation
     public DateTime? ActualStart { get; set; }
 
     public DateTime? ActualEnd { get; set; }
+
+    [Column("status")]
+    public ParticipationStatus Status { get; set; }
 
     public string? DisqualifiedReason { get; set; }
 

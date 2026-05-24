@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
@@ -14,6 +15,11 @@ public partial class Transaction
     public string? VnpayRef { get; set; }
 
     public decimal Amount { get; set; }
+
+    [Column("type")]
+    public TransactionType Type { get; set; }
+    [Column("status")]
+    public TransactionStatus Status { get; set; }
 
     public string? Description { get; set; }
 
