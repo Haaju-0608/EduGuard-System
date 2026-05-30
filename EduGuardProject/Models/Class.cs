@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.ComponentModel.DataAnnotations;
 
 namespace EduGuardProject.Models;
 
@@ -7,16 +6,25 @@ public partial class Class
 {
     public Guid Id { get; set; }
 
+    [Required]
     public Guid InstitutionId { get; set; }
 
+    [Required]
     public Guid LecturerId { get; set; }
 
+    [Required]
+    [MaxLength(255)]
     public string CourseName { get; set; } = null!;
 
+    [MaxLength(50)]
     public string? CourseCode { get; set; }
 
+    [Required]
+    [MaxLength(50)]
     public string Semester { get; set; } = null!;
 
+    [Required]
+    [MaxLength(20)]
     public string AcademicYear { get; set; } = null!;
 
     public DateOnly? StartDate { get; set; }

@@ -37,9 +37,15 @@ builder.Services.AddScoped<Supabase.Client>(_ => new Supabase.Client(supabaseUrl
 builder.Services.AddScoped<IUserRepository, UserRepository>();
 builder.Services.AddScoped<IInstitutionRepository, InstitutionRepository>();
 builder.Services.AddScoped<IPricingConfigRepository, PricingConfigRepository>();
+builder.Services.AddScoped<IClassRepository, ClassRepository>();
+builder.Services.AddScoped<IClassEnrollmentRepository, ClassEnrollmentRepository>();
+builder.Services.AddScoped<IAttendanceSessionRepository, AttendanceSessionRepository>();
+builder.Services.AddScoped<IAttendanceRecordRepository, AttendanceRecordRepository>();
+builder.Services.AddScoped<IBiometricRequestRepository, BiometricRequestRepository>();
+builder.Services.AddScoped<IBiometricDatumRepository, BiometricDatumRepository>();
 
 // Đăng ký Service
-
+builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInstitutionService, InstitutionService>();
 builder.Services.AddScoped<IUserService, UserService>();
@@ -47,6 +53,12 @@ builder.Services.AddScoped<IPricingConfigService, PricingConfigService>();
 builder.Services.AddScoped<IWalletService, WalletService>();
 builder.Services.AddScoped<ITransactionService, TransactionService>();
 builder.Services.AddScoped<INotificationService, NotificationService>();
+builder.Services.AddScoped<IClassService, ClassService>();
+builder.Services.AddScoped<IClassEnrollmentService, ClassEnrollmentService>();
+builder.Services.AddScoped<IAttendanceSessionService, AttendanceSessionService>();
+builder.Services.AddScoped<IAttendanceRecordService, AttendanceRecordService>();
+builder.Services.AddScoped<IBiometricRequestService, BiometricRequestService>();
+builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
 
 // ================= CẤU HÌNH XÁC THỰC JWT SUPABASE (ĐÃ SỬA CHUẨN ĐÉT) =================
 builder.Services.AddAuthentication(options =>

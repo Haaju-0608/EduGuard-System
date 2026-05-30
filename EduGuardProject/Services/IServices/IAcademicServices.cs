@@ -1,0 +1,68 @@
+using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
+
+namespace EduGuardProject.Services.IServices;
+
+public interface IClassService
+{
+    Task<(IEnumerable<ClassResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize, string? expand);
+    Task<ClassResponseDto?> GetByIdAsync(Guid id, string? expand);
+    Task<ClassResponseDto> CreateAsync(CreateClassDto dto);
+    Task<bool> UpdateAsync(Guid id, UpdateClassDto dto);
+    Task<bool> DeleteAsync(Guid id);
+}
+
+public interface IClassEnrollmentService
+{
+    Task<(IEnumerable<ClassEnrollmentResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize, string? expand,
+        Guid? classId = null, Guid? studentId = null);
+    Task<ClassEnrollmentResponseDto?> GetByKeyAsync(Guid classId, Guid studentId, string? expand);
+    Task<ClassEnrollmentResponseDto> CreateAsync(CreateClassEnrollmentDto dto);
+    Task<bool> UpdateAsync(Guid classId, Guid studentId, UpdateClassEnrollmentDto dto);
+    Task<bool> DeleteAsync(Guid classId, Guid studentId);
+}
+
+public interface IAttendanceSessionService
+{
+    Task<(IEnumerable<AttendanceSessionResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize, string? expand, Guid? classId = null);
+    Task<AttendanceSessionResponseDto?> GetByIdAsync(Guid id, string? expand);
+    Task<AttendanceSessionResponseDto> CreateAsync(CreateAttendanceSessionDto dto);
+    Task<bool> UpdateAsync(Guid id, UpdateAttendanceSessionDto dto);
+    Task<bool> DeleteAsync(Guid id);
+}
+
+public interface IAttendanceRecordService
+{
+    Task<(IEnumerable<AttendanceRecordResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize, string? expand,
+        Guid? sessionId = null, Guid? studentId = null);
+    Task<AttendanceRecordResponseDto?> GetByIdAsync(Guid id, string? expand);
+    Task<AttendanceRecordResponseDto> CreateAsync(CreateAttendanceRecordDto dto);
+    Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkManualAsync(Guid sessionId, BulkManualAttendanceDto dto);
+    Task<bool> UpdateAsync(Guid id, UpdateAttendanceRecordDto dto);
+    Task<bool> DeleteAsync(Guid id);
+}
+
+public interface IBiometricRequestService
+{
+    Task<(IEnumerable<BiometricRequestResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize, string? expand, Guid? studentId = null);
+    Task<BiometricRequestResponseDto?> GetByIdAsync(Guid id, string? expand);
+    Task<BiometricRequestResponseDto> CreateAsync(CreateBiometricRequestDto dto);
+    Task<bool> ApproveAsync(Guid id, ReviewBiometricRequestDto? dto);
+    Task<bool> RejectAsync(Guid id, ReviewBiometricRequestDto? dto);
+    Task<bool> DeleteAsync(Guid id);
+}
+
+public interface IBiometricDatumService
+{
+    Task<(IEnumerable<BiometricDatumResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize, string? expand, Guid? userId = null);
+    Task<BiometricDatumResponseDto?> GetByIdAsync(Guid id, string? expand);
+    Task<BiometricDatumResponseDto> CreateAsync(CreateBiometricDatumDto dto);
+    Task<bool> UpdateAsync(Guid id, UpdateBiometricDatumDto dto);
+    Task<bool> DeleteAsync(Guid id);
+}

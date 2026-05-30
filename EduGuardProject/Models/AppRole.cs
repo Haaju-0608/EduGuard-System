@@ -5,14 +5,14 @@ using NpgsqlTypes;
 //ENUM cho User
 public enum AppRole
 {
-    [PgName("STUDENT")] // Khi đọc từ DB chữ 'STUDENT', nó sẽ map vào giá trị này
-    Student,     // Vị trí 0: Mặc định nếu lỡ quên gán quyền
+    [PgName("STUDENT")]
+    Student,
 
     [PgName("LECTURER")]
-    Lecturer,     // Vị trí 1
+    Lecturer,
 
     [PgName("SCHOOL_ADMIN")]
-    SchoolAdmin, // Vị trí 2
+    SchoolAdmin,
 
     [PgName("SUPER_ADMIN")]
     SuperAdmin
@@ -50,26 +50,39 @@ public enum InstitutionStatus
     Suspended
 }
 
-//ENUM cho Transaction:
+//ENUM cho Transaction
 public enum TransactionType
 {
-    TOP_UP,          // Nạp tiền vào ví
-    ATTENDANCE_FEE,  // Phí điểm danh
-    PROCTORING_FEE   // Phí giám thị / quét phòng thi
+    [PgName("TOP_UP")]
+    TOP_UP,
+
+    [PgName("ATTENDANCE_FEE")]
+    ATTENDANCE_FEE,
+
+    [PgName("PROCTORING_FEE")]
+    PROCTORING_FEE
 }
 
 public enum TransactionStatus
 {
+    [PgName("PENDING")]
     PENDING,
+
+    [PgName("SUCCESS")]
     SUCCESS,
+
+    [PgName("FAILED")]
     FAILED
 }
 
 //ENUM cho Pricing
 public enum PricingServiceType
 {
-    ATTENDANCE_UNIT,      // Tính phí theo lượt điểm danh
-    PROCTORING_PER_HOUR   // Tính phí giám thị theo giờ
+    [PgName("ATTENDANCE_UNIT")]
+    ATTENDANCE_UNIT,
+
+    [PgName("PROCTORING_PER_HOUR")]
+    PROCTORING_PER_HOUR
 }
 
 //ENUM cho notification
@@ -102,7 +115,7 @@ public enum NotificationChannel
     [PgName("EMAIL")]
     Email,
 
-    [PgName("DASHBOARD")] 
+    [PgName("DASHBOARD")]
     Dashboard
 }
 
@@ -114,7 +127,7 @@ public enum ReferenceTypeEnum
     [PgName("ATTENDANCE_SESSION")]
     AttendanceSession,
 
-    [PgName("EXAM_SLOT")] 
+    [PgName("EXAM_SLOT")]
     ExamSlot,
 
     [PgName("TRANSACTION")]
@@ -124,6 +137,70 @@ public enum ReferenceTypeEnum
 //ENUM cho attendance session
 public enum SessionStatus
 {
+    [PgName("IN_PROGRESS")]
+    InProgress,
+
+    [PgName("COMPLETED")]
+    Completed,
+
+    [PgName("CANCELLED")]
+    Cancelled
+}
+
+//ENUM cho attendance record
+public enum AttendanceMethod
+{
+    [PgName("AI")]
+    Ai,
+
+    [PgName("MANUAL")]
+    Manual
+}
+
+public enum AttendanceStatus
+{
+    [PgName("PRESENT")]
+    Present,
+
+    [PgName("ABSENT")]
+    Absent,
+
+    [PgName("LATE")]
+    Late,
+
+    [PgName("EXCUSED")]
+    Excused
+}
+
+//ENUM cho biometric request
+public enum BiometricReqStatus
+{
+    [PgName("PENDING")]
+    Pending,
+
+    [PgName("APPROVED")]
+    Approved,
+
+    [PgName("REJECTED")]
+    Rejected
+}
+
+//ENUM cho class enrollment
+public enum EnrollmentStatus
+{
+    [PgName("ACTIVE")]
+    Active,
+
+    [PgName("DROPPED")]
+    Dropped
+}
+
+//ENUM cho exam slot
+public enum ExamSlotStatus
+{
+    [PgName("SCHEDULED")]
+    Scheduled,
+
     [PgName("IN_PROGRESS")]
     InProgress,
 
@@ -151,4 +228,29 @@ public enum ParticipationStatus
 
     [PgName("LEFT")]
     Left
+}
+
+//ENUM cho violation log
+public enum ViolationSeverity
+{
+    [PgName("WARNING")]
+    Warning,
+
+    [PgName("SEVERE")]
+    Severe
+}
+
+public enum ViolationType
+{
+    [PgName("IMPERSONATION")]
+    Impersonation,
+
+    [PgName("GAZE_DIVERSION")]
+    GazeDiversion,
+
+    [PgName("MULTIPLE_FACES")]
+    MultipleFaces,
+
+    [PgName("ABSENCE")]
+    Absence
 }

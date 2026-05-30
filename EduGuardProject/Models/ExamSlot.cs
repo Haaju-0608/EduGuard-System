@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
@@ -18,6 +17,9 @@ public partial class ExamSlot
     public DateTime EndTime { get; set; }
 
     public int ExpectedDurationMinutes { get; set; }
+
+    [Column("status")]
+    public ExamSlotStatus Status { get; set; }
 
     public DateTime CreatedAt { get; set; }
 

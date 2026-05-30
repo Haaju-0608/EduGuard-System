@@ -1,5 +1,5 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.ComponentModel.DataAnnotations;
+using System.ComponentModel.DataAnnotations.Schema;
 
 namespace EduGuardProject.Models;
 
@@ -7,11 +7,16 @@ public partial class BiometricRequest
 {
     public Guid Id { get; set; }
 
+    [Required]
     public Guid StudentId { get; set; }
 
     public Guid? ApprovedBy { get; set; }
 
+    [Required]
     public string Reason { get; set; } = null!;
+
+    [Column("status")]
+    public BiometricReqStatus Status { get; set; }
 
     public DateTime? ReviewedAt { get; set; }
 
