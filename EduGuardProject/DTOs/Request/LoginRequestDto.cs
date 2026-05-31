@@ -3,55 +3,67 @@ using System.ComponentModel.DataAnnotations;
 
 namespace EduGuardProject.DTOs.Request
 {
+    // 1. DTO cho Login
     public class LoginRequestDto
     {
-        [Required(ErrorMessage = "Email không được để trống")]
-        [EmailAddress(ErrorMessage = "Email không đúng định dạng")]
+        [Required(ErrorMessage = "Email is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email format.")]
         public string Email { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Mật khẩu không được để trống")]
-        [MinLength(6, ErrorMessage = "Mật khẩu phải có ít nhất 6 ký tự")]
+        [Required(ErrorMessage = "Password is required.")]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters.")]
         public string Password { get; set; } = string.Empty;
     }
 
     // 2. DTO cho Super Admin tạo School Admin
     public class CreateSchoolAdminDto
     {
-        [Required(ErrorMessage = "Email không được để trống")]
-        [EmailAddress(ErrorMessage = "Email không đúng định dạng")]
-        public string Email { get; set; }
+        [Required(ErrorMessage = "Email is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email format.")]
+        public string Email { get; set; } = null!;
 
-        [Required(ErrorMessage = "Mật khẩu không được để trống")]
-        [MinLength(6, ErrorMessage = "Mật khẩu phải có ít nhất 6 ký tự")]
-        public string Password { get; set; }
+        [Required(ErrorMessage = "Password is required.")]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters.")]
+        public string Password { get; set; } = null!;
 
-        [Required(ErrorMessage = "Phải chọn trường (Institution) cho Admin này")]
+        [Required(ErrorMessage = "Institution ID is required for this Admin.")]
         public Guid InstitutionId { get; set; }
     }
 
-    // 3. DTO cho School Admin tạo Giảng viên / Sinh viên và đăng kí Auth luôn nha 
-    public class CreateUserDto
+    // 3. DTO cho School Admin tạo Giảng viên / Sinh viên
+    // 🔥 Thêm IValidatableObject để làm Validate có điều kiện
+    public class CreateUserDto : IValidatableObject
     {
-        [Required(ErrorMessage = "Email không được để trống")]
-        [EmailAddress(ErrorMessage = "Email không đúng định dạng")]
+        [Required(ErrorMessage = "Email is required.")]
+        [EmailAddress(ErrorMessage = "Invalid email format.")]
         public string Email { get; set; } = null!;
 
-        [Required(ErrorMessage = "Mật khẩu không được để trống")]
-        [MinLength(6, ErrorMessage = "Mật khẩu phải có ít nhất 6 ký tự")]
+        [Required(ErrorMessage = "Password is required.")]
+        [MinLength(6, ErrorMessage = "Password must be at least 6 characters.")]
         public string Password { get; set; } = string.Empty;
 
-        [Required(ErrorMessage = "Họ tên không được để trống")]
+        [Required(ErrorMessage = "Full name is required.")]
         public string FullName { get; set; } = null!;
 
-        [Required(ErrorMessage = "Phải xác định quyền (SUPER_ADMIN, SCHOOL_ADMIN, LECTURER hoặc STUDENT)")]
+        [Required(ErrorMessage = "Role (SUPER_ADMIN, SCHOOL_ADMIN, LECTURER, or STUDENT) is required.")]
         public AppRole Role { get; set; }
 
-        // Sinh viên thì bắt buộc phải có mã số, Giảng viên thì không cần
         public string? StudentCode { get; set; }
 
-        //  Bổ sung các trường này từ API User vào đây để đồng bộ 100%
         public Guid? InstitutionId { get; set; }
         public string? Phone { get; set; }
         public UserStatus Status { get; set; } = UserStatus.Active;
+
+        // 🔥 XỬ LÝ LOGIC: Nếu là Sinh viên thì BẮT BUỘC phải có StudentCode
+        public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
+        {
+            if (Role == AppRole.Student && string.IsNullOrWhiteSpace(StudentCode))
+            {
+                yield return new ValidationResult(
+                    "Student code is required when creating a STUDENT account.",
+                    new[] { nameof(StudentCode) }
+                );
+            }
+        }
     }
 }

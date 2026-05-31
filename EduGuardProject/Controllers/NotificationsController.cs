@@ -1,4 +1,6 @@
-﻿using EduGuardProject.Services.IServices;
+﻿using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
+using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
@@ -15,27 +17,27 @@ namespace EduGuardProject.Controllers
             _notificationService = notificationService;
         }
 
-        // Lấy danh sách thông báo của User
         [HttpGet("user/{userId}")]
+        [SupabaseAuthorize] // Ghi trơn thế này nghĩa là: Ai đăng nhập cũng gọi được
         public async Task<IActionResult> GetUserNotifications(Guid userId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
                 if (page < 1 || pageSize < 1)
-                    return BadRequest(new { success = false, message = "Page và PageSize phải lớn hơn 0." });
+                    return BadRequest(ApiResponse<object>.OnFail("Page and PageSize must be greater than 0."));
 
                 var result = await _notificationService.GetUserNotificationsAsync(userId, page, pageSize);
-
                 int totalPages = (int)Math.Ceiling((double)result.TotalItems / pageSize);
 
+                // 🛠️ ĐÃ FIX: Build object bằng tay để nhét được 'unreadCount' ra ngoài giống như cũ
                 return Ok(new
                 {
                     success = true,
-                    message = "Lấy danh sách thông báo thành công.",
+                    message = "Notifications retrieved successfully.",
                     data = new
                     {
                         items = result.Data,
-                        unreadCount = result.UnreadCount // Rất tiện cho Frontend hiển thị số đỏ chấm chuông
+                        unreadCount = result.UnreadCount
                     },
                     pagination = new
                     {
@@ -49,40 +51,40 @@ namespace EduGuardProject.Controllers
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, message = ex.Message, errors = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
             }
         }
 
-        // Đánh dấu 1 thông báo là đã đọc
         [HttpPut("{id}/read")]
+        [SupabaseAuthorize]
         public async Task<IActionResult> MarkAsRead(Guid id, [FromQuery] Guid userId)
         {
             try
             {
                 var success = await _notificationService.MarkAsReadAsync(id, userId);
                 if (!success)
-                    return BadRequest(new { success = false, message = "Thông báo không tồn tại hoặc đã được đọc." });
+                    return BadRequest(ApiResponse<object>.OnFail("Notification not found or already read."));
 
-                return Ok(new { success = true, message = "Đã đánh dấu đọc thông báo.", data = (object)null, errors = (object)null });
+                return Ok(ApiResponse<object>.OnSuccess(null, "Notification marked as read."));
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, message = ex.Message, errors = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
             }
         }
 
-        // Đánh dấu tất cả là đã đọc
         [HttpPut("read-all")]
+        [SupabaseAuthorize]
         public async Task<IActionResult> MarkAllAsRead([FromQuery] Guid userId)
         {
             try
             {
                 await _notificationService.MarkAllAsReadAsync(userId);
-                return Ok(new { success = true, message = "Đã đánh dấu đọc tất cả thông báo.", data = (object)null, errors = (object)null });
+                return Ok(ApiResponse<object>.OnSuccess(null, "All notifications marked as read."));
             }
             catch (Exception ex)
             {
-                return StatusCode(500, new { success = false, message = ex.Message, errors = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
             }
         }
     }

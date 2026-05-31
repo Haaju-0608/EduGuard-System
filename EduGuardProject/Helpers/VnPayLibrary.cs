@@ -29,31 +29,43 @@ public class VnPayLibrary
     // ==================== TẠO URL THANH TOÁN CHUẨN VNPAY 2.1.0 ====================
     public string CreateRequestUrl(string baseUrl, string vnpHashSecret)
     {
-        if (string.IsNullOrEmpty(vnpHashSecret))
-            throw new ArgumentNullException(nameof(vnpHashSecret), "HashSecret rỗng!");
-
         var data = new StringBuilder();
+
         foreach (var kv in _requestData)
         {
             if (!string.IsNullOrEmpty(kv.Value))
             {
-                data.Append(Uri.EscapeDataString(kv.Key) + "=" + Uri.EscapeDataString(kv.Value) + "&");
+                data.Append(kv.Key + "=" + kv.Value + "&");
             }
         }
 
-        string queryString = data.ToString();
-        if (queryString.Length > 0)
+        string signData = data.ToString().TrimEnd('&');
+
+        Console.WriteLine("===== RAW HASH DATA =====");
+        Console.WriteLine(signData);
+
+        string secureHash = HmacSha512(vnpHashSecret, signData);
+
+        Console.WriteLine("===== SECURE HASH =====");
+        Console.WriteLine(secureHash);
+
+        var query = new StringBuilder();
+
+        foreach (var kv in _requestData)
         {
-            queryString = queryString.Remove(queryString.Length - 1, 1);
+            if (!string.IsNullOrEmpty(kv.Value))
+            {
+                query.Append(Uri.EscapeDataString(kv.Key));
+                query.Append("=");
+                query.Append(Uri.EscapeDataString(kv.Value));
+                query.Append("&");
+            }
         }
 
-        // 🔥 DÒNG LOG QUAN TRỌNG: In chuỗi nền ra Console để đối chiếu với mail VNPay
-        Console.WriteLine("================ VNPAY DEBUG RAW DATA ================");
-        Console.WriteLine(queryString);
-        Console.WriteLine("======================================================");
+        query.Append("vnp_SecureHash=");
+        query.Append(secureHash);
 
-        string secureHash = HmacSha512(vnpHashSecret, queryString);
-        return baseUrl + "?" + queryString + "&vnp_SecureHash=" + secureHash;
+        return baseUrl + "?" + query.ToString();
     }
 
     public bool ValidateSignature(string inputHash, string secretKey)

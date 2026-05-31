@@ -129,15 +129,22 @@ namespace EduGuardProject.Services
 
             // 🔥 BẪY IP: Không dùng httpContext để lấy IP lúc test Local/Ngrok (tránh bị dính "::1")
             // Ép cứng luôn IPv4 chuẩn này để VNPay Sandbox không bắt bẻ chữ ký
-            vnpay.AddRequestData("vnp_IpAddr", "127.0.0.1");
+            string ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();
+
+            if (string.IsNullOrEmpty(ipAddress) || ipAddress == "::1")
+            {
+                ipAddress = "14.169.25.10"; // test tạm IPv4 public
+            }
+
+            vnpay.AddRequestData("vnp_IpAddr", ipAddress);
 
             vnpay.AddRequestData("vnp_Locale", "vn");
-            vnpay.AddRequestData("vnp_OrderInfo", "Nap tien vao vi tai khoan EduGuard");
+            vnpay.AddRequestData("vnp_OrderInfo", "NapTienVi_EduGuard");
             vnpay.AddRequestData("vnp_OrderType", "other");
 
             // 🔥 BẪY URL RETURN: Khớp hoàn toàn với Route [HttpGet("vnpay-return")] ở Controller của bạn
             // Hãy lấy chính xác link Ngrok đang active của bạn điền vào đây
-            string returnUrl = "https://zincographic-kris-clinically.ngrok-free.dev/api/wallets/vnpay-return";
+            string returnUrl = _configuration["VnPay:ReturnUrl"];
             vnpay.AddRequestData("vnp_ReturnUrl", returnUrl);
 
             // Mã giao dịch duy nhất (Ví dụ dùng Guid hoặc Id tự tăng từ DB)
@@ -146,6 +153,9 @@ namespace EduGuardProject.Services
 
             // 4. Tiến hành sinh URL (Sử dụng hàm băm tự động sửa lỗi %20 và chữ HOA)
             string paymentUrl = vnpay.CreateRequestUrl(baseUrl, hashSecret);
+            Console.WriteLine("========= FINAL PAYMENT URL =========");
+            Console.WriteLine(paymentUrl);
+            Console.WriteLine("=====================================");
 
             return paymentUrl;
         }

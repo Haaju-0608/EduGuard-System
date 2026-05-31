@@ -68,8 +68,16 @@ public enum TransactionStatus
 //ENUM cho Pricing
 public enum PricingServiceType
 {
+<<<<<<< Updated upstream
     ATTENDANCE_UNIT,      // Tính phí theo lượt điểm danh
     PROCTORING_PER_HOUR   // Tính phí giám thị theo giờ
+=======
+    [PgName("attendance_unit")] 
+    ATTENDANCE_UNIT,
+
+    [PgName("proctoring_per_hour")] 
+    PROCTORING_PER_HOUR
+>>>>>>> Stashed changes
 }
 
 //ENUM cho notification

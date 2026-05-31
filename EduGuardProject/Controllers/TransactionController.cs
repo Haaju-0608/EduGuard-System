@@ -1,4 +1,7 @@
 ﻿using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -16,89 +19,51 @@ namespace EduGuardProject.Controllers
             _transactionService = transactionService;
         }
 
-        // ================= 1. API LẤY LỊCH SỬ GIAO DỊCH =================
         [HttpGet("wallet/{walletId}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> GetTransactions(Guid walletId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
                 if (page < 1 || pageSize < 1)
-                    return BadRequest(new { success = false, message = "Page và PageSize phải lớn hơn 0.", errors = "Invalid pagination parameters" });
+                    return BadRequest(ApiResponse<object>.OnFail("Page and PageSize must be greater than 0."));
 
                 var result = await _transactionService.GetTransactionsByWalletAsync(walletId, page, pageSize);
-                int totalPages = (int)Math.Ceiling((double)result.TotalItems / pageSize);
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Lấy lịch sử giao dịch thành công.",
-                    data = result.Data,
-                    pagination = new
-                    {
-                        page = page,
-                        pageSize = pageSize,
-                        totalItems = result.TotalItems,
-                        totalPages = totalPages
-                    },
-                    errors = (object)null
-                });
+                return Ok(ApiPagedResponse<TransactionResponseDto>.OnPagedSuccess(result.Data, page, pageSize, result.TotalItems, "Transaction history retrieved successfully."));
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, new { success = false, message = ex.Message, errors = ex.Message });
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
             }
         }
 
-        // ================= 2. API TRỪ TIỀN ĐIỂM DANH (DÀNH CHO TEAM AI GỌI) =================
         [HttpPost("deduct-attendance")]
+        [SupabaseAuthorize(AppRole.SuperAdmin)] // Team AI sẽ nhét Token SuperAdmin vào để gọi hàm này
         public async Task<IActionResult> DeductAttendanceFee([FromBody] DeductAttendanceRequestDto request)
         {
             try
             {
-                var result = await _transactionService.DeductAttendanceFeeAsync(
-                    request.WalletId,
-                    request.AttendanceSessionId,
-                    request.StudentCount
-                );
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Đã trừ phí điểm danh tự động thành công.",
-                    data = result,
-                    errors = (object)null
-                });
+                var result = await _transactionService.DeductAttendanceFeeAsync(request.WalletId, request.AttendanceSessionId, request.StudentCount);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Attendance fee deducted successfully."));
             }
             catch (Exception ex)
             {
-                // Văng lỗi HTTP 400 nếu ví hết tiền, chưa cài giá, hoặc đã bị trừ tiền rồi (chống double-billing)
-                return BadRequest(new { success = false, message = ex.Message, errors = ex.Message });
+                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
             }
         }
 
-        // ================= 3. API TRỪ TIỀN GIÁM THỊ (DÀNH CHO TEAM AI GỌI) =================
         [HttpPost("deduct-proctoring")]
+        [SupabaseAuthorize(AppRole.SuperAdmin)] // Tương tự
         public async Task<IActionResult> DeductProctoringFee([FromBody] DeductProctoringRequestDto request)
         {
             try
             {
-                var result = await _transactionService.DeductProctoringFeeAsync(
-                    request.WalletId,
-                    request.ExamParticipationId,
-                    request.Hours
-                );
-
-                return Ok(new
-                {
-                    success = true,
-                    message = "Đã trừ phí giám thị tự động thành công.",
-                    data = result,
-                    errors = (object)null
-                });
+                var result = await _transactionService.DeductProctoringFeeAsync(request.WalletId, request.ExamParticipationId, request.Hours);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Proctoring fee deducted successfully."));
             }
             catch (Exception ex)
             {
-                return BadRequest(new { success = false, message = ex.Message, errors = ex.Message });
+                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
             }
         }
     }

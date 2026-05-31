@@ -1,12 +1,13 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers
 {
-
     [Route("api/wallets")]
     [ApiController]
     public class WalletController : ControllerBase
@@ -18,70 +19,57 @@ namespace EduGuardProject.Controllers
             _walletService = walletService;
         }
 
-        // 1. LẤY THÔNG TIN VÍ CỦA TRƯỜNG HỌC
         [HttpGet("institution/{institutionId}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)] 
         public async Task<IActionResult> GetWalletByInstitutionId(Guid institutionId)
         {
             try
             {
                 var wallet = await _walletService.GetWalletByInstitutionIdAsync(institutionId);
-
                 if (wallet == null)
                 {
-                    return NotFound(ApiResponse<object>.OnFail("Không tìm thấy ví cho trường học này.")); // HTTP 404 [cite: 88, 89]
+                    return NotFound(ApiResponse<object>.OnFail("Wallet for this institution not found."));
                 }
-
-                // 🎯 Sử dụng OnSuccess trả về dữ liệu chuẩn
-                return Ok(ApiResponse<WalletResponseDto>.OnSuccess(wallet, "Lấy thông tin ví thành công.")); // HTTP 200 [cite: 83]
+                return Ok(ApiResponse<WalletResponseDto>.OnSuccess(wallet, "Wallet information retrieved successfully."));
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail(ex.Message)); // HTTP 500 [cite: 90, 91]
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
             }
         }
 
-        // 2. LẤY LỊCH SỬ GIAO DỊCH CỦA VÍ (CÓ PHÂN TRANG)
         [HttpGet("{walletId}/transactions")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> GetTransactions(Guid walletId, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
-                // Kiểm tra input phân trang
                 if (page < 1 || pageSize < 1)
                 {
-                    return BadRequest(ApiResponse<object>.OnFail("Page và PageSize phải lớn hơn 0."));
+                    return BadRequest(ApiResponse<object>.OnFail("Page and PageSize must be greater than 0."));
                 }
 
                 var result = await _walletService.GetTransactionHistoryAsync(walletId, page, pageSize);
-
-                // 🎯 Sử dụng OnPagedSuccess để trả về danh sách kèm theo Metadata Pagination
                 var response = ApiPagedResponse<TransactionResponseDto>.OnPagedSuccess(
-                    result.Data,
-                    page,
-                    pageSize,
-                    result.TotalItems,
-                    "Lấy lịch sử giao dịch thành công."
+                    result.Data, page, pageSize, result.TotalItems, "Transaction history retrieved successfully."
                 );
 
                 return Ok(response);
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail(ex.Message));
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
             }
         }
 
-        // 3. NẠP TIỀN VÀO VÍ - BÂY GIỜ TRẢ VỀ LINK VNPAY
         [HttpPost("top-up")]
+        [SupabaseAuthorize(AppRole.SchoolAdmin)] // Thường là School Admin nạp tiền
         public async Task<IActionResult> TopUpWallet([FromBody] TopUpRequestDto dto)
         {
             try
             {
-                // Truyền thêm HttpContext vào Service
                 var paymentUrl = await _walletService.ProcessTopUpAsync(dto, HttpContext);
-
-                // Trả ra link VNPay bọc trong ApiResponse chuẩn chỉnh
-                return Ok(ApiResponse<string>.OnSuccess(paymentUrl, "Tạo link thanh toán VNPay thành công. Vui lòng truy cập đường dẫn để thanh toán."));
+                return Ok(ApiResponse<string>.OnSuccess(paymentUrl, "VNPay payment link created successfully. Please follow the link to complete payment."));
             }
             catch (Exception ex)
             {
@@ -89,24 +77,22 @@ namespace EduGuardProject.Controllers
             }
         }
 
-        // 4. ENDPOINT HỨNG DỮ LIỆU TRẢ VỀ TỪ VNPAY (RETURN URL)
+        // ⚠️ KHÔNG ĐỂ [SupabaseAuthorize] Ở ĐÂY VÌ VNPAY SẼ GỌI VÀO HÀM NÀY
         [HttpGet("vnpay-return")]
         public async Task<IActionResult> VnPayReturn()
         {
             try
             {
                 var isSuccess = await _walletService.ProcessVnPayReturnAsync(Request.Query);
-
                 if (isSuccess)
                 {
-                    return Ok(ApiResponse<object>.OnSuccess(null, "Thanh toán qua VNPay thành công, ví đã được cộng tiền!"));
+                    return Ok(ApiResponse<object>.OnSuccess(null, "VNPay payment successful, wallet topped up!"));
                 }
-
-                return BadRequest(ApiResponse<object>.OnFail("Thanh toán thất bại hoặc chữ ký không hợp lệ."));
+                return BadRequest(ApiResponse<object>.OnFail("Payment failed or invalid signature."));
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail(ex.Message));
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
             }
         }
     }
