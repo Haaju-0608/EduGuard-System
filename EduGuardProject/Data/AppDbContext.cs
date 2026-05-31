@@ -56,8 +56,8 @@ public partial class AppDbContext : DbContext
     {
         modelBuilder
             .HasPostgresEnum<AppRole>("app_role")
-            .HasPostgresEnum("attendance_method", new[] { "AI", "MANUAL" })
-            .HasPostgresEnum("attendance_status", new[] { "PRESENT", "ABSENT", "LATE", "EXCUSED" })
+            .HasPostgresEnum<AttendanceMethod>("attendance_method")
+            .HasPostgresEnum<AttendanceStatus>("attendance_status")
             .HasPostgresEnum("auth", "aal_level", new[] { "aal1", "aal2", "aal3" })
             .HasPostgresEnum("auth", "code_challenge_method", new[] { "s256", "plain" })
             .HasPostgresEnum("auth", "factor_status", new[] { "unverified", "verified" })
@@ -68,9 +68,9 @@ public partial class AppDbContext : DbContext
             .HasPostgresEnum("auth", "oauth_response_type", new[] { "code" })
             .HasPostgresEnum("auth", "one_time_token_type", new[] { "confirmation_token", "reauthentication_token", "recovery_token", "email_change_token_new", "email_change_token_current", "phone_change_token" })
             .HasPostgresEnum<BillingModel>("billing_model_enum")
-            .HasPostgresEnum("biometric_req_status", new[] { "PENDING", "APPROVED", "REJECTED" })
-            .HasPostgresEnum("enrollment_status", new[] { "ACTIVE", "DROPPED" })
-            .HasPostgresEnum("exam_slot_status", new[] { "SCHEDULED", "IN_PROGRESS", "COMPLETED", "CANCELLED" })
+            .HasPostgresEnum<BiometricReqStatus>("biometric_req_status")
+            .HasPostgresEnum<EnrollmentStatus>("enrollment_status")
+            .HasPostgresEnum<ExamSlotStatus>("exam_slot_status")
             .HasPostgresEnum<InstitutionStatus>("institution_status")
             .HasPostgresEnum<NotificationChannel>("notification_channel")
             .HasPostgresEnum<NotificationType>("notification_type")
@@ -84,8 +84,8 @@ public partial class AppDbContext : DbContext
             .HasPostgresEnum<TransactionStatus>("transaction_status")
             .HasPostgresEnum<TransactionType>("transaction_type")
             .HasPostgresEnum<UserStatus>("user_status")
-            .HasPostgresEnum("violation_severity", new[] { "WARNING", "SEVERE" })
-            .HasPostgresEnum("violation_type", new[] { "IMPERSONATION", "GAZE_DIVERSION", "MULTIPLE_FACES", "ABSENCE" })
+            .HasPostgresEnum<ViolationSeverity>("violation_severity")
+            .HasPostgresEnum<ViolationType>("violation_type")
             .HasPostgresExtension("extensions", "pg_stat_statements")
             .HasPostgresExtension("extensions", "pgcrypto")
             .HasPostgresExtension("extensions", "uuid-ossp")
@@ -114,6 +114,12 @@ public partial class AppDbContext : DbContext
                 .HasComment("Bucket: attendance-snapshots")
                 .HasColumnName("snapshot_path");
             entity.Property(e => e.StudentId).HasColumnName("student_id");
+            entity.Property(e => e.Method)
+                .HasColumnName("method")
+                .HasColumnType("attendance_method");
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasColumnType("attendance_status");
 
             entity.HasOne(d => d.AdjustedByNavigation).WithMany(p => p.AttendanceRecordAdjustedByNavigations)
                 .HasForeignKey(d => d.AdjustedBy)
@@ -150,6 +156,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.EndTime).HasColumnName("end_time");
             entity.Property(e => e.StartTime).HasColumnName("start_time");
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasColumnType("session_status");
             entity.Property(e => e.TotalRecognized)
                 .HasDefaultValue(0)
                 .HasColumnName("total_recognized");
@@ -239,6 +248,9 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("created_at");
             entity.Property(e => e.Reason).HasColumnName("reason");
             entity.Property(e => e.ReviewedAt).HasColumnName("reviewed_at");
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasColumnType("biometric_req_status");
             entity.Property(e => e.StudentId).HasColumnName("student_id");
 
             entity.HasOne(d => d.ApprovedByNavigation).WithMany(p => p.BiometricRequestApprovedByNavigations)
@@ -321,6 +333,9 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.EnrolledAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("enrolled_at");
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasColumnType("enrollment_status");
 
             entity.HasOne(d => d.Class).WithMany(p => p.ClassEnrollments)
                 .HasForeignKey(d => d.ClassId)
@@ -360,6 +375,9 @@ public partial class AppDbContext : DbContext
                 .HasComment("Bucket: exam-recordings")
                 .HasColumnName("recording_video_path");
             entity.Property(e => e.StudentId).HasColumnName("student_id");
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasColumnType("participation_status");
 
             entity.HasOne(d => d.BillingTrans).WithOne(p => p.ExamParticipation)
                 .HasForeignKey<ExamParticipation>(d => d.BillingTransId)
@@ -397,6 +415,9 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("exam_name");
             entity.Property(e => e.ExpectedDurationMinutes).HasColumnName("expected_duration_minutes");
             entity.Property(e => e.StartTime).HasColumnName("start_time");
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasColumnType("exam_slot_status");
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("updated_at");
@@ -460,9 +481,18 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValue(false)
                 .HasColumnName("is_read");
             entity.Property(e => e.ReferenceId).HasColumnName("reference_id");
+            entity.Property(e => e.ReferenceType)
+                .HasColumnName("reference_type")
+                .HasColumnType("reference_type_enum");
+            entity.Property(e => e.SentVia)
+                .HasColumnName("sent_via")
+                .HasColumnType("notification_channel");
             entity.Property(e => e.Title)
                 .HasMaxLength(255)
                 .HasColumnName("title");
+            entity.Property(e => e.Type)
+                .HasColumnName("type")
+                .HasColumnType("notification_type");
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("updated_at");
