@@ -78,3 +78,15 @@ public interface IExamParticipationService
 
     Task<bool> DeleteAsync(Guid id);
 }
+public interface IExamSlotServices
+{
+    Task<(IEnumerable<ExamSlot> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel);
+
+    Task<ExamSlot?> GetByIdAsync(Guid id);
+
+    Task<ExamSlot> CreateAsync(CreateExamSlotDto dto);
+
+    Task<bool> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto);
+
+    Task<bool> DeleteAsync(Guid ExamId);
+}

@@ -10,20 +10,11 @@ public class ExamParticipationRepository : IExamParticipationRepository
 
     public ExamParticipationRepository(AppDbContext context) => _context = context;
 
-    public async Task<(IEnumerable<ExamParticipation> Items, int TotalCount)> GetAllAsync(
-        string? search, string? sort, int page, int pageSize,
-        Guid? examSlotId = null, Guid? studentId = null, ParticipationStatus? status = null)
+    public async Task<(IEnumerable<ExamParticipation> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
     {
         var query = _context.ExamParticipations
             .AsNoTracking()
             .AsQueryable();
-
-        if (examSlotId.HasValue)
-            query = query.Where(p => p.ExamSlotId == examSlotId.Value);
-        if (studentId.HasValue)
-            query = query.Where(p => p.StudentId == studentId.Value);
-        if (status.HasValue)
-            query = query.Where(p => p.Status == status.Value);
 
         var totalCount = await query.CountAsync();
         query = ApplySort(query, sort);
