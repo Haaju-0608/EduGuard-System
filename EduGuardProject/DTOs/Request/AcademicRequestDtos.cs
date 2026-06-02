@@ -149,3 +149,29 @@ public class UpdateBiometricDatumDto
 
     public bool? IsActive { get; set; }
 }
+
+public class CreateExamParticipationDto
+{
+    [Required]
+    public Guid ExamSlotId { get; set; }
+    [Required]
+    public Guid StudentId { get; set; }
+    public Guid? BillingTransId { get; set; }
+    public DateTime? ActualStart { get; set; }
+    public DateTime? ActualEnd { get; set; }
+    public ParticipationStatus Status { get; set; } 
+    public string? DisqualifiedReason { get; set; }
+    public string? RecordingVideoPath { get; set; }
+    public string? IdentitySnapshotPath { get; set; }
+}
+
+public class UpdateExamParticipationDto
+{
+
+    public DateTime? ActualStart { get; set; }
+    public DateTime? ActualEnd { get; set; }
+    public ParticipationStatus Status { get; set; }
+    public string? DisqualifiedReason { get; set; }
+    public string? RecordingVideoPath { get; set; }
+    public string? IdentitySnapshotPath { get; set; }
+}

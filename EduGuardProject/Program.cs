@@ -22,6 +22,7 @@ dataSourceBuilder.MapEnum<UserStatus>("user_status");
 dataSourceBuilder.MapEnum<TransactionType>("transaction_type");
 dataSourceBuilder.MapEnum<TransactionStatus>("transaction_status");
 dataSourceBuilder.MapEnum<PricingServiceType>("pricing_service_type");
+dataSourceBuilder.MapEnum<ParticipationStatus>("participation_status");
 var dataSource = dataSourceBuilder.Build();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -43,6 +44,7 @@ builder.Services.AddScoped<IAttendanceSessionRepository, AttendanceSessionReposi
 builder.Services.AddScoped<IAttendanceRecordRepository, AttendanceRecordRepository>();
 builder.Services.AddScoped<IBiometricRequestRepository, BiometricRequestRepository>();
 builder.Services.AddScoped<IBiometricDatumRepository, BiometricDatumRepository>();
+builder.Services.AddScoped<IExamParticipationRepository, ExamParticipationRepository>();
 
 // Đăng ký Service
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -59,6 +61,7 @@ builder.Services.AddScoped<IAttendanceSessionService, AttendanceSessionService>(
 builder.Services.AddScoped<IAttendanceRecordService, AttendanceRecordService>();
 builder.Services.AddScoped<IBiometricRequestService, BiometricRequestService>();
 builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
+builder.Services.AddScoped<IExamParticipationService, ExamParticipationServices>();
 
 // ================= CẤU HÌNH XÁC THỰC JWT SUPABASE (ĐÃ SỬA CHUẨN ĐÉT) =================
 builder.Services.AddAuthentication(options =>

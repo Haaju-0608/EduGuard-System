@@ -1,5 +1,6 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Models;
 
 namespace EduGuardProject.Services.IServices;
 
@@ -64,5 +65,16 @@ public interface IBiometricDatumService
     Task<BiometricDatumResponseDto?> GetByIdAsync(Guid id, string? expand);
     Task<BiometricDatumResponseDto> CreateAsync(CreateBiometricDatumDto dto);
     Task<bool> UpdateAsync(Guid id, UpdateBiometricDatumDto dto);
+    Task<bool> DeleteAsync(Guid id);
+}
+
+public interface IExamParticipationService
+{
+    Task<(IEnumerable<ExamParticipation> Items, int TotalCount)> GetAllExamparticipationsAsync(string? search, string? sort, int page, int pageSize);
+    Task<ExamParticipation?> GetByIdAsync(Guid id);
+    Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto);
+
+    Task<bool> UpdateAsync(Guid id, UpdateExamParticipationDto dto);
+
     Task<bool> DeleteAsync(Guid id);
 }
