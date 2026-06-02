@@ -1,12 +1,12 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
-[Authorize]
 [Route("api/attendance-records")]
 [ApiController]
 public class AttendanceRecordsController : AcademicApiControllerBase
@@ -16,6 +16,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
     public AttendanceRecordsController(IAttendanceRecordService service) => _service = service;
 
     [HttpGet]
+    [SupabaseAuthorize]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,
@@ -36,6 +37,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [SupabaseAuthorize]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null, [FromQuery] string? expand = null)
     {
         try
@@ -48,6 +50,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
     }
 
     [HttpPost]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Create([FromBody] CreateAttendanceRecordDto dto, [FromQuery] string? fields = null)
     {
         try
@@ -59,6 +62,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
     }
 
     [HttpPost("~/api/attendance-sessions/{sessionId:guid}/records/bulk")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> CreateBulkManual(Guid sessionId, [FromBody] BulkManualAttendanceDto dto)
     {
         try
@@ -71,6 +75,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateAttendanceRecordDto dto)
     {
         try
@@ -83,6 +88,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Delete(Guid id)
     {
         try

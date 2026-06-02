@@ -1,12 +1,12 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
-[Authorize]
 [Route("api/biometric-data")]
 [ApiController]
 public class BiometricDataController : AcademicApiControllerBase
@@ -16,6 +16,7 @@ public class BiometricDataController : AcademicApiControllerBase
     public BiometricDataController(IBiometricDatumService service) => _service = service;
 
     [HttpGet]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,
@@ -35,6 +36,7 @@ public class BiometricDataController : AcademicApiControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null, [FromQuery] string? expand = null)
     {
         try
@@ -47,6 +49,7 @@ public class BiometricDataController : AcademicApiControllerBase
     }
 
     [HttpPost]
+    [SupabaseAuthorize]
     public async Task<IActionResult> Create([FromBody] CreateBiometricDatumDto dto, [FromQuery] string? fields = null)
     {
         try
@@ -58,6 +61,7 @@ public class BiometricDataController : AcademicApiControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [SupabaseAuthorize]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateBiometricDatumDto dto)
     {
         try
@@ -70,6 +74,7 @@ public class BiometricDataController : AcademicApiControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [SupabaseAuthorize]
     public async Task<IActionResult> Delete(Guid id)
     {
         try

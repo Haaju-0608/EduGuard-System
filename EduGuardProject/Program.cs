@@ -22,6 +22,18 @@ dataSourceBuilder.MapEnum<UserStatus>("user_status");
 dataSourceBuilder.MapEnum<TransactionType>("transaction_type");
 dataSourceBuilder.MapEnum<TransactionStatus>("transaction_status");
 dataSourceBuilder.MapEnum<PricingServiceType>("pricing_service_type");
+dataSourceBuilder.MapEnum<AttendanceMethod>("attendance_method");
+dataSourceBuilder.MapEnum<AttendanceStatus>("attendance_status");
+dataSourceBuilder.MapEnum<SessionStatus>("session_status");
+dataSourceBuilder.MapEnum<EnrollmentStatus>("enrollment_status");
+dataSourceBuilder.MapEnum<BiometricReqStatus>("biometric_req_status");
+dataSourceBuilder.MapEnum<ParticipationStatus>("participation_status");
+dataSourceBuilder.MapEnum<ExamSlotStatus>("exam_slot_status");
+dataSourceBuilder.MapEnum<NotificationType>("notification_type");
+dataSourceBuilder.MapEnum<NotificationChannel>("notification_channel");
+dataSourceBuilder.MapEnum<ReferenceTypeEnum>("reference_type_enum");
+dataSourceBuilder.MapEnum<ViolationSeverity>("violation_severity");
+dataSourceBuilder.MapEnum<ViolationType>("violation_type");
 var dataSource = dataSourceBuilder.Build();
 
 builder.Services.AddDbContext<AppDbContext>(options =>

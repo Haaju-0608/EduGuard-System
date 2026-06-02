@@ -29,43 +29,40 @@ public class VnPayLibrary
     // ==================== TẠO URL THANH TOÁN CHUẨN VNPAY 2.1.0 ====================
     public string CreateRequestUrl(string baseUrl, string vnpHashSecret)
     {
-        var data = new StringBuilder();
-
-        foreach (var kv in _requestData)
-        {
-            if (!string.IsNullOrEmpty(kv.Value))
-            {
-                data.Append(kv.Key + "=" + kv.Value + "&");
-            }
-        }
-
-        string signData = data.ToString().TrimEnd('&');
-
-        Console.WriteLine("===== RAW HASH DATA =====");
-        Console.WriteLine(signData);
-
-        string secureHash = HmacSha512(vnpHashSecret, signData);
-
-        Console.WriteLine("===== SECURE HASH =====");
-        Console.WriteLine(secureHash);
-
         var query = new StringBuilder();
+        var signData = new StringBuilder();
 
         foreach (var kv in _requestData)
         {
-            if (!string.IsNullOrEmpty(kv.Value))
+            if (string.IsNullOrEmpty(kv.Value))
+                continue;
+
+            var encodedKey = Uri.EscapeDataString(kv.Key);
+            var encodedValue = Uri.EscapeDataString(kv.Value);
+
+            if (query.Length > 0)
             {
-                query.Append(Uri.EscapeDataString(kv.Key));
-                query.Append("=");
-                query.Append(Uri.EscapeDataString(kv.Value));
                 query.Append("&");
+                signData.Append("&");
             }
+
+            // Query string
+            query.Append(encodedKey);
+            query.Append("=");
+            query.Append(encodedValue);
+
+            // Data dùng để ký
+            signData.Append(kv.Key);
+            signData.Append("=");
+            signData.Append(encodedValue);
         }
 
-        query.Append("vnp_SecureHash=");
+        string secureHash = HmacSha512(vnpHashSecret, signData.ToString());
+
+        query.Append("&vnp_SecureHash=");
         query.Append(secureHash);
 
-        return baseUrl + "?" + query.ToString();
+        return $"{baseUrl}?{query}";
     }
 
     public bool ValidateSignature(string inputHash, string secretKey)
@@ -73,19 +70,17 @@ public class VnPayLibrary
         if (string.IsNullOrEmpty(inputHash) || string.IsNullOrEmpty(secretKey))
             return false;
 
-        var data = new StringBuilder();
-        foreach (var kv in _responseData)
-        {
-            if (kv.Key.Equals("vnp_SecureHash", StringComparison.OrdinalIgnoreCase)
-             || kv.Key.Equals("vnp_SecureHashType", StringComparison.OrdinalIgnoreCase))
-                continue;
+        var data = _responseData
+            .Where(kv =>
+                !kv.Key.Equals("vnp_SecureHash", StringComparison.OrdinalIgnoreCase) &&
+                !kv.Key.Equals("vnp_SecureHashType", StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrEmpty(kv.Value))
+            .OrderBy(kv => kv.Key, StringComparer.Ordinal)
+            .Select(kv =>
+                $"{kv.Key}={Uri.EscapeDataString(kv.Value)}");
 
-            data.Append(Uri.EscapeDataString(kv.Key) + "=" + Uri.EscapeDataString(kv.Value) + "&");
-        }
+        string rawData = string.Join("&", data);
 
-        if (data.Length == 0) return false;
-
-        string rawData = data.ToString().Remove(data.Length - 1, 1);
         string myChecksum = HmacSha512(secretKey, rawData);
 
         return myChecksum.Equals(inputHash, StringComparison.OrdinalIgnoreCase);

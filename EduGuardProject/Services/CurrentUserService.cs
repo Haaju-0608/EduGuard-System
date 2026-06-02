@@ -20,8 +20,12 @@ public class CurrentUserService : ICurrentUserService
     {
         get
         {
-            var sub = _httpContextAccessor.HttpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? _httpContextAccessor.HttpContext?.User?.FindFirstValue("sub");
+            var httpContext = _httpContextAccessor.HttpContext;
+            if (httpContext?.Items["UserId"] is Guid userIdFromFilter)
+                return userIdFromFilter;
+
+            var sub = httpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? httpContext?.User?.FindFirstValue("sub");
             return Guid.TryParse(sub, out var id) ? id : null;
         }
     }
