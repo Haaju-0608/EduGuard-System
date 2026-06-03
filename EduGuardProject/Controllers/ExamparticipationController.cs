@@ -30,7 +30,7 @@ namespace EduGuardProject.Controllers
             try
             {
                 var (items, total) = await _service.GetAllExamparticipationsAsync(search, sort, page, pageSize);
-                return OkPaged(items, page, pageSize, total, "Exam participations retrieved successfully.",null);
+                return OkPaged(items, page, pageSize, total, "Exam participations retrieved successfully.","Search with default field");
             }
             catch (Exception ex) { return HandleException(ex); }
         }
