@@ -201,3 +201,18 @@ public class UpdateExamSlotDto
     public DateTime? EndTime { get; set; }
     public DateTime UpdatedAt { get; set; }= DateTime.Now;
 }
+
+public class CreateViolationLogDto
+{
+    [Required]
+    public Guid ParticipationId { get; set; }
+    [MaxLength(500)]
+    public string? EvidencePath { get; set; }
+    public double? AiConfidence { get; set; }
+}
+
+public class UpdateViolationLogDto
+{
+    public bool IsReviewed { get; set; }
+    public Guid? ReviewedBy { get; set; }
+}
