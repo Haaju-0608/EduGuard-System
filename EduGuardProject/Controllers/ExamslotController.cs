@@ -1,5 +1,6 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Mvc;
 
@@ -24,7 +25,8 @@ namespace EduGuardProject.Controllers
             try
             {
                 var (items, total) = await _service.GetAllExamSlotsAsync(search, sort, page, pageSize);
-                return OkPaged(items, page, pageSize, total, "Exam slots retrieved successfully.", "Search with default field");
+                var response = ApiPagedResponse<ExamSlot>.OnPagedSuccess(items, page, pageSize, total, "Exam slot retrieved successfully.");
+                return Ok(response);
             }
             catch (Exception ex) { return HandleException(ex); }
         }

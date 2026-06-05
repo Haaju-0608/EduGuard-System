@@ -23,6 +23,7 @@ dataSourceBuilder.MapEnum<TransactionType>("transaction_type");
 dataSourceBuilder.MapEnum<TransactionStatus>("transaction_status");
 dataSourceBuilder.MapEnum<PricingServiceType>("pricing_service_type");
 dataSourceBuilder.MapEnum<ParticipationStatus>("participation_status");
+dataSourceBuilder.MapEnum<ExamSlotStatus>("exam_slot_status");
 var dataSource = dataSourceBuilder.Build();
 
 builder.Services.AddDbContext<AppDbContext>(options =>

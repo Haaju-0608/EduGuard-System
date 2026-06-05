@@ -31,7 +31,8 @@ public class ViolationLogController : AcademicApiControllerBase
         try
         {
             var (items, total) = await _service.GetAllAsync(search, sort, page, pageSize, participationId);
-            return OkPaged(items, page, pageSize, total, "Violation logs retrieved successfully.", fields);
+            var response = ApiPagedResponse<ViolationLog>.OnPagedSuccess(items, page, pageSize, total, "Violation retrieved successfully.");
+            return Ok(response);
         }
         catch (Exception ex) { return HandleException(ex); }
     }
