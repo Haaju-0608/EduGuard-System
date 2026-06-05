@@ -1,4 +1,5 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.DTOs.Request;
+using EduGuardProject.Models;
 
 namespace EduGuardProject.Repositories.IRepositories
 {
@@ -11,8 +12,7 @@ namespace EduGuardProject.Repositories.IRepositories
         Task<ViolationLog?> GetByIdAsync(Guid id);
 
         Task CreateAsync(ViolationLog entity);
-        Task <bool> UpdateAsync(Guid id, ViolationLog entity);
-        Task <bool> DeleteAsync(ViolationLog entity);
+        Task UpdateAsync(Guid id, UpdateViolationLogDto dto);
+        Task DeleteAsync(ViolationLog entity);
     }
-}
 }
