@@ -8,7 +8,6 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
-[Authorize]
 [Route("api/violation-logs")]
 [ApiController]
 public class ViolationLogController : AcademicApiControllerBase
@@ -18,6 +17,7 @@ public class ViolationLogController : AcademicApiControllerBase
     public ViolationLogController(IViolationLogService service) => _service = service;
 
     [HttpGet]
+    [SupabaseAuthorize(AppRole.SuperAdmin)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,

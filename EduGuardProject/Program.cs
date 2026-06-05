@@ -46,6 +46,7 @@ builder.Services.AddScoped<IBiometricRequestRepository, BiometricRequestReposito
 builder.Services.AddScoped<IBiometricDatumRepository, BiometricDatumRepository>();
 builder.Services.AddScoped<IExamParticipationRepository, ExamParticipationRepository>();
 builder.Services.AddScoped<IExamslotRepository, ExamSlotRepository>();
+builder.Services.AddScoped<IViolationLogRepository, ViolationLogRepository>();
 
 // Đăng ký Service
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -64,6 +65,7 @@ builder.Services.AddScoped<IBiometricRequestService, BiometricRequestService>();
 builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
 builder.Services.AddScoped<IExamParticipationService, ExamParticipationServices>();
 builder.Services.AddScoped<IExamSlotServices, ExamslotServices>();
+builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
 
 // ================= CẤU HÌNH XÁC THỰC JWT SUPABASE (ĐÃ SỬA CHUẨN ĐÉT) =================
 builder.Services.AddAuthentication(options =>
