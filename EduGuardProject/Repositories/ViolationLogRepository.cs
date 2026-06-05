@@ -1,4 +1,5 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.DTOs.Request;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -42,15 +43,22 @@ public class ViolationLogRepository : IViolationLogRepository
     public Task<ViolationLog?> GetByIdAsync(Guid id) =>
         _context.ViolationLogs.FirstOrDefaultAsync(v => v.Id == id);
 
-    public async Task AddViolationLog(ViolationLog entity)
+    public async Task CreateAsync(ViolationLog entity)
     {
         await _context.ViolationLogs.AddAsync(entity);
         await _context.SaveChangesAsync();
     }
 
-    public async Task UpdateAsync(ViolationLog entity)
+    public async Task UpdateAsync(Guid id, UpdateViolationLogDto dto)
     {
-        _context.ViolationLogs.Update(entity);
+        var violationLog = await GetByIdAsync(id);
+        if (violationLog == null) return;
+
+        // Update the properties of the existing entity with values from the DTO
+        violationLog.IsReviewed = dto.IsReviewed;
+        violationLog.ReviewedBy = dto.ReviewedBy;
+
+        _context.ViolationLogs.Update(violationLog);
         await _context.SaveChangesAsync();
     }
 

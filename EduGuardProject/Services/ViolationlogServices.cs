@@ -1,4 +1,5 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.DTOs.Request;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
 
@@ -37,19 +38,16 @@ public class ViolationLogServices : IViolationLogService
         return entity;
     }
 
-    public async Task<bool> UpdateAsync(Guid id, ViolationLog entity)
+    public async Task<bool> UpdateAsync(Guid id, UpdateViolationLogDto dto)
     {
         var existing = await _repo.GetByIdAsync(id);
         if (existing == null) return false;
 
         // update allowed fields
-        existing.EvidencePath = entity.EvidencePath;
-        existing.AiConfidence = entity.AiConfidence;
-        existing.IsReviewed = entity.IsReviewed;
-        existing.ReviewedBy = entity.ReviewedBy;
-        existing.RecordedAt = entity.RecordedAt;
+        existing.IsReviewed = dto.IsReviewed;
+        existing.ReviewedBy = dto.ReviewedBy;
 
-        await _repo.UpdateAsync(id,existing);
+        await _repo.UpdateAsync(id, dto);
         return true;
     }
 

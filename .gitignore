@@ -486,4 +486,4 @@ $RECYCLE.BIN/
 # Invisible files on repository
 # **/appsettings.json
 # **/appsettings.Development.json
-/EduGuardProject/Controllers/ViolationLogController.cs
+
