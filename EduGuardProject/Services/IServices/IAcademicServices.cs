@@ -75,6 +75,7 @@ public interface IExamParticipationService
     Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto);
 
     Task<bool> UpdateAsync(Guid id, UpdateExamParticipationDto dto);
+    Task<bool> UpdateAsyncOnlyExamPartipationStatus(Guid examSlotId, UpdateExamParticipationStatusDto dto);
 
     Task<bool> DeleteAsync(Guid id);
 }

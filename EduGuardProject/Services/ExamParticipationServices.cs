@@ -71,8 +71,17 @@ namespace EduGuardProject.Services;
 				await _repo.UpdateAsync(entity);
 				return true;
 			}
+    public async Task<bool> UpdateAsyncOnlyExamPartipationStatus(Guid examSlotId, UpdateExamParticipationStatusDto dto)
+    {
+        var entity = await _repo.GetByIdAsync(examSlotId);
+        if (entity == null) return false;
 
-			public async Task<bool> DeleteAsync(Guid id)
+        entity.Status = dto.Status;
+
+        await _repo.UpdateAsync(entity);
+        return true;
+    }
+    public async Task<bool> DeleteAsync(Guid id)
 			{
 				var entity = await _repo.GetByIdAsync(id);
 				if (entity == null) return false;

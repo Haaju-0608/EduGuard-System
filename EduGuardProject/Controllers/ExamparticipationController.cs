@@ -73,6 +73,18 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        [HttpPut("{examSlotId}/status")]
+        public async Task<IActionResult> UpdateExamParticipationStatus(Guid examSlotId, [FromBody] UpdateExamParticipationStatusDto dto)
+        {
+            try
+            {
+                var success = await _service.UpdateAsyncOnlyExamPartipationStatus(examSlotId, dto);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Exam participation not found."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Exam participation status updated successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
         [HttpDelete("{examSlotId:guid}")]
         public async Task<IActionResult> Delete(Guid examSlotId)
         {

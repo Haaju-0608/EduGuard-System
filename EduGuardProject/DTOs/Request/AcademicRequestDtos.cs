@@ -175,6 +175,12 @@ public class UpdateExamParticipationDto
     public string? RecordingVideoPath { get; set; }
     public string? IdentitySnapshotPath { get; set; }
 }
+public class UpdateExamParticipationStatusDto
+{
+
+    public ParticipationStatus Status { get; set; }
+}
+
 
 public class CreateExamSlotDto
 {
