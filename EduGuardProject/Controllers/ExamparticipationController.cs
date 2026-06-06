@@ -30,7 +30,7 @@ namespace EduGuardProject.Controllers
             try
             {
                 var (items, total) = await _service.GetAllExamparticipationsAsync(search, sort, page, pageSize);
-                var response = ApiPagedResponse<ExamParticipation>.OnPagedSuccess(items, page, pageSize, total, "Exampartipation retrieved successfully.");
+                var response = ApiPagedResponse<ExamParticipationResponseDto>.OnPagedSuccess(items, page, pageSize, total, "Exampartipation retrieved successfully.");
                 return Ok(response);
 
             }

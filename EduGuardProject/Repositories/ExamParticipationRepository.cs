@@ -1,4 +1,5 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.DTOs.Response;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +11,7 @@ public class ExamParticipationRepository : IExamParticipationRepository
 
     public ExamParticipationRepository(AppDbContext context) => _context = context;
 
-    public async Task<(IEnumerable<ExamParticipation> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
+    public async Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
     {
         var query = _context.ExamParticipations
             .AsNoTracking()
@@ -24,9 +25,21 @@ public class ExamParticipationRepository : IExamParticipationRepository
             .Take(pageSize)
             .ToListAsync();
 
-        return (items, totalCount);
+        return (items.Select(MapToResponseDto), totalCount);
     }
 
+    private static ExamParticipationResponseDto MapToResponseDto(ExamParticipation e) => new()
+    {
+        Id = e.Id,
+        ExamSlotId = e.ExamSlotId,
+        StudentId = e.StudentId,
+        BillingTransId = e.BillingTransId,
+        ActualStart = e.ActualStart,
+        ActualEnd = e.ActualEnd,
+        Status = e.Status,
+        RecordingVideoPath = e.RecordingVideoPath,
+        IdentitySnapshotPath = e.IdentitySnapshotPath
+    };
     public Task<ExamParticipation?> GetByIdAsync(Guid examSlotId) =>
         _context.ExamParticipations.FirstOrDefaultAsync(p => p.ExamSlotId == examSlotId);
 

@@ -126,3 +126,53 @@ public class BiometricDatumResponseDto
 
     public UserSummaryDto? User { get; set; }
 }
+
+public class ExamslotReponseDto
+{
+    public Guid Id { get; set; }
+    public Guid ClassId { get; set; }
+    public string ExamName { get; set; } = null!;
+    public DateTime StartTime { get; set; }
+    public DateTime EndTime { get; set; }
+    public int ExpectedDurationMinutes { get; set; }
+    public ExamSlotStatus Status { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+}
+
+public class ExamParticipationResponseDto
+{
+    public Guid Id { get; set; }
+    public Guid ExamSlotId { get; set; }
+    public Guid? BillingTransId { get; set; }
+    public Guid StudentId { get; set; }
+
+    public DateTime? ActualStart { get; set; }
+
+    public DateTime? ActualEnd { get; set; }
+    public ParticipationStatus Status { get; set; }
+    public string? RecordingVideoPath { get; set; }
+
+    public string? IdentitySnapshotPath { get; set; }
+
+}
+
+public class ViolationlogResponeDto
+{
+    public Guid Id { get; set; }
+
+    public Guid ParticipationId { get; set; }
+
+    public string? EvidencePath { get; set; }
+
+    public double? AiConfidence { get; set; }
+
+    public bool IsReviewed { get; set; }
+
+    public Guid? ReviewedBy { get; set; }
+
+    public DateTime RecordedAt { get; set; }
+
+    public virtual ExamParticipation Participation { get; set; } = null!;
+
+}

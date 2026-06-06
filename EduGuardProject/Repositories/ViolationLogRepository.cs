@@ -1,4 +1,5 @@
 ﻿using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
@@ -11,7 +12,7 @@ public class ViolationLogRepository : IViolationLogRepository
 
     public ViolationLogRepository(AppDbContext context) => _context = context;
 
-    public async Task<(IEnumerable<ViolationLog> Items, int TotalCount)> GetAllAsync(
+    public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,Guid? participationId = null)
     {
         var query = _context.ViolationLogs
@@ -37,9 +38,18 @@ public class ViolationLogRepository : IViolationLogRepository
             .Take(pageSize)
             .ToListAsync();
 
-        return (items, totalCount);
+        return (items.Select(MapToResponseDto), totalCount);
     }
-
+    private static ViolationlogResponeDto MapToResponseDto(ViolationLog e) => new()
+    {
+        Id = e.Id,
+        ParticipationId = e.ParticipationId,
+        AiConfidence = e.AiConfidence,
+        EvidencePath = e.EvidencePath,
+        IsReviewed =   e.IsReviewed,
+        RecordedAt = e.RecordedAt,
+        ReviewedBy = e.ReviewedBy
+    };
     public Task<ViolationLog?> GetByIdAsync(Guid id) =>
         _context.ViolationLogs.FirstOrDefaultAsync(v => v.Id == id);
 

@@ -1,5 +1,6 @@
 ﻿
 using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
@@ -17,7 +18,7 @@ public class ExamslotServices : IExamSlotServices
         _currentUser = currentUser;
     }
 
-    public async Task<(IEnumerable<ExamSlot> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel)
+    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel)
     {
         return await _repo.GetAllAsync(search, sort, page, pageSizel);
     }
@@ -77,5 +78,7 @@ public class ExamslotServices : IExamSlotServices
         await _repo.DeleteAsync(entity);
         return true;
     }
+  
 }
+     
      

@@ -1,10 +1,11 @@
-using System;
-using System.Collections.Generic;
-using System.Threading.Tasks;
 using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using System;
+using System.Collections.Generic;
+using System.Threading.Tasks;
 namespace EduGuardProject.Services;
 		public class ExamParticipationServices : IExamParticipationService
     {
@@ -19,7 +20,7 @@ namespace EduGuardProject.Services;
 				_currentUser = currentUser;
 			}
 
-			public async Task<(IEnumerable<ExamParticipation> Items, int TotalCount)> GetAllExamparticipationsAsync(string? search, string? sort, int page, int pageSize)
+			public async Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(string? search, string? sort, int page, int pageSize)
 			{
 				return await _repo.GetAllAsync(search, sort, page, pageSize);
 			}

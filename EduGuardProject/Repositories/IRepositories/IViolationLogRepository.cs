@@ -1,11 +1,12 @@
 ﻿using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 
 namespace EduGuardProject.Repositories.IRepositories
 {
     public interface IViolationLogRepository
     {
-        Task<(IEnumerable<ViolationLog> Items, int TotalCount)> GetAllAsync(
+        Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
        string? search, string? sort, int page, int pageSize,
        Guid? participationId = null);
 

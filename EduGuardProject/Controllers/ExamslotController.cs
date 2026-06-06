@@ -25,7 +25,7 @@ namespace EduGuardProject.Controllers
             try
             {
                 var (items, total) = await _service.GetAllExamSlotsAsync(search, sort, page, pageSize);
-                var response = ApiPagedResponse<ExamSlot>.OnPagedSuccess(items, page, pageSize, total, "Exam slot retrieved successfully.");
+                var response = ApiPagedResponse<ExamslotReponseDto>.OnPagedSuccess(items, page, pageSize, total, "Exam slot retrieved successfully.");
                 return Ok(response);
             }
             catch (Exception ex) { return HandleException(ex); }

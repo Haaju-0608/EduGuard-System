@@ -1,4 +1,5 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.DTOs.Response;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -10,7 +11,7 @@ public class ExamSlotRepository : IExamslotRepository
 
     public ExamSlotRepository(AppDbContext context) => _context = context;
 
-    public async Task<(IEnumerable<ExamSlot> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
+    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
     {
         var query = _context.ExamSlots
             .AsNoTracking()
@@ -32,9 +33,20 @@ public class ExamSlotRepository : IExamslotRepository
             .Take(pageSize)
             .ToListAsync();
 
-        return (items, totalCount);
+        return (items.Select(MapToResponseDto), totalCount);
     }
-
+    private static ExamslotReponseDto MapToResponseDto(ExamSlot e) => new()
+    {
+        Id = e.Id,
+        ClassId = e.ClassId,
+        ExamName = e.ExamName,
+        StartTime = e.StartTime,
+        EndTime = e.EndTime,
+        ExpectedDurationMinutes = e.ExpectedDurationMinutes,
+        Status = e.Status,
+        CreatedAt = e.CreatedAt,
+        UpdatedAt = e.UpdatedAt
+    };
     public Task<ExamSlot?> GetByIdAsync(Guid id) =>
         _context.ExamSlots.FirstOrDefaultAsync(s => s.Id == id);
 

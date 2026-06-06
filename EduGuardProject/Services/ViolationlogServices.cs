@@ -1,4 +1,5 @@
 ﻿using EduGuardProject.DTOs.Request;
+using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
@@ -18,7 +19,7 @@ public class ViolationLogServices : IViolationLogService
         _currentUser = currentUser;
     }
 
-    public Task<(IEnumerable<ViolationLog> Items, int TotalCount)> GetAllAsync(
+    public Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
         Guid? participationId = null)
     {
