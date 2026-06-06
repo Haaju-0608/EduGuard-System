@@ -1,14 +1,15 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.Hubs;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services;
 using EduGuardProject.Services.IServices;
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -125,6 +126,7 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>
 {
@@ -144,4 +146,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ChatHub>("/chatHub");
 app.Run();
