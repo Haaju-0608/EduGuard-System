@@ -13,6 +13,13 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Render (và nhiều PaaS) inject biến PORT — bind Kestrel trước khi Build.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://+:{port}");
+}
+
 // ================= DATABASE =================
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
@@ -148,6 +155,10 @@ var app = builder.Build();
 // ================= PIPELINE MIDDLEWARE =================
 app.UseSwagger();
 app.UseSwaggerUI();
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseCors();
@@ -156,6 +167,7 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 app.MapControllers();
 app.MapGet("/", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
 app.MapGet("/index.cshtml", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
