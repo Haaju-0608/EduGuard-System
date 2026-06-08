@@ -149,3 +149,76 @@ public class UpdateBiometricDatumDto
 
     public bool? IsActive { get; set; }
 }
+
+public class CreateExamParticipationDto
+{
+    [Required]
+    public Guid ExamSlotId { get; set; }
+    [Required]
+    public Guid StudentId { get; set; }
+    public Guid? BillingTransId { get; set; }
+    public DateTime? ActualStart { get; set; }
+    public DateTime? ActualEnd { get; set; }
+    public ParticipationStatus Status { get; set; } 
+    public string? DisqualifiedReason { get; set; }
+    public string? RecordingVideoPath { get; set; }
+    public string? IdentitySnapshotPath { get; set; }
+}
+
+public class UpdateExamParticipationDto
+{
+
+    public DateTime? ActualStart { get; set; }
+    public DateTime? ActualEnd { get; set; }
+    public ParticipationStatus Status { get; set; }
+    public string? DisqualifiedReason { get; set; }
+    public string? RecordingVideoPath { get; set; }
+    public string? IdentitySnapshotPath { get; set; }
+}
+public class UpdateExamParticipationStatusDto
+{
+
+    public ParticipationStatus Status { get; set; }
+}
+
+
+public class CreateExamSlotDto
+{
+    [Required]
+    public Guid ExamId { get; set; }
+    public Guid ClassId { get; set; }
+    public Guid CreatedBy { get; set; }
+
+    public ExamSlotStatus Status { get; set; }
+    public int ExpectedDurationMinutes { get; set; }
+
+    public DateTime CreatedAt { get; set; } = DateTime.Now;
+
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
+    public DateTime StartTime { get; set; }
+    [Required]
+    public DateTime EndTime { get; set; }
+}
+
+public class UpdateExamSlotDto
+{
+    public int ExpectedDurationMinutes { get; set; }
+    public DateTime? StartTime { get; set; }
+    public DateTime? EndTime { get; set; }
+    public DateTime UpdatedAt { get; set; }= DateTime.Now;
+}
+
+public class CreateViolationLogDto
+{
+    [Required]
+    public Guid ParticipationId { get; set; }
+    [MaxLength(500)]
+    public string? EvidencePath { get; set; }
+    public double? AiConfidence { get; set; }
+}
+
+public class UpdateViolationLogDto
+{
+    public bool IsReviewed { get; set; }
+    public Guid? ReviewedBy { get; set; }
+}

@@ -1,14 +1,15 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.Hubs;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services;
 using EduGuardProject.Services.IServices;
-using Microsoft.EntityFrameworkCore;
-using Npgsql;
-using System.Text.Json.Serialization;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
+using Npgsql;
 using System.Text;
+using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
@@ -55,6 +56,9 @@ builder.Services.AddScoped<IAttendanceSessionRepository, AttendanceSessionReposi
 builder.Services.AddScoped<IAttendanceRecordRepository, AttendanceRecordRepository>();
 builder.Services.AddScoped<IBiometricRequestRepository, BiometricRequestRepository>();
 builder.Services.AddScoped<IBiometricDatumRepository, BiometricDatumRepository>();
+builder.Services.AddScoped<IExamParticipationRepository, ExamParticipationRepository>();
+builder.Services.AddScoped<IExamslotRepository, ExamSlotRepository>();
+builder.Services.AddScoped<IViolationLogRepository, ViolationLogRepository>();
 
 // Đăng ký Service
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
@@ -71,6 +75,9 @@ builder.Services.AddScoped<IAttendanceSessionService, AttendanceSessionService>(
 builder.Services.AddScoped<IAttendanceRecordService, AttendanceRecordService>();
 builder.Services.AddScoped<IBiometricRequestService, BiometricRequestService>();
 builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
+builder.Services.AddScoped<IExamParticipationService, ExamParticipationServices>();
+builder.Services.AddScoped<IExamSlotServices, ExamslotServices>();
+builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
 
 // ================= CẤU HÌNH XÁC THỰC JWT SUPABASE (ĐÃ SỬA CHUẨN ĐÉT) =================
 builder.Services.AddAuthentication(options =>
@@ -129,6 +136,7 @@ builder.Services.AddSwaggerGen(c =>
 
 builder.Services.AddMemoryCache();
 builder.Services.AddHttpContextAccessor();
+builder.Services.AddSignalR();
 
 builder.Services.AddCors(options =>
 {
@@ -148,4 +156,5 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapHub<ChatHub>("/chatHub");
 app.Run();
