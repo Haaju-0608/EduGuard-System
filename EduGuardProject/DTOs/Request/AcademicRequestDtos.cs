@@ -210,9 +210,15 @@ public class CreateViolationLogDto
 {
     [Required]
     public Guid ParticipationId { get; set; }
+    public ViolationSeverity severity { get; set; }
+    public ViolationType violationType { get; set; }
     [MaxLength(500)]
     public string? EvidencePath { get; set; }
     public double? AiConfidence { get; set; }
+    public Guid? ReviewedBy { get; set; }
+
+    public DateTime RecordedAt { get; set; }
+
 }
 
 public class UpdateViolationLogDto

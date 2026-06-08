@@ -99,7 +99,7 @@ public interface IViolationLogService
 
     Task<ViolationLog?> GetByIdAsync(Guid id);
 
-    Task<ViolationLog> CreateAsync(ViolationLog entity);
+    Task<ViolationLog> CreateAsync(CreateViolationLogDto dto);
 
     Task<bool> UpdateAsync(Guid id, UpdateViolationLogDto dto);
 

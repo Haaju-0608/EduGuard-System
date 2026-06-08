@@ -51,7 +51,7 @@ public class ViolationLogController : AcademicApiControllerBase
 
     [HttpPost]
     [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
-    public async Task<IActionResult> Create([FromBody] ViolationLog dto, [FromQuery] string? fields = null)
+    public async Task<IActionResult> Create([FromBody] CreateViolationLogDto dto, [FromQuery] string? fields = null)
     {
         try
         {

@@ -14,6 +14,6 @@ namespace EduGuardProject.Repositories.IRepositories
 
         Task CreateAsync(ViolationLog entity);
         Task UpdateAsync(Guid id, UpdateViolationLogDto dto);
-        Task DeleteAsync(ViolationLog entity);
+        Task DeleteAsync(Guid id);
     }
 }
