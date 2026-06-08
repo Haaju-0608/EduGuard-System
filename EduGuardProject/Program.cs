@@ -13,6 +13,13 @@ using System.Text.Json.Serialization;
 
 var builder = WebApplication.CreateBuilder(args);
 
+// Render (và nhiều PaaS) inject biến PORT — bind Kestrel trước khi Build.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://+:{port}");
+}
+
 // ================= DATABASE =================
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
@@ -148,13 +155,19 @@ var app = builder.Build();
 // ================= PIPELINE MIDDLEWARE =================
 app.UseSwagger();
 app.UseSwaggerUI();
-app.UseHttpsRedirection();
+
+if (app.Environment.IsDevelopment())
+{
+    app.UseHttpsRedirection();
+}
+
 app.UseCors();
 
 // 🚨 Đảm bảo Authentication phải chạy trước Authorization
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 app.MapControllers();
 app.MapHub<ChatHub>("/chatHub");
 app.Run();
