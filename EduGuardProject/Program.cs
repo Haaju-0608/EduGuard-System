@@ -155,10 +155,7 @@ var app = builder.Build();
 // ================= PIPELINE MIDDLEWARE =================
 app.UseSwagger();
 app.UseSwaggerUI();
-if (app.Environment.IsDevelopment())
-{
-    app.UseHttpsRedirection();
-}
+
 app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseCors();
