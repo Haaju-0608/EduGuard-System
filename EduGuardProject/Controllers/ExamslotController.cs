@@ -1,5 +1,6 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Mvc;
@@ -44,6 +45,7 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpPost]
+        [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateExamSlotDto dto)
         {
             try

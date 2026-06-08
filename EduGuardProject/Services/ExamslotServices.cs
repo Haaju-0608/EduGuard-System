@@ -23,12 +23,13 @@ public class ExamslotServices : IExamSlotServices
         return await _repo.GetAllAsync(search, sort, page, pageSizel);
     }
 
-    public Task<ExamSlot?> GetByIdAsync(Guid ExamId)
+    public async Task<ExamslotReponseDto?> GetByIdAsync(Guid ExamId)
     {
-        return _repo.GetByIdAsync(ExamId);
+        var entity = await _repo.GetByIdAsync(ExamId);
+        return entity == null ? null : MapToResponseDto(entity);
     }
 
-    public async Task<ExamSlot> CreateAsync(CreateExamSlotDto dto)
+    public async Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto)
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var user = await _currentUser.GetRequiredUserAsync();
@@ -39,7 +40,7 @@ public class ExamslotServices : IExamSlotServices
             ClassId = dto.ClassId,
             CreatedBy = user.Id,
             // DTO does not include `ExamName` in current workspace DTOs; supply a sensible default.
-            ExamName = $"Exam-{dto.ExamId}",
+            ExamName = $"Exam-{dto.ClassId}",
             StartTime = dto.StartTime,
             EndTime = dto.EndTime,
             ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
@@ -49,7 +50,7 @@ public class ExamslotServices : IExamSlotServices
         };
 
         await _repo.AddAsync(entity);
-        return entity;
+        return MapToResponseDto(entity);
     }
 
     public async Task<bool> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto)
@@ -78,6 +79,19 @@ public class ExamslotServices : IExamSlotServices
         await _repo.DeleteAsync(entity);
         return true;
     }
+
+    private static ExamslotReponseDto MapToResponseDto(ExamSlot entity) => new()
+    {
+        Id = entity.Id,
+        ClassId = entity.ClassId,
+        ExamName = entity.ExamName,
+        StartTime = entity.StartTime,
+        EndTime = entity.EndTime,
+        ExpectedDurationMinutes = entity.ExpectedDurationMinutes,
+        Status = entity.Status,
+        CreatedAt = entity.CreatedAt,
+        UpdatedAt = entity.UpdatedAt
+    };
   
 }
      

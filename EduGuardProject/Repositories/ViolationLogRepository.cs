@@ -55,6 +55,7 @@ public class ViolationLogRepository : IViolationLogRepository
 
     public async Task CreateAsync(ViolationLog entity)
     {
+
         await _context.ViolationLogs.AddAsync(entity);
         await _context.SaveChangesAsync();
     }
@@ -72,9 +73,12 @@ public class ViolationLogRepository : IViolationLogRepository
         await _context.SaveChangesAsync();
     }
 
-    public async Task DeleteAsync(ViolationLog entity)
+    public async Task DeleteAsync(Guid id)
     {
-        _context.ViolationLogs.Remove(entity);
+        var violationLog = await GetByIdAsync(id);
+        if (violationLog == null) return;
+
+        _context.ViolationLogs.Remove(violationLog);
         await _context.SaveChangesAsync();
     }
 

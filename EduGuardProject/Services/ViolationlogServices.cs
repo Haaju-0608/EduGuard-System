@@ -27,12 +27,18 @@ public class ViolationLogServices : IViolationLogService
     }
     public Task<ViolationLog?> GetByIdAsync(Guid id) => _repo.GetByIdAsync(id);
 
-    public async Task<ViolationLog> CreateAsync(ViolationLog entity)
+    public async Task<ViolationLog> CreateAsync(CreateViolationLogDto dto)
     {
-        // Ensure caller has proper role if required
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
 
-        entity.Id = Guid.NewGuid();
+        var entity = new ViolationLog
+        {
+            Id = Guid.NewGuid(),
+            severity = dto.severity,
+            violationType = dto.violationType,
+            ParticipationId = dto.ParticipationId,
+            RecordedAt = DateTime.UtcNow
+        };
         entity.RecordedAt = entity.RecordedAt == default ? DateTime.UtcNow : entity.RecordedAt;
 
         await _repo.CreateAsync(entity);
@@ -57,7 +63,7 @@ public class ViolationLogServices : IViolationLogService
         var existing = await _repo.GetByIdAsync(id);
         if (existing == null) return false;
 
-        await _repo.DeleteAsync(existing);
+        await _repo.DeleteAsync(id);
         return true;
     }
 }

@@ -83,9 +83,9 @@ public interface IExamSlotServices
 {
     Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel);
 
-    Task<ExamSlot?> GetByIdAsync(Guid id);
+    Task<ExamslotReponseDto?> GetByIdAsync(Guid id);
 
-    Task<ExamSlot> CreateAsync(CreateExamSlotDto dto);
+    Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto);
 
     Task<bool> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto);
 
@@ -99,7 +99,7 @@ public interface IViolationLogService
 
     Task<ViolationLog?> GetByIdAsync(Guid id);
 
-    Task<ViolationLog> CreateAsync(ViolationLog entity);
+    Task<ViolationLog> CreateAsync(CreateViolationLogDto dto);
 
     Task<bool> UpdateAsync(Guid id, UpdateViolationLogDto dto);
 

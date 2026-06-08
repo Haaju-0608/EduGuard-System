@@ -1,5 +1,4 @@
-﻿using EduGuardProject.Hubs;
-using EduGuardProject.Models;
+﻿using EduGuardProject.Models;
 using EduGuardProject.Repositories;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services;
@@ -8,6 +7,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
+using SignalRChat.Hubs;
 using System.Text;
 using System.Text.Json.Serialization;
 
@@ -149,6 +149,7 @@ var app = builder.Build();
 app.UseSwagger();
 app.UseSwaggerUI();
 app.UseHttpsRedirection();
+app.UseStaticFiles();
 app.UseCors();
 
 // 🚨 Đảm bảo Authentication phải chạy trước Authorization
@@ -156,5 +157,7 @@ app.UseAuthentication();
 app.UseAuthorization();
 
 app.MapControllers();
+app.MapGet("/", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
+app.MapGet("/index.cshtml", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
 app.MapHub<ChatHub>("/chatHub");
 app.Run();

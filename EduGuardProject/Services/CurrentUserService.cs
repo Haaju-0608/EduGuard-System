@@ -20,13 +20,23 @@ public class CurrentUserService : ICurrentUserService
     {
         get
         {
-            var httpContext = _httpContextAccessor.HttpContext;
-            if (httpContext?.Items["UserId"] is Guid userIdFromFilter)
-                return userIdFromFilter;
+            var context = _httpContextAccessor.HttpContext;
+            var sub = context?.User?.FindFirstValue(ClaimTypes.NameIdentifier)
+                ?? context?.User?.FindFirstValue("sub");
 
-            var sub = httpContext?.User?.FindFirstValue(ClaimTypes.NameIdentifier)
-                ?? httpContext?.User?.FindFirstValue("sub");
-            return Guid.TryParse(sub, out var id) ? id : null;
+            if (Guid.TryParse(sub, out var id))
+                return id;
+
+            if (context?.Items.TryGetValue("UserId", out var userIdItem) == true)
+            {
+                if (userIdItem is Guid userId)
+                    return userId;
+
+                if (Guid.TryParse(userIdItem?.ToString(), out id))
+                    return id;
+            }
+
+            return null;
         }
     }
 
