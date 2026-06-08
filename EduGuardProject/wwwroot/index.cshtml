@@ -1,0 +1,95 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>SignalR ChatHub Test</title>
+    <style>
+        body {
+            font-family: Arial, sans-serif;
+            margin: 32px auto;
+            max-width: 720px;
+            padding: 0 16px;
+        }
+
+        label {
+            display: block;
+            font-weight: 600;
+            margin: 16px 0 6px;
+        }
+
+        input {
+            box-sizing: border-box;
+            font-size: 16px;
+            padding: 10px;
+            width: 100%;
+        }
+
+        button {
+            cursor: pointer;
+            font-size: 16px;
+            margin-top: 16px;
+            padding: 10px 16px;
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.6;
+        }
+
+        #connectionStatus {
+            border-radius: 4px;
+            display: inline-block;
+            margin-bottom: 12px;
+            padding: 6px 10px;
+        }
+
+        .status-connecting {
+            background: #fff3cd;
+            color: #664d03;
+        }
+
+        .status-connected {
+            background: #d1e7dd;
+            color: #0f5132;
+        }
+
+        .status-error {
+            background: #f8d7da;
+            color: #842029;
+        }
+
+        #messagesList {
+            border: 1px solid #ddd;
+            list-style: none;
+            margin-top: 24px;
+            min-height: 160px;
+            padding: 12px;
+        }
+
+        #messagesList li {
+            border-bottom: 1px solid #eee;
+            padding: 8px 0;
+        }
+    </style>
+</head>
+<body>
+    <h1>SignalR ChatHub Test</h1>
+    <div id="connectionStatus" class="status-connecting">Dang ket noi...</div>
+
+    <form id="chatForm">
+        <label for="userInput">User</label>
+        <input type="text" id="userInput" autocomplete="off" value="Tester" />
+
+        <label for="messageInput">Message</label>
+        <input type="text" id="messageInput" autocomplete="off" placeholder="Nhap tin nhan de test ChatHub" />
+
+        <button type="submit" id="sendButton" disabled>Send Message</button>
+    </form>
+
+    <ul id="messagesList"></ul>
+
+    <script src="/js/signalr/dist/browser/signalr.js"></script>
+    <script src="/js/chat.js"></script>
+</body>
+</html>

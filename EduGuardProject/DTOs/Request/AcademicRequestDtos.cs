@@ -187,7 +187,6 @@ public class CreateExamSlotDto
     [Required]
     public Guid ExamId { get; set; }
     public Guid ClassId { get; set; }
-    public Guid CreatedBy { get; set; }
 
     public ExamSlotStatus Status { get; set; }
     public int ExpectedDurationMinutes { get; set; }
