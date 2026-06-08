@@ -185,7 +185,6 @@ public class UpdateExamParticipationStatusDto
 public class CreateExamSlotDto
 {
     [Required]
-    public Guid ExamId { get; set; }
     public Guid ClassId { get; set; }
 
     public ExamSlotStatus Status { get; set; }
