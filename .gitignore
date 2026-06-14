@@ -487,3 +487,5 @@ $RECYCLE.BIN/
 # **/appsettings.json
 # **/appsettings.Development.json
 
+/docs/eduguard-realtime-notification-storage-solution.md
+/docs/run-and-test-signalr-guide.md
