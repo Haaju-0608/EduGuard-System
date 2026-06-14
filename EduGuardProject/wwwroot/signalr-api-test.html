@@ -1,0 +1,846 @@
+<!DOCTYPE html>
+<html lang="vi">
+<head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>EduGuard SignalR + Swagger API Test</title>
+    <style>
+        :root {
+            --bg: #f6f7f9;
+            --panel: #ffffff;
+            --ink: #18212f;
+            --muted: #667085;
+            --line: #d9dee7;
+            --accent: #1264a3;
+            --accent-strong: #0b4778;
+            --ok: #0f766e;
+            --warn: #b45309;
+            --bad: #b42318;
+            --mono: #111827;
+        }
+
+        * {
+            box-sizing: border-box;
+        }
+
+        body {
+            background: var(--bg);
+            color: var(--ink);
+            font-family: Arial, Helvetica, sans-serif;
+            margin: 0;
+        }
+
+        header {
+            background: #ffffff;
+            border-bottom: 1px solid var(--line);
+            padding: 18px 24px;
+        }
+
+        h1 {
+            font-size: 22px;
+            line-height: 1.25;
+            margin: 0 0 4px;
+        }
+
+        .subtle {
+            color: var(--muted);
+            font-size: 13px;
+            margin: 0;
+        }
+
+        main {
+            display: grid;
+            gap: 16px;
+            grid-template-columns: minmax(360px, 1fr) minmax(360px, 1fr);
+            padding: 16px;
+        }
+
+        section {
+            background: var(--panel);
+            border: 1px solid var(--line);
+            border-radius: 8px;
+            min-width: 0;
+            padding: 16px;
+        }
+
+        h2 {
+            font-size: 16px;
+            margin: 0 0 14px;
+        }
+
+        label {
+            color: #344054;
+            display: block;
+            font-size: 13px;
+            font-weight: 700;
+            margin: 12px 0 6px;
+        }
+
+        input,
+        select,
+        textarea {
+            border: 1px solid #c8ced8;
+            border-radius: 6px;
+            color: var(--ink);
+            font: 14px Arial, Helvetica, sans-serif;
+            min-height: 38px;
+            padding: 8px 10px;
+            width: 100%;
+        }
+
+        textarea {
+            font-family: Consolas, "Courier New", monospace;
+            line-height: 1.45;
+            min-height: 92px;
+            resize: vertical;
+        }
+
+        button {
+            align-items: center;
+            background: var(--accent);
+            border: 1px solid var(--accent);
+            border-radius: 6px;
+            color: #ffffff;
+            cursor: pointer;
+            display: inline-flex;
+            font-weight: 700;
+            gap: 6px;
+            justify-content: center;
+            min-height: 38px;
+            padding: 8px 12px;
+        }
+
+        button.secondary {
+            background: #ffffff;
+            border-color: #aeb7c4;
+            color: #223044;
+        }
+
+        button.danger {
+            background: var(--bad);
+            border-color: var(--bad);
+        }
+
+        button:disabled {
+            cursor: not-allowed;
+            opacity: 0.55;
+        }
+
+        .row {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: repeat(2, minmax(0, 1fr));
+        }
+
+        .row-3 {
+            display: grid;
+            gap: 10px;
+            grid-template-columns: 1.2fr 1fr 1fr;
+        }
+
+        .actions {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .status {
+            border-radius: 999px;
+            display: inline-flex;
+            font-size: 12px;
+            font-weight: 700;
+            line-height: 1;
+            padding: 6px 9px;
+        }
+
+        .status.idle {
+            background: #eef2f6;
+            color: #344054;
+        }
+
+        .status.connected {
+            background: #ccfbef;
+            color: var(--ok);
+        }
+
+        .status.error {
+            background: #fee4e2;
+            color: var(--bad);
+        }
+
+        .status.loading {
+            background: #fef3c7;
+            color: var(--warn);
+        }
+
+        .param-grid {
+            display: grid;
+            gap: 8px;
+            margin-top: 8px;
+        }
+
+        .param-row {
+            display: grid;
+            gap: 8px;
+            grid-template-columns: 160px minmax(0, 1fr);
+        }
+
+        .param-name {
+            align-items: center;
+            background: #f2f4f7;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            color: #344054;
+            display: flex;
+            font-size: 12px;
+            min-height: 38px;
+            overflow-wrap: anywhere;
+            padding: 8px;
+        }
+
+        .operation-info {
+            background: #f8fafc;
+            border: 1px solid var(--line);
+            border-radius: 6px;
+            color: #344054;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.45;
+            margin-top: 10px;
+            overflow-wrap: anywhere;
+            padding: 10px;
+        }
+
+        pre {
+            background: #101828;
+            border-radius: 6px;
+            color: #e5e7eb;
+            font-family: Consolas, "Courier New", monospace;
+            font-size: 12px;
+            line-height: 1.5;
+            margin: 12px 0 0;
+            max-height: 360px;
+            overflow: auto;
+            padding: 12px;
+            white-space: pre-wrap;
+            word-break: break-word;
+        }
+
+        .split-log {
+            display: grid;
+            gap: 12px;
+            grid-template-columns: 1fr;
+        }
+
+        .help {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.4;
+            margin: 6px 0 0;
+        }
+
+        .full {
+            grid-column: 1 / -1;
+        }
+
+        @media (max-width: 900px) {
+            main,
+            .row,
+            .row-3,
+            .param-row {
+                grid-template-columns: 1fr;
+            }
+
+            header,
+            main {
+                padding-left: 12px;
+                padding-right: 12px;
+            }
+        }
+    </style>
+</head>
+<body>
+    <header>
+        <h1>EduGuard SignalR + Swagger API Test</h1>
+        <p class="subtle">Nhap token nhu Swagger, goi API, va xem event SignalR realtime tren cung mot man hinh.</p>
+    </header>
+
+    <main>
+        <section class="full">
+            <h2>Cau hinh chung</h2>
+            <div class="row-3">
+                <div>
+                    <label for="baseUrlInput">Base URL</label>
+                    <input id="baseUrlInput" type="text" />
+                </div>
+                <div>
+                    <label for="swaggerUrlInput">Swagger JSON</label>
+                    <input id="swaggerUrlInput" type="text" />
+                </div>
+                <div>
+                    <label for="tokenInput">Bearer token</label>
+                    <input id="tokenInput" type="password" placeholder="Paste JWT token o day" />
+                </div>
+            </div>
+            <div class="actions">
+                <button id="loadSwaggerButton" type="button">Load Swagger</button>
+                <button id="copyCurlButton" type="button" class="secondary">Copy cURL</button>
+            </div>
+        </section>
+
+        <section>
+            <h2>Swagger API Runner</h2>
+            <span id="swaggerStatus" class="status idle">Chua load Swagger</span>
+
+            <label for="operationSelect">Endpoint</label>
+            <select id="operationSelect"></select>
+
+            <div id="operationInfo" class="operation-info">Chon Load Swagger de lay danh sach API.</div>
+
+            <label>Path params</label>
+            <div id="pathParams" class="param-grid"></div>
+
+            <label>Query params</label>
+            <div id="queryParams" class="param-grid"></div>
+
+            <label for="bodyInput">Request body JSON</label>
+            <textarea id="bodyInput" spellcheck="false"></textarea>
+
+            <div class="actions">
+                <button id="sendApiButton" type="button">Send API</button>
+                <button id="clearApiLogButton" type="button" class="secondary">Clear API log</button>
+            </div>
+
+            <pre id="apiLog"></pre>
+        </section>
+
+        <section>
+            <h2>SignalR Listener</h2>
+            <span id="hubStatus" class="status idle">Disconnected</span>
+
+            <label for="hubUrlInput">Hub URL</label>
+            <input id="hubUrlInput" type="text" />
+            <p class="help">Mac dinh project hien tai co /chatHub. Sau nay co the doi thanh /hubs/notifications, /hubs/exam, /hubs/attendance.</p>
+
+            <label for="eventsInput">Event names can listen</label>
+            <textarea id="eventsInput" spellcheck="false"></textarea>
+
+            <div class="actions">
+                <button id="connectHubButton" type="button">Connect</button>
+                <button id="disconnectHubButton" type="button" class="danger" disabled>Disconnect</button>
+                <button id="clearHubLogButton" type="button" class="secondary">Clear SignalR log</button>
+            </div>
+
+            <label for="invokeMethodInput">Invoke method</label>
+            <input id="invokeMethodInput" type="text" value="SendMessage" />
+
+            <label for="invokeArgsInput">Invoke args JSON array</label>
+            <textarea id="invokeArgsInput" spellcheck="false">["Tester","Hello from signalr-api-test.html"]</textarea>
+
+            <div class="actions">
+                <button id="invokeButton" type="button" disabled>Invoke Hub Method</button>
+            </div>
+
+            <pre id="hubLog"></pre>
+        </section>
+    </main>
+
+    <script src="/js/signalr/dist/browser/signalr.js"></script>
+    <script>
+        "use strict";
+
+        var httpMethods = ["get", "post", "put", "patch", "delete"];
+        var openApiDoc = null;
+        var operations = [];
+        var currentConnection = null;
+        var lastCurl = "";
+
+        var baseUrlInput = document.getElementById("baseUrlInput");
+        var swaggerUrlInput = document.getElementById("swaggerUrlInput");
+        var tokenInput = document.getElementById("tokenInput");
+        var loadSwaggerButton = document.getElementById("loadSwaggerButton");
+        var copyCurlButton = document.getElementById("copyCurlButton");
+        var swaggerStatus = document.getElementById("swaggerStatus");
+        var operationSelect = document.getElementById("operationSelect");
+        var operationInfo = document.getElementById("operationInfo");
+        var pathParams = document.getElementById("pathParams");
+        var queryParams = document.getElementById("queryParams");
+        var bodyInput = document.getElementById("bodyInput");
+        var sendApiButton = document.getElementById("sendApiButton");
+        var clearApiLogButton = document.getElementById("clearApiLogButton");
+        var apiLog = document.getElementById("apiLog");
+
+        var hubUrlInput = document.getElementById("hubUrlInput");
+        var eventsInput = document.getElementById("eventsInput");
+        var connectHubButton = document.getElementById("connectHubButton");
+        var disconnectHubButton = document.getElementById("disconnectHubButton");
+        var clearHubLogButton = document.getElementById("clearHubLogButton");
+        var invokeButton = document.getElementById("invokeButton");
+        var invokeMethodInput = document.getElementById("invokeMethodInput");
+        var invokeArgsInput = document.getElementById("invokeArgsInput");
+        var hubStatus = document.getElementById("hubStatus");
+        var hubLog = document.getElementById("hubLog");
+
+        baseUrlInput.value = window.location.origin;
+        swaggerUrlInput.value = window.location.origin + "/swagger/v1/swagger.json";
+        hubUrlInput.value = window.location.origin + "/chatHub";
+        eventsInput.value = [
+            "ReceiveMessage",
+            "NotificationCreated",
+            "StudentJoinedExam",
+            "StudentOffline",
+            "ExamSubmitted",
+            "ViolationDetected",
+            "Disqualified",
+            "AttendanceProgressChanged",
+            "WalletBalanceUpdated"
+        ].join("\n");
+
+        function setStatus(element, state, text) {
+            element.className = "status " + state;
+            element.textContent = text;
+        }
+
+        function nowText() {
+            return new Date().toLocaleTimeString();
+        }
+
+        function appendLog(element, title, payload) {
+            var line = "[" + nowText() + "] " + title;
+            if (payload !== undefined) {
+                line += "\n" + stringify(payload);
+            }
+            element.textContent = line + "\n\n" + element.textContent;
+        }
+
+        function stringify(value) {
+            if (typeof value === "string") {
+                return value;
+            }
+
+            try {
+                return JSON.stringify(value, null, 2);
+            } catch (error) {
+                return String(value);
+            }
+        }
+
+        function normalizeToken() {
+            var token = tokenInput.value.trim();
+            if (token.toLowerCase().startsWith("bearer ")) {
+                return token.substring(7).trim();
+            }
+            return token;
+        }
+
+        function authHeaderValue() {
+            var token = normalizeToken();
+            return token ? "Bearer " + token : "";
+        }
+
+        function joinUrl(base, path) {
+            return base.replace(/\/+$/, "") + "/" + path.replace(/^\/+/, "");
+        }
+
+        function loadOperations(doc) {
+            operations = [];
+            Object.keys(doc.paths || {}).forEach(function (path) {
+                var pathItem = doc.paths[path];
+                httpMethods.forEach(function (method) {
+                    var operation = pathItem[method];
+                    if (!operation) {
+                        return;
+                    }
+
+                    operations.push({
+                        method: method.toUpperCase(),
+                        path: path,
+                        operation: operation,
+                        parameters: (pathItem.parameters || []).concat(operation.parameters || [])
+                    });
+                });
+            });
+
+            operations.sort(function (a, b) {
+                return (a.path + a.method).localeCompare(b.path + b.method);
+            });
+
+            operationSelect.innerHTML = "";
+            operations.forEach(function (item, index) {
+                var option = document.createElement("option");
+                option.value = String(index);
+                option.textContent = item.method.padEnd(6, " ") + " " + item.path;
+                operationSelect.appendChild(option);
+            });
+
+            renderSelectedOperation();
+        }
+
+        function renderSelectedOperation() {
+            var item = operations[Number(operationSelect.value)];
+            pathParams.innerHTML = "";
+            queryParams.innerHTML = "";
+            bodyInput.value = "";
+
+            if (!item) {
+                operationInfo.textContent = "Khong co endpoint nao.";
+                return;
+            }
+
+            operationInfo.textContent = item.method + " " + item.path + "\n" + (item.operation.summary || item.operation.operationId || "");
+
+            item.parameters.filter(function (param) {
+                return param.in === "path";
+            }).forEach(function (param) {
+                pathParams.appendChild(createParamInput(param));
+            });
+
+            item.parameters.filter(function (param) {
+                return param.in === "query";
+            }).forEach(function (param) {
+                queryParams.appendChild(createParamInput(param));
+            });
+
+            if (!pathParams.children.length) {
+                pathParams.textContent = "Khong co path params.";
+                pathParams.className = "help";
+            } else {
+                pathParams.className = "param-grid";
+            }
+
+            if (!queryParams.children.length) {
+                queryParams.textContent = "Khong co query params.";
+                queryParams.className = "help";
+            } else {
+                queryParams.className = "param-grid";
+            }
+
+            var bodySchema = findJsonBodySchema(item.operation);
+            if (bodySchema) {
+                bodyInput.value = stringify(createSampleFromSchema(resolveSchema(bodySchema)));
+            }
+        }
+
+        function createParamInput(param) {
+            var row = document.createElement("div");
+            var name = document.createElement("div");
+            var input = document.createElement("input");
+
+            row.className = "param-row";
+            name.className = "param-name";
+            name.textContent = param.name + (param.required ? " *" : "");
+            input.dataset.paramName = param.name;
+            input.dataset.paramIn = param.in;
+            input.placeholder = param.schema && param.schema.type ? param.schema.type : "value";
+
+            row.appendChild(name);
+            row.appendChild(input);
+            return row;
+        }
+
+        function findJsonBodySchema(operation) {
+            var content = operation.requestBody && operation.requestBody.content;
+            if (!content) {
+                return null;
+            }
+            if (content["application/json"]) {
+                return content["application/json"].schema;
+            }
+            if (content["text/json"]) {
+                return content["text/json"].schema;
+            }
+            if (content["application/*+json"]) {
+                return content["application/*+json"].schema;
+            }
+            return null;
+        }
+
+        function resolveSchema(schema) {
+            if (!schema) {
+                return schema;
+            }
+
+            if (schema.$ref) {
+                var parts = schema.$ref.replace("#/", "").split("/");
+                var cursor = openApiDoc;
+                parts.forEach(function (part) {
+                    cursor = cursor && cursor[part];
+                });
+                return cursor || schema;
+            }
+
+            return schema;
+        }
+
+        function createSampleFromSchema(schema) {
+            schema = resolveSchema(schema);
+            if (!schema) {
+                return {};
+            }
+
+            if (schema.example !== undefined) {
+                return schema.example;
+            }
+
+            if (schema.enum && schema.enum.length) {
+                return schema.enum[0];
+            }
+
+            if (schema.type === "array") {
+                return [createSampleFromSchema(schema.items)];
+            }
+
+            if (schema.type === "object" || schema.properties) {
+                var obj = {};
+                Object.keys(schema.properties || {}).forEach(function (key) {
+                    var prop = resolveSchema(schema.properties[key]);
+                    if (prop.readOnly) {
+                        return;
+                    }
+                    obj[key] = createSampleFromSchema(prop);
+                });
+                return obj;
+            }
+
+            if (schema.format === "uuid") {
+                return "00000000-0000-0000-0000-000000000000";
+            }
+
+            if (schema.format === "date-time") {
+                return new Date().toISOString();
+            }
+
+            if (schema.type === "integer" || schema.type === "number") {
+                return 0;
+            }
+
+            if (schema.type === "boolean") {
+                return false;
+            }
+
+            return "";
+        }
+
+        async function loadSwagger() {
+            setStatus(swaggerStatus, "loading", "Dang load Swagger...");
+            try {
+                var response = await fetch(swaggerUrlInput.value.trim());
+                if (!response.ok) {
+                    throw new Error(response.status + " " + response.statusText);
+                }
+
+                openApiDoc = await response.json();
+                loadOperations(openApiDoc);
+                setStatus(swaggerStatus, "connected", "Loaded " + operations.length + " endpoints");
+                appendLog(apiLog, "Swagger loaded", { endpoints: operations.length });
+            } catch (error) {
+                setStatus(swaggerStatus, "error", "Load Swagger failed");
+                appendLog(apiLog, "Swagger error", String(error));
+            }
+        }
+
+        function selectedParamInputs(paramIn) {
+            return Array.prototype.slice.call(document.querySelectorAll("[data-param-in='" + paramIn + "']"));
+        }
+
+        function buildApiRequest() {
+            var item = operations[Number(operationSelect.value)];
+            if (!item) {
+                throw new Error("Chua chon endpoint.");
+            }
+
+            var path = item.path;
+            selectedParamInputs("path").forEach(function (input) {
+                var value = input.value.trim();
+                path = path.replace("{" + input.dataset.paramName + "}", encodeURIComponent(value));
+            });
+
+            var url = new URL(joinUrl(baseUrlInput.value.trim(), path));
+            selectedParamInputs("query").forEach(function (input) {
+                var value = input.value.trim();
+                if (value) {
+                    url.searchParams.set(input.dataset.paramName, value);
+                }
+            });
+
+            var headers = {};
+            var authValue = authHeaderValue();
+            if (authValue) {
+                headers.Authorization = authValue;
+            }
+
+            var options = {
+                method: item.method,
+                headers: headers
+            };
+
+            var bodyText = bodyInput.value.trim();
+            if (bodyText && !["GET", "HEAD"].includes(item.method)) {
+                headers["Content-Type"] = "application/json";
+                JSON.parse(bodyText);
+                options.body = bodyText;
+            }
+
+            lastCurl = buildCurl(url.toString(), options);
+            return { url: url.toString(), options: options };
+        }
+
+        function buildCurl(url, options) {
+            var parts = ["curl", "-X", options.method, quoteForCurl(url)];
+            Object.keys(options.headers || {}).forEach(function (key) {
+                parts.push("-H", quoteForCurl(key + ": " + options.headers[key]));
+            });
+            if (options.body) {
+                parts.push("-d", quoteForCurl(options.body));
+            }
+            return parts.join(" ");
+        }
+
+        function quoteForCurl(value) {
+            return "'" + String(value).replace(/'/g, "'\\''") + "'";
+        }
+
+        async function sendApi() {
+            try {
+                var request = buildApiRequest();
+                appendLog(apiLog, "REQUEST " + request.options.method + " " + request.url, request.options.body ? JSON.parse(request.options.body) : null);
+
+                var response = await fetch(request.url, request.options);
+                var text = await response.text();
+                var payload;
+
+                try {
+                    payload = text ? JSON.parse(text) : null;
+                } catch (error) {
+                    payload = text;
+                }
+
+                appendLog(apiLog, "RESPONSE " + response.status + " " + response.statusText, payload);
+            } catch (error) {
+                appendLog(apiLog, "API error", String(error));
+            }
+        }
+
+        async function connectHub() {
+            if (currentConnection) {
+                await disconnectHub();
+            }
+
+            var eventNames = eventsInput.value.split(/\r?\n/)
+                .map(function (item) { return item.trim(); })
+                .filter(Boolean);
+
+            currentConnection = new signalR.HubConnectionBuilder()
+                .withUrl(hubUrlInput.value.trim(), {
+                    accessTokenFactory: function () {
+                        return normalizeToken();
+                    }
+                })
+                .withAutomaticReconnect()
+                .build();
+
+            eventNames.forEach(function (eventName) {
+                currentConnection.on(eventName, function () {
+                    appendLog(hubLog, "EVENT " + eventName, Array.prototype.slice.call(arguments));
+                });
+            });
+
+            currentConnection.onreconnecting(function (error) {
+                setStatus(hubStatus, "loading", "Reconnecting");
+                appendLog(hubLog, "Reconnecting", error ? String(error) : "");
+            });
+
+            currentConnection.onreconnected(function (connectionId) {
+                setStatus(hubStatus, "connected", "Connected");
+                appendLog(hubLog, "Reconnected", { connectionId: connectionId });
+            });
+
+            currentConnection.onclose(function (error) {
+                setStatus(hubStatus, "idle", "Disconnected");
+                connectHubButton.disabled = false;
+                disconnectHubButton.disabled = true;
+                invokeButton.disabled = true;
+                appendLog(hubLog, "Connection closed", error ? String(error) : "");
+            });
+
+            try {
+                setStatus(hubStatus, "loading", "Connecting");
+                await currentConnection.start();
+                setStatus(hubStatus, "connected", "Connected");
+                connectHubButton.disabled = true;
+                disconnectHubButton.disabled = false;
+                invokeButton.disabled = false;
+                appendLog(hubLog, "Connected", { hubUrl: hubUrlInput.value.trim(), events: eventNames });
+            } catch (error) {
+                setStatus(hubStatus, "error", "Connect failed");
+                appendLog(hubLog, "SignalR connect error", String(error));
+                currentConnection = null;
+            }
+        }
+
+        async function disconnectHub() {
+            if (!currentConnection) {
+                return;
+            }
+
+            var connection = currentConnection;
+            currentConnection = null;
+            await connection.stop();
+            setStatus(hubStatus, "idle", "Disconnected");
+            connectHubButton.disabled = false;
+            disconnectHubButton.disabled = true;
+            invokeButton.disabled = true;
+        }
+
+        async function invokeHubMethod() {
+            if (!currentConnection) {
+                appendLog(hubLog, "Invoke error", "Hub is not connected.");
+                return;
+            }
+
+            try {
+                var method = invokeMethodInput.value.trim();
+                var args = JSON.parse(invokeArgsInput.value.trim() || "[]");
+                if (!Array.isArray(args)) {
+                    throw new Error("Invoke args must be a JSON array.");
+                }
+                await currentConnection.invoke.apply(currentConnection, [method].concat(args));
+                appendLog(hubLog, "INVOKE " + method, args);
+            } catch (error) {
+                appendLog(hubLog, "Invoke error", String(error));
+            }
+        }
+
+        async function copyCurl() {
+            if (!lastCurl) {
+                try {
+                    buildApiRequest();
+                } catch (error) {
+                    appendLog(apiLog, "Copy cURL error", String(error));
+                    return;
+                }
+            }
+
+            try {
+                await navigator.clipboard.writeText(lastCurl);
+                appendLog(apiLog, "cURL copied", lastCurl);
+            } catch (error) {
+                appendLog(apiLog, "cURL", lastCurl);
+            }
+        }
+
+        loadSwaggerButton.addEventListener("click", loadSwagger);
+        operationSelect.addEventListener("change", renderSelectedOperation);
+        sendApiButton.addEventListener("click", sendApi);
+        clearApiLogButton.addEventListener("click", function () { apiLog.textContent = ""; });
+        connectHubButton.addEventListener("click", connectHub);
+        disconnectHubButton.addEventListener("click", disconnectHub);
+        clearHubLogButton.addEventListener("click", function () { hubLog.textContent = ""; });
+        invokeButton.addEventListener("click", invokeHubMethod);
+        copyCurlButton.addEventListener("click", copyCurl);
+
+        loadSwagger();
+    </script>
+</body>
+</html>

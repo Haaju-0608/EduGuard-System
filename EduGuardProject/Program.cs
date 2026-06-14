@@ -3,6 +3,7 @@ using EduGuardProject.Repositories;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services;
 using EduGuardProject.Services.IServices;
+using EduGuardProject.Hubs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.IdentityModel.Tokens;
@@ -91,6 +92,23 @@ builder.Services.AddAuthentication(options =>
         IssuerSigningKey = new SymmetricSecurityKey(Encoding.UTF8.GetBytes(jwtSecret!)),
         ClockSkew = TimeSpan.Zero
     };
+
+    options.Events = new JwtBearerEvents
+    {
+        OnMessageReceived = context =>
+        {
+            var accessToken = context.Request.Query["access_token"];
+            var path = context.HttpContext.Request.Path;
+
+            if (!string.IsNullOrWhiteSpace(accessToken) &&
+                (path.StartsWithSegments("/hubs") || path.StartsWithSegments("/chatHub")))
+            {
+                context.Token = accessToken;
+            }
+
+            return Task.CompletedTask;
+        }
+    };
 });
 
 // ================= SERVICES & SWAGGER =================
@@ -152,4 +170,7 @@ app.MapControllers();
 app.MapGet("/", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
 app.MapGet("/index.cshtml", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
 app.MapHub<ChatHub>("/chatHub");
+app.MapHub<NotificationHub>(HubRoutes.Notifications);
+app.MapHub<ExamHub>(HubRoutes.Exams);
+app.MapHub<AttendanceHub>(HubRoutes.Attendance);
 app.Run();
