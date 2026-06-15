@@ -1,4 +1,4 @@
-using EduGuardProject.Models;
+﻿using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,9 +14,12 @@ public class AttendanceRecordRepository : IAttendanceRecordRepository
         string? search, string? sort, int page, int pageSize,
         Guid? sessionId = null, Guid? studentId = null, AttendanceStatus? status = null)
     {
-        var query = _context.AttendanceRecords
-            .AsNoTracking()
-            .Where(r => !(r.Status == AttendanceStatus.Absent && r.AdjustedAt != null && r.CheckinAt == null));
+        //var query = _context.AttendanceRecords
+        //    .AsNoTracking()
+        //    .Where(r => !(r.Status == AttendanceStatus.Absent && r.AdjustedAt != null && r.CheckinAt == null));
+
+        // SỬA: Loại bỏ câu lệnh loại trừ Absent nguy hiểm để danh sách hiển thị đầy đủ học sinh vắng/hiện diện
+        var query = _context.AttendanceRecords.AsNoTracking().AsQueryable();
 
         if (sessionId.HasValue)
             query = query.Where(r => r.SessionId == sessionId.Value);

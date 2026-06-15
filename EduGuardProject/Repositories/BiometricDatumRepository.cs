@@ -1,6 +1,7 @@
-using EduGuardProject.Models;
+﻿using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace EduGuardProject.Repositories;
 
@@ -20,8 +21,7 @@ public class BiometricDatumRepository : IBiometricDatumRepository
             query = query.Where(b => b.UserId == userId.Value);
         if (isActive.HasValue)
             query = query.Where(b => b.IsActive == isActive.Value);
-        else
-            query = query.Where(b => b.IsActive);
+        
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -43,7 +43,7 @@ public class BiometricDatumRepository : IBiometricDatumRepository
     }
 
     public Task<BiometricDatum?> GetByIdAsync(Guid id) =>
-        _context.BiometricData.FirstOrDefaultAsync(b => b.Id == id && b.IsActive);
+        _context.BiometricData.FirstOrDefaultAsync(b => b.Id == id);
 
     public async Task AddAsync(BiometricDatum entity)
     {
@@ -74,4 +74,18 @@ public class BiometricDatumRepository : IBiometricDatumRepository
             "-modelversion" => query.OrderByDescending(b => b.ModelVersion),
             _ => query.OrderByDescending(b => b.CreatedAt)
         };
+
+    public async Task<BiometricDatum?> FindClosestMatchAsync(Pgvector.Vector currentFaceVector, double threshold)
+    {
+        var matched = await _context.BiometricData
+            .FromSqlRaw(@"
+            SELECT * FROM biometric_data 
+            WHERE is_active = true AND (face_vector <-> {0}) < {1}
+            ORDER BY face_vector <-> {0} 
+            LIMIT 1", currentFaceVector, threshold)
+            .AsNoTracking()
+            .FirstOrDefaultAsync();
+
+        return matched;
+    }
 }

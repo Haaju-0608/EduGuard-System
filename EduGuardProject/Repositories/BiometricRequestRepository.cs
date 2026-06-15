@@ -1,4 +1,4 @@
-using EduGuardProject.Models;
+﻿using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,9 +14,8 @@ public class BiometricRequestRepository : IBiometricRequestRepository
         string? search, string? sort, int page, int pageSize,
         Guid? studentId = null, BiometricReqStatus? status = null)
     {
-        var query = _context.BiometricRequests
-            .AsNoTracking()
-            .Where(r => r.Status != BiometricReqStatus.Rejected);
+        var query = _context.BiometricRequests.AsNoTracking().AsQueryable(); // Sửa để font end có thể lấy dữ liệu đưa vào lịch với hạn chế fix cứng nhá 
+
 
         if (studentId.HasValue)
             query = query.Where(r => r.StudentId == studentId.Value);

@@ -1,4 +1,4 @@
-using System.ComponentModel.DataAnnotations;
+﻿using System.ComponentModel.DataAnnotations;
 using EduGuardProject.Models;
 
 namespace EduGuardProject.DTOs.Request;
@@ -70,7 +70,8 @@ public class CreateAttendanceSessionDto
     [Required]
     public DateTime StartTime { get; set; }
 
-    public string? VideoPath { get; set; }
+    //public string? VideoPath { get; set; }
+    // Vì video sẽ được upload riêng ở endpoint /ai-video sau khi phiên đã tạo xong.
 }
 
 public class UpdateAttendanceSessionDto
@@ -114,10 +115,24 @@ public class UpdateAttendanceRecordDto
     public DateTime? CheckinAt { get; set; }
 }
 
+public class AiVideoAttendanceDto
+{
+    public IFormFile VideoFile { get; set; }
+}
+
 public class CreateBiometricRequestDto
 {
     [Required]
     public string Reason { get; set; } = null!;
+
+    [Required(ErrorMessage = "Vui lòng upload ảnh góc thẳng")]
+    public IFormFile FrontFile { get; set; } = null!;
+
+    [Required(ErrorMessage = "Vui lòng upload ảnh nghiêng trái")]
+    public IFormFile LeftFile { get; set; } = null!;
+
+    [Required(ErrorMessage = "Vui lòng upload ảnh nghiêng phải")]
+    public IFormFile RightFile { get; set; } = null!;
 }
 
 public class ReviewBiometricRequestDto

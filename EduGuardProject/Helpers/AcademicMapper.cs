@@ -215,7 +215,11 @@ public static class AcademicMapper
             Reason = entity.Reason,
             Status = entity.Status,
             ReviewedAt = entity.ReviewedAt,
-            CreatedAt = entity.CreatedAt
+            CreatedAt = entity.CreatedAt,
+
+            FrontImageUrl = entity.FrontImagePath,
+            LeftImageUrl = entity.LeftImagePath,
+            RightImageUrl = entity.RightImagePath
         };
 
         if (string.IsNullOrWhiteSpace(expand)) return dto;

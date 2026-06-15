@@ -1,4 +1,4 @@
-using EduGuardProject.Models;
+﻿using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -14,9 +14,12 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
         string? search, string? sort, int page, int pageSize,
         Guid? classId = null, SessionStatus? status = null)
     {
-        var query = _context.AttendanceSessions
-            .AsNoTracking()
-            .Where(s => s.Status != SessionStatus.Cancelled);
+        //var query = _context.AttendanceSessions
+        //    .AsNoTracking()
+        //    .Where(s => s.Status != SessionStatus.Cancelled);
+
+        // SỬA: Bỏ gán cứng loại trừ Cancelled để cho phép xem lại lịch sử phiên bị hủy
+        var query = _context.AttendanceSessions.AsNoTracking().AsQueryable();
 
         if (classId.HasValue)
             query = query.Where(s => s.ClassId == classId.Value);
@@ -41,8 +44,12 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
         return (items, totalCount);
     }
 
+    //public Task<AttendanceSession?> GetByIdAsync(Guid id) =>
+    //    _context.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id && s.Status != SessionStatus.Cancelled);
+
+    //SỬA: Cho phép lấy thông tin phiên bằng Id kể cả khi nó đã bị hủy (phục vụ log/đối soát)
     public Task<AttendanceSession?> GetByIdAsync(Guid id) =>
-        _context.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id && s.Status != SessionStatus.Cancelled);
+        _context.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id);
 
     public async Task AddAsync(AttendanceSession entity)
     {

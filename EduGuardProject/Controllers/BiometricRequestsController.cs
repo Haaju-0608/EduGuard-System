@@ -50,14 +50,17 @@ public class BiometricRequestsController : AcademicApiControllerBase
 
     [HttpPost]
     [SupabaseAuthorize(AppRole.Student)]
-    public async Task<IActionResult> Create([FromBody] CreateBiometricRequestDto dto, [FromQuery] string? fields = null)
+    public async Task<IActionResult> Create([FromForm] CreateBiometricRequestDto dto, [FromQuery] string? fields = null)
     {
         try
         {
             var result = await _service.CreateAsync(dto);
-            return CreatedSingle(result, "Biometric request submitted successfully.", fields);
+            return CreatedAtAction(nameof(GetById), new { id = result.Id }, result);
         }
-        catch (Exception ex) { return HandleException(ex); }
+        catch (Exception ex)
+        {
+            return BadRequest(new { success = false, message = ex.Message });
+        }
     }
 
     [HttpPost("{id:guid}/approve")]

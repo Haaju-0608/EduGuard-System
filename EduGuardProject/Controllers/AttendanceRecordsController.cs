@@ -1,4 +1,4 @@
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Filters;
 using EduGuardProject.Models;
@@ -98,5 +98,30 @@ public class AttendanceRecordsController : AcademicApiControllerBase
             return Ok(ApiResponse<object>.OnSuccess(null!, "Attendance record deleted successfully."));
         }
         catch (Exception ex) { return HandleException(ex); }
+    }
+
+    [HttpPost("~/api/attendance-sessions/{sessionId:guid}/records/ai-video")]
+    [Consumes("multipart/form-data")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    public async Task<IActionResult> CreateBulkByAiVideo(Guid sessionId, [FromForm] AiVideoAttendanceDto dto)
+    {
+        // Lấy file video ra từ trong DTO
+        var videoFile = dto.VideoFile;
+
+        if (videoFile == null || videoFile.Length == 0)
+            return BadRequest(ApiResponse<object>.OnFail("File video không hợp lệ hoặc trống."));
+
+        try
+        {
+            using var stream = videoFile.OpenReadStream();
+            var results = await _service.CreateBulkByAiVideoAsync(sessionId, stream, videoFile.FileName);
+
+            return StatusCode(201, ApiResponse<IEnumerable<AttendanceRecordResponseDto>>.OnSuccess(
+                results, "Điểm danh bằng AI qua video thành công!"));
+        }
+        catch (Exception ex)
+        {
+            return HandleException(ex);
+        }
     }
 }

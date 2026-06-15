@@ -23,6 +23,7 @@ if (!string.IsNullOrWhiteSpace(port))
 // ================= DATABASE =================
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
+dataSourceBuilder.UseVector();
 dataSourceBuilder.MapEnum<AppRole>("app_role");
 dataSourceBuilder.MapEnum<BillingModel>("billing_model_enum");
 dataSourceBuilder.MapEnum<InstitutionStatus>("institution_status");
@@ -85,6 +86,7 @@ builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
 builder.Services.AddScoped<IExamParticipationService, ExamParticipationServices>();
 builder.Services.AddScoped<IExamSlotServices, ExamslotServices>();
 builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
+builder.Services.AddHttpClient<IAiServiceClient, AiServiceClient>();
 
 // ================= CẤU HÌNH XÁC THỰC JWT SUPABASE (ĐÃ SỬA CHUẨN ĐÉT) =================
 builder.Services.AddAuthentication(options =>

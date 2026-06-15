@@ -1,4 +1,4 @@
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Helpers;
 using EduGuardProject.Models;
@@ -68,7 +68,7 @@ public class AttendanceSessionService : IAttendanceSessionService
             Id = Guid.NewGuid(),
             ClassId = dto.ClassId,
             CreatedBy = user.Id,
-            VideoPath = dto.VideoPath,
+            //VideoPath = dto.VideoPath,
             StartTime = dto.StartTime,
             Status = SessionStatus.InProgress,
             TotalRecognized = 0,
