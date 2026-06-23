@@ -1,12 +1,12 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
-[Authorize]
+[SupabaseAuthorize]
 [Route("api/biometric-data")]
 [ApiController]
 public class BiometricDataController : AcademicApiControllerBase

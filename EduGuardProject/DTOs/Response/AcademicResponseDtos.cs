@@ -151,6 +151,7 @@ public class ExamParticipationResponseDto
 
     public DateTime? ActualEnd { get; set; }
     public ParticipationStatus Status { get; set; }
+    public string? DisqualifiedReason { get; set; }
     public string? RecordingVideoPath { get; set; }
 
     public string? IdentitySnapshotPath { get; set; }
@@ -165,6 +166,10 @@ public class ViolationlogResponeDto
 
     public string? EvidencePath { get; set; }
 
+    public ViolationSeverity Severity { get; set; }
+
+    public ViolationType ViolationType { get; set; }
+
     public double? AiConfidence { get; set; }
 
     public bool IsReviewed { get; set; }
@@ -172,7 +177,4 @@ public class ViolationlogResponeDto
     public Guid? ReviewedBy { get; set; }
 
     public DateTime RecordedAt { get; set; }
-
-    public virtual ExamParticipation Participation { get; set; } = null!;
-
 }

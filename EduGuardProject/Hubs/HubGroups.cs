@@ -30,4 +30,10 @@ public static class HubGroups
     public static string AttendanceLecturers(Guid sessionId) => $"attendance:{sessionId}:lecturers";
 
     public static string ClassStudents(Guid classId) => $"class:{classId}:students";
+
+    public static string DashboardSystem() => "dashboard:system";
+
+    public static string DashboardInstitution(Guid institutionId) => $"dashboard:institution:{institutionId}";
+
+    public static string DashboardLecturer(Guid lecturerId) => $"dashboard:lecturer:{lecturerId}";
 }

@@ -9,7 +9,13 @@ namespace EduGuardProject.Services
     public class InstitutionService : IInstitutionService
     {
         private readonly IInstitutionRepository _repo;
-        public InstitutionService(IInstitutionRepository repo) => _repo = repo;
+        private readonly IRealtimeEventDispatcher _realtime;
+
+        public InstitutionService(IInstitutionRepository repo, IRealtimeEventDispatcher realtime)
+        {
+            _repo = repo;
+            _realtime = realtime;
+        }
 
         public async Task<(IEnumerable<InstitutionResponseDto> Items, int TotalCount)> GetInstitutionsAsync(string? search, string? sort, int page, int pageSize)
         {
@@ -41,6 +47,7 @@ namespace EduGuardProject.Services
             };
 
             await _repo.AddAsync(entity);
+            await PublishInstitutionChangedAsync(entity, "created");
             return MapToResponseDto(entity);
         }
 
@@ -57,6 +64,7 @@ namespace EduGuardProject.Services
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _repo.UpdateAsync(entity);
+            await PublishInstitutionChangedAsync(entity, "updated");
             return true;
         }
 
@@ -66,8 +74,24 @@ namespace EduGuardProject.Services
             if (entity == null) return false;
 
             await _repo.DeleteAsync(entity);
+            await PublishInstitutionChangedAsync(entity, "deleted");
             return true;
         }
+
+        private Task PublishInstitutionChangedAsync(Institution entity, string action) =>
+            _realtime.PublishDataChangedAsync(
+                "institutions",
+                action,
+                institutionId: entity.Id,
+                data: new
+                {
+                    institutionId = entity.Id,
+                    entity.Name,
+                    entity.SubDomain,
+                    entity.ContactEmail,
+                    entity.BillingModel,
+                    entity.Status
+                });
 
         // Hàm phụ để Map nhanh dữ liệu đỡ phải viết đi viết lại nhiều lần
         private static InstitutionResponseDto MapToResponseDto(Institution e) => new()

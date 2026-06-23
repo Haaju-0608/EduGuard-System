@@ -8,6 +8,15 @@ public static class HubEvents
     public const string NotificationCreated = nameof(NotificationCreated);
     public const string NewSchoolRegistrationRequest = nameof(NewSchoolRegistrationRequest);
     public const string WalletBalanceUpdated = nameof(WalletBalanceUpdated);
+    public const string NotificationRead = nameof(NotificationRead);
+    public const string NotificationsRead = nameof(NotificationsRead);
+
+    public const string DashboardHubConnected = nameof(DashboardHubConnected);
+    public const string DashboardScopeJoined = nameof(DashboardScopeJoined);
+    public const string ResourceChanged = nameof(ResourceChanged);
+    public const string DashboardStatsChanged = nameof(DashboardStatsChanged);
+    public const string ReportDataChanged = nameof(ReportDataChanged);
+    public const string StorageObjectChanged = nameof(StorageObjectChanged);
 
     public const string ExamJoined = nameof(ExamJoined);
     public const string ExamLeft = nameof(ExamLeft);

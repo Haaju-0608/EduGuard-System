@@ -12,15 +12,21 @@ public class BiometricDatumService : IBiometricDatumService
 {
     private readonly IBiometricDatumRepository _repo;
     private readonly ICurrentUserService _currentUser;
+    private readonly IRealtimeEventDispatcher _realtime;
+    private readonly IStorageService _storage;
     private readonly AppDbContext _context;
 
     public BiometricDatumService(
         IBiometricDatumRepository repo,
         ICurrentUserService currentUser,
+        IRealtimeEventDispatcher realtime,
+        IStorageService storage,
         AppDbContext context)
     {
         _repo = repo;
         _currentUser = currentUser;
+        _realtime = realtime;
+        _storage = storage;
         _context = context;
     }
 
@@ -28,13 +34,24 @@ public class BiometricDatumService : IBiometricDatumService
         string? search, string? sort, int page, int pageSize, string? expand, Guid? userId = null)
     {
         var user = await _currentUser.GetRequiredUserAsync();
+        Guid? institutionId = null;
 
         if (user.Role == AppRole.Student)
+        {
             userId = user.Id;
-        else
-            await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        }
+        else if (user.Role == AppRole.SchoolAdmin)
+        {
+            institutionId = user.InstitutionId
+                ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.");
+        }
+        else if (user.Role != AppRole.SuperAdmin)
+        {
+            throw new UnauthorizedAccessException("Access denied.");
+        }
 
-        var (items, total) = await _repo.GetAllAsync(search, sort, page, pageSize, userId);
+        var (items, total) = await _repo.GetAllAsync(
+            search, sort, page, pageSize, userId, institutionId: institutionId);
         var dtos = new List<BiometricDatumResponseDto>();
         foreach (var item in items)
             dtos.Add(await AcademicMapper.MapBiometricDatumAsync(_context, item, expand));
@@ -53,10 +70,19 @@ public class BiometricDatumService : IBiometricDatumService
     {
         var user = await _currentUser.GetRequiredUserAsync();
 
-        if (user.Role == AppRole.Student && dto.UserId != user.Id)
-            throw new UnauthorizedAccessException("Students can only create biometric data for themselves.");
-        else
-            await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        if (user.Role == AppRole.Student)
+        {
+            if (dto.UserId != user.Id)
+                throw new UnauthorizedAccessException("Students can only create biometric data for themselves.");
+        }
+        else if (user.Role == AppRole.SchoolAdmin)
+        {
+            await EnsureSameInstitutionAsync(user, dto.UserId);
+        }
+        else if (user.Role != AppRole.SuperAdmin)
+        {
+            throw new UnauthorizedAccessException("Access denied.");
+        }
 
         await DeactivateExistingActiveAsync(dto.UserId);
 
@@ -73,6 +99,7 @@ public class BiometricDatumService : IBiometricDatumService
         };
 
         await _repo.AddAsync(entity);
+        await PublishBiometricDatumChangedAsync(entity, "created");
         return await AcademicMapper.MapBiometricDatumAsync(_context, entity, null);
     }
 
@@ -92,6 +119,7 @@ public class BiometricDatumService : IBiometricDatumService
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity);
+        await PublishBiometricDatumChangedAsync(entity, "updated");
         return true;
     }
 
@@ -101,8 +129,35 @@ public class BiometricDatumService : IBiometricDatumService
         if (entity == null || !entity.IsActive) return false;
 
         await EnsureAccessAsync(entity);
+        var faceImagePath = entity.FaceImageUrl;
         await _repo.SoftDeleteAsync(entity);
+        if (!string.IsNullOrWhiteSpace(faceImagePath))
+            await _storage.DeleteAsync(StorageService.BiometricFacesBucket, faceImagePath);
+        await PublishBiometricDatumChangedAsync(entity, "deleted");
         return true;
+    }
+
+    private async Task PublishBiometricDatumChangedAsync(BiometricDatum entity, string action)
+    {
+        var user = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == entity.UserId);
+
+        await _realtime.PublishDataChangedAsync(
+            "biometric-data",
+            action,
+            institutionId: user?.InstitutionId,
+            userId: entity.UserId,
+            data: new
+            {
+                biometricDatumId = entity.Id,
+                entity.UserId,
+                entity.BioRequestId,
+                entity.ModelVersion,
+                entity.FaceImageUrl,
+                entity.IsActive,
+                entity.UpdatedAt
+            });
     }
 
     private async Task DeactivateExistingActiveAsync(Guid userId)
@@ -124,9 +179,35 @@ public class BiometricDatumService : IBiometricDatumService
     private async Task EnsureAccessAsync(BiometricDatum entity)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.SuperAdmin || user.Role == AppRole.SchoolAdmin) return;
+        if (user.Role == AppRole.SuperAdmin) return;
 
-        if (user.Role == AppRole.Student && entity.UserId != user.Id)
+        if (user.Role == AppRole.Student && entity.UserId == user.Id)
+            return;
+
+        if (user.Role == AppRole.SchoolAdmin)
+        {
+            await EnsureSameInstitutionAsync(user, entity.UserId);
+            return;
+        }
+
+        throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private async Task EnsureSameInstitutionAsync(User actor, Guid targetUserId)
+    {
+        if (!actor.InstitutionId.HasValue)
+            throw new UnauthorizedAccessException("School admin is not assigned to an institution.");
+
+        var targetInstitutionId = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == targetUserId && u.DeletedAt == null)
+            .Select(u => u.InstitutionId)
+            .FirstOrDefaultAsync();
+
+        if (!targetInstitutionId.HasValue ||
+            targetInstitutionId.Value != actor.InstitutionId.Value)
+        {
             throw new UnauthorizedAccessException("Access denied.");
+        }
     }
 }

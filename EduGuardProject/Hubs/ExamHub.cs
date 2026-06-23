@@ -1,5 +1,5 @@
-using System.Collections.Concurrent;
 using EduGuardProject.Models;
+using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
@@ -7,10 +7,11 @@ namespace EduGuardProject.Hubs;
 
 public class ExamHub : EduGuardHubBase
 {
-    private static readonly ConcurrentDictionary<string, ExamConnectionState> Connections = new();
+    private readonly IExamPresenceTracker _presence;
 
-    public ExamHub(AppDbContext dbContext) : base(dbContext)
+    public ExamHub(AppDbContext dbContext, IExamPresenceTracker presence) : base(dbContext)
     {
+        _presence = presence;
     }
 
     public async Task JoinExam(Guid examSlotId)
@@ -26,27 +27,37 @@ public class ExamHub : EduGuardHubBase
         else
         {
             await Groups.AddToGroupAsync(Context.ConnectionId, HubGroups.ExamStudent(examSlotId, access.User.Id));
-            Connections[Context.ConnectionId] = new ExamConnectionState(
-                examSlotId,
-                access.User.Id,
-                access.User.FullName,
-                DateTime.UtcNow);
-
-            var onlineAt = DateTime.UtcNow;
-            await Clients.Group(HubGroups.ExamLecturers(examSlotId)).SendAsync(HubEvents.StudentOnline, new
+            if (access.ParticipationStatus == ParticipationStatus.Joined)
             {
-                examSlotId,
-                studentId = access.User.Id,
-                fullName = access.User.FullName,
-                onlineAt
-            });
+                var onlineAt = DateTime.UtcNow;
+                var becameOnline = _presence.Connect(
+                    Context.ConnectionId,
+                    access.ParticipationId!.Value,
+                    examSlotId,
+                    access.User.Id,
+                    access.User.FullName,
+                    onlineAt);
+
+                if (becameOnline)
+                {
+                    await Clients.Group(HubGroups.ExamLecturers(examSlotId)).SendAsync(HubEvents.StudentOnline, new
+                    {
+                        participationId = access.ParticipationId,
+                        examSlotId,
+                        studentId = access.User.Id,
+                        fullName = access.User.FullName,
+                        onlineAt
+                    });
+                }
+            }
         }
 
         await Clients.Caller.SendAsync(HubEvents.ExamJoined, new
         {
             examSlotId,
             group = HubGroups.Exam(examSlotId),
-            isStaff = access.IsStaff
+            isStaff = access.IsStaff,
+            participationStatus = access.ParticipationStatus
         });
     }
 
@@ -71,10 +82,13 @@ public class ExamHub : EduGuardHubBase
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, HubGroups.Exam(examSlotId));
         await Groups.RemoveFromGroupAsync(Context.ConnectionId, HubGroups.ExamLecturers(examSlotId));
 
-        if (Connections.TryRemove(Context.ConnectionId, out var state))
+        var disconnected = _presence.Disconnect(Context.ConnectionId);
+        if (disconnected != null)
         {
+            var state = disconnected.Connection;
             await Groups.RemoveFromGroupAsync(Context.ConnectionId, HubGroups.ExamStudent(state.ExamSlotId, state.StudentId));
-            await NotifyStudentOfflineAsync(state, "LeaveExam");
+            if (disconnected.BecameOffline)
+                await NotifyStudentOfflineAsync(state, "LeaveExam");
         }
 
         await Clients.Caller.SendAsync(HubEvents.ExamLeft, new { examSlotId });
@@ -85,34 +99,36 @@ public class ExamHub : EduGuardHubBase
         var access = await GetExamAccessAsync(examSlotId);
         if (access.IsStaff)
             return;
+        if (access.ParticipationStatus != ParticipationStatus.Joined)
+            throw new HubException("Heartbeat is only accepted while the participation is JOINED.");
 
-        Connections[Context.ConnectionId] = new ExamConnectionState(
-            examSlotId,
-            access.User.Id,
-            access.User.FullName,
-            DateTime.UtcNow);
+        var lastSeenAt = DateTime.UtcNow;
+        _presence.Heartbeat(access.ParticipationId!.Value, lastSeenAt);
 
         await Clients.Group(HubGroups.ExamLecturers(examSlotId)).SendAsync(HubEvents.StudentHeartbeat, new
         {
+            participationId = access.ParticipationId,
             examSlotId,
             studentId = access.User.Id,
             fullName = access.User.FullName,
-            lastSeenAt = DateTime.UtcNow
+            lastSeenAt
         });
     }
 
     public override async Task OnDisconnectedAsync(Exception? exception)
     {
-        if (Connections.TryRemove(Context.ConnectionId, out var state))
-            await NotifyStudentOfflineAsync(state, "Disconnected");
+        var disconnected = _presence.Disconnect(Context.ConnectionId);
+        if (disconnected?.BecameOffline == true)
+            await NotifyStudentOfflineAsync(disconnected.Connection, "Disconnected");
 
         await base.OnDisconnectedAsync(exception);
     }
 
-    private async Task NotifyStudentOfflineAsync(ExamConnectionState state, string reason)
+    private async Task NotifyStudentOfflineAsync(ExamPresenceConnection state, string reason)
     {
         await Clients.Group(HubGroups.ExamLecturers(state.ExamSlotId)).SendAsync(HubEvents.StudentOffline, new
         {
+            participationId = state.ParticipationId,
             examSlotId = state.ExamSlotId,
             studentId = state.StudentId,
             fullName = state.FullName,
@@ -133,22 +149,26 @@ public class ExamHub : EduGuardHubBase
             throw new HubException("Exam slot was not found.");
 
         if (CanAccessClassAsStaff(user, exam.Class))
-            return new ExamAccess(user, true);
+            return new ExamAccess(user, true, null, null);
 
         if (user.Role == AppRole.Student)
         {
-            var hasParticipation = await DbContext.ExamParticipations
+            var participation = await DbContext.ExamParticipations
                 .AsNoTracking()
-                .AnyAsync(p => p.ExamSlotId == examSlotId && p.StudentId == user.Id);
+                .Where(p => p.ExamSlotId == examSlotId && p.StudentId == user.Id)
+                .Select(p => new { p.Id, p.Status })
+                .FirstOrDefaultAsync();
 
-            if (hasParticipation)
-                return new ExamAccess(user, false);
+            if (participation != null)
+                return new ExamAccess(user, false, participation.Id, participation.Status);
         }
 
         throw new HubException("You do not have access to this exam group.");
     }
 
-    private sealed record ExamAccess(User User, bool IsStaff);
-
-    private sealed record ExamConnectionState(Guid ExamSlotId, Guid StudentId, string FullName, DateTime LastSeenAt);
+    private sealed record ExamAccess(
+        User User,
+        bool IsStaff,
+        Guid? ParticipationId,
+        ParticipationStatus? ParticipationStatus);
 }

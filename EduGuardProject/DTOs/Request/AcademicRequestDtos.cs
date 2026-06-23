@@ -159,7 +159,7 @@ public class CreateExamParticipationDto
     public Guid? BillingTransId { get; set; }
     public DateTime? ActualStart { get; set; }
     public DateTime? ActualEnd { get; set; }
-    public ParticipationStatus Status { get; set; } 
+    public ParticipationStatus Status { get; set; }
     public string? DisqualifiedReason { get; set; }
     public string? RecordingVideoPath { get; set; }
     public string? IdentitySnapshotPath { get; set; }
@@ -187,6 +187,9 @@ public class CreateExamSlotDto
     [Required]
     public Guid ClassId { get; set; }
 
+    [MaxLength(255)]
+    public string? ExamName { get; set; }
+
     public ExamSlotStatus Status { get; set; }
     public int ExpectedDurationMinutes { get; set; }
 
@@ -200,10 +203,13 @@ public class CreateExamSlotDto
 
 public class UpdateExamSlotDto
 {
+    [MaxLength(255)]
+    public string? ExamName { get; set; }
+
     public int ExpectedDurationMinutes { get; set; }
     public DateTime? StartTime { get; set; }
     public DateTime? EndTime { get; set; }
-    public DateTime UpdatedAt { get; set; }= DateTime.Now;
+    public DateTime UpdatedAt { get; set; } = DateTime.Now;
 }
 
 public class CreateViolationLogDto

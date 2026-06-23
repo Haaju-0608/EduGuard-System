@@ -37,11 +37,17 @@ public class ExamParticipationRepository : IExamParticipationRepository
         ActualStart = e.ActualStart,
         ActualEnd = e.ActualEnd,
         Status = e.Status,
+        DisqualifiedReason = e.DisqualifiedReason,
         RecordingVideoPath = e.RecordingVideoPath,
         IdentitySnapshotPath = e.IdentitySnapshotPath
     };
-    public Task<ExamParticipation?> GetByIdAsync(Guid examSlotId) =>
-        _context.ExamParticipations.FirstOrDefaultAsync(p => p.ExamSlotId == examSlotId);
+    public Task<ExamParticipation?> GetByIdAsync(Guid id) =>
+        _context.ExamParticipations.FirstOrDefaultAsync(p => p.Id == id);
+
+    public async Task<IEnumerable<ExamParticipation>> GetByExamSlotAsync(Guid examSlotId) =>
+        await _context.ExamParticipations
+            .Where(p => p.ExamSlotId == examSlotId)
+            .ToListAsync();
 
     public Task<ExamParticipation?> GetByExamSlotAndStudentAsync(Guid examSlotId, Guid studentId) =>
         _context.ExamParticipations.FirstOrDefaultAsync(p => p.ExamSlotId == examSlotId && p.StudentId == studentId);

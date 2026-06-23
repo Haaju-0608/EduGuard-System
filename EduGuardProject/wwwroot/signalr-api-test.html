@@ -23,6 +23,10 @@
             box-sizing: border-box;
         }
 
+        [hidden] {
+            display: none !important;
+        }
+
         body {
             background: var(--bg);
             color: var(--ink);
@@ -34,6 +38,30 @@
             background: #ffffff;
             border-bottom: 1px solid var(--line);
             padding: 18px 24px;
+        }
+
+        .page-tabs {
+            background: #ffffff;
+            border-bottom: 1px solid var(--line);
+            display: flex;
+            gap: 6px;
+            overflow-x: auto;
+            padding: 10px 16px;
+        }
+
+        .page-tab {
+            background: #ffffff;
+            border-color: #aeb7c4;
+            color: #223044;
+            flex: 0 0 auto;
+            min-height: 34px;
+            padding: 7px 11px;
+        }
+
+        .page-tab.active {
+            background: var(--accent);
+            border-color: var(--accent);
+            color: #ffffff;
         }
 
         h1 {
@@ -86,6 +114,11 @@
             min-height: 38px;
             padding: 8px 10px;
             width: 100%;
+        }
+
+        input[type="checkbox"] {
+            min-height: auto;
+            width: auto;
         }
 
         textarea {
@@ -143,6 +176,36 @@
             flex-wrap: wrap;
             gap: 8px;
             margin-top: 12px;
+        }
+
+        .checkbox-row {
+            align-items: center;
+            color: #344054;
+            display: flex;
+            font-size: 13px;
+            font-weight: 400;
+            gap: 8px;
+            margin-top: 12px;
+        }
+
+        .preset-bar {
+            align-items: start;
+            display: grid;
+            gap: 12px;
+            grid-template-columns: minmax(0, 1fr) auto;
+        }
+
+        .preset-title {
+            font-size: 16px;
+            font-weight: 700;
+            margin: 0 0 5px;
+        }
+
+        .preset-meta {
+            color: var(--muted);
+            font-size: 12px;
+            line-height: 1.45;
+            margin: 0;
         }
 
         .status {
@@ -248,6 +311,7 @@
             main,
             .row,
             .row-3,
+            .preset-bar,
             .param-row {
                 grid-template-columns: 1fr;
             }
@@ -265,6 +329,8 @@
         <h1>EduGuard SignalR + Swagger API Test</h1>
         <p class="subtle">Nhap token nhu Swagger, goi API, va xem event SignalR realtime tren cung mot man hinh.</p>
     </header>
+
+    <nav id="pageTabs" class="page-tabs" aria-label="Test pages"></nav>
 
     <main>
         <section class="full">
@@ -289,11 +355,25 @@
             </div>
         </section>
 
+        <section class="full">
+            <div class="preset-bar">
+                <div>
+                    <p id="activePageTitle" class="preset-title">All APIs</p>
+                    <p id="activePageMeta" class="preset-meta"></p>
+                </div>
+                <div class="actions">
+                    <button id="applyPresetButton" type="button" class="secondary">Apply Preset</button>
+                    <button id="showAllButton" type="button" class="secondary">All APIs</button>
+                </div>
+            </div>
+        </section>
+
         <section>
             <h2>Swagger API Runner</h2>
             <span id="swaggerStatus" class="status idle">Chua load Swagger</span>
 
             <label for="operationSelect">Endpoint</label>
+            <input id="endpointSearchInput" type="text" placeholder="Filter endpoint trong page hien tai" />
             <select id="operationSelect"></select>
 
             <div id="operationInfo" class="operation-info">Chon Load Swagger de lay danh sach API.</div>
@@ -304,7 +384,10 @@
             <label>Query params</label>
             <div id="queryParams" class="param-grid"></div>
 
-            <label for="bodyInput">Request body JSON</label>
+            <label id="multipartFieldsLabel" hidden>Multipart form data</label>
+            <div id="multipartFields" class="param-grid" hidden></div>
+
+            <label id="bodyInputLabel" for="bodyInput">Request body JSON</label>
             <textarea id="bodyInput" spellcheck="false"></textarea>
 
             <div class="actions">
@@ -321,10 +404,15 @@
 
             <label for="hubUrlInput">Hub URL</label>
             <input id="hubUrlInput" type="text" />
-            <p class="help">Mac dinh project hien tai co /chatHub. Sau nay co the doi thanh /hubs/notifications, /hubs/exam, /hubs/attendance.</p>
+            <p class="help">Hub nghiep vu: /hubs/notifications, /hubs/exams, /hubs/attendance, /hubs/dashboard. /chatHub chi dung cho demo chat cu.</p>
 
             <label for="eventsInput">Event names can listen</label>
             <textarea id="eventsInput" spellcheck="false"></textarea>
+
+            <label class="checkbox-row" for="autoInvokeInput">
+                <input id="autoInvokeInput" type="checkbox" checked />
+                Tự invoke method sau khi connect và tự join lại group sau reconnect
+            </label>
 
             <div class="actions">
                 <button id="connectHubButton" type="button">Connect</button>
@@ -333,10 +421,10 @@
             </div>
 
             <label for="invokeMethodInput">Invoke method</label>
-            <input id="invokeMethodInput" type="text" value="SendMessage" />
+            <input id="invokeMethodInput" type="text" value="JoinSuperAdminNotifications" />
 
             <label for="invokeArgsInput">Invoke args JSON array</label>
-            <textarea id="invokeArgsInput" spellcheck="false">["Tester","Hello from signalr-api-test.html"]</textarea>
+            <textarea id="invokeArgsInput" spellcheck="false">[]</textarea>
 
             <div class="actions">
                 <button id="invokeButton" type="button" disabled>Invoke Hub Method</button>
@@ -352,20 +440,31 @@
 
         var httpMethods = ["get", "post", "put", "patch", "delete"];
         var openApiDoc = null;
+        var allOperations = [];
         var operations = [];
         var currentConnection = null;
         var lastCurl = "";
+        var activePageId = "auth";
 
+        var pageTabs = document.getElementById("pageTabs");
+        var activePageTitle = document.getElementById("activePageTitle");
+        var activePageMeta = document.getElementById("activePageMeta");
+        var applyPresetButton = document.getElementById("applyPresetButton");
+        var showAllButton = document.getElementById("showAllButton");
         var baseUrlInput = document.getElementById("baseUrlInput");
         var swaggerUrlInput = document.getElementById("swaggerUrlInput");
         var tokenInput = document.getElementById("tokenInput");
         var loadSwaggerButton = document.getElementById("loadSwaggerButton");
         var copyCurlButton = document.getElementById("copyCurlButton");
         var swaggerStatus = document.getElementById("swaggerStatus");
+        var endpointSearchInput = document.getElementById("endpointSearchInput");
         var operationSelect = document.getElementById("operationSelect");
         var operationInfo = document.getElementById("operationInfo");
         var pathParams = document.getElementById("pathParams");
         var queryParams = document.getElementById("queryParams");
+        var multipartFieldsLabel = document.getElementById("multipartFieldsLabel");
+        var multipartFields = document.getElementById("multipartFields");
+        var bodyInputLabel = document.getElementById("bodyInputLabel");
         var bodyInput = document.getElementById("bodyInput");
         var sendApiButton = document.getElementById("sendApiButton");
         var clearApiLogButton = document.getElementById("clearApiLogButton");
@@ -373,6 +472,7 @@
 
         var hubUrlInput = document.getElementById("hubUrlInput");
         var eventsInput = document.getElementById("eventsInput");
+        var autoInvokeInput = document.getElementById("autoInvokeInput");
         var connectHubButton = document.getElementById("connectHubButton");
         var disconnectHubButton = document.getElementById("disconnectHubButton");
         var clearHubLogButton = document.getElementById("clearHubLogButton");
@@ -382,20 +482,180 @@
         var hubStatus = document.getElementById("hubStatus");
         var hubLog = document.getElementById("hubLog");
 
-        baseUrlInput.value = window.location.origin;
-        swaggerUrlInput.value = window.location.origin + "/swagger/v1/swagger.json";
-        hubUrlInput.value = window.location.origin + "/chatHub";
-        eventsInput.value = [
+        var allSignalREvents = [
             "ReceiveMessage",
+            "NotificationHubConnected",
             "NotificationCreated",
+            "NotificationRead",
+            "NotificationsRead",
+            "InstitutionNotificationsJoined",
+            "SuperAdminNotificationsJoined",
+            "NewSchoolRegistrationRequest",
+            "WalletBalanceUpdated",
+            "DashboardHubConnected",
+            "DashboardScopeJoined",
+            "ResourceChanged",
+            "DashboardStatsChanged",
+            "ReportDataChanged",
+            "StorageObjectChanged",
+            "ExamJoined",
+            "ExamLeft",
+            "ExamDashboardJoined",
             "StudentJoinedExam",
+            "StudentOnline",
+            "StudentHeartbeat",
             "StudentOffline",
             "ExamSubmitted",
             "ViolationDetected",
             "Disqualified",
+            "AttendanceSessionJoined",
+            "AttendanceSessionLeft",
+            "ClassAttendanceJoined",
+            "AttendanceSessionOpened",
             "AttendanceProgressChanged",
-            "WalletBalanceUpdated"
-        ].join("\n");
+            "AttendanceCompleted"
+        ];
+
+        var pagePresets = [
+            {
+                id: "auth",
+                label: "Auth",
+                description: "Login va profile hien tai",
+                pathPrefixes: ["/api/auth", "/api/users/me"],
+                defaultEndpoint: { method: "POST", path: "/api/auth/login" },
+                hubPath: "/hubs/notifications",
+                invokeMethod: "JoinSuperAdminNotifications",
+                invokeArgs: "[]",
+                events: ["NotificationHubConnected", "SuperAdminNotificationsJoined", "NotificationCreated"]
+            },
+            {
+                id: "notifications",
+                label: "Notifications",
+                description: "Notification ca nhan, unread, read/read-all",
+                pathPrefixes: ["/api/notifications"],
+                defaultEndpoint: { method: "GET", path: "/api/notifications/me/unread-count" },
+                hubPath: "/hubs/notifications",
+                invokeMethod: "JoinSuperAdminNotifications",
+                invokeArgs: "[]",
+                events: [
+                    "NotificationHubConnected",
+                    "NotificationCreated",
+                    "NotificationRead",
+                    "NotificationsRead",
+                    "InstitutionNotificationsJoined",
+                    "SuperAdminNotificationsJoined",
+                    "NewSchoolRegistrationRequest",
+                    "WalletBalanceUpdated"
+                ]
+            },
+            {
+                id: "dashboard",
+                label: "Dashboard",
+                description: "Dashboard system/institution/lecturer realtime",
+                pathPrefixes: ["/api/dashboard"],
+                defaultEndpoint: { method: "GET", path: "/api/dashboard/system" },
+                hubPath: "/hubs/dashboard",
+                invokeMethod: "JoinSystemDashboard",
+                invokeArgs: "[]",
+                events: [
+                    "DashboardHubConnected",
+                    "DashboardScopeJoined",
+                    "ResourceChanged",
+                    "DashboardStatsChanged",
+                    "ReportDataChanged",
+                    "StorageObjectChanged"
+                ]
+            },
+            {
+                id: "exam",
+                label: "Exam",
+                description: "Exam slot, participation, violation realtime",
+                pathPrefixes: ["/api/exam-slots", "/api/exam-participations", "/api/violation-logs", "/api/violations"],
+                defaultEndpoint: { method: "GET", path: "/api/exam-slots" },
+                hubPath: "/hubs/exams",
+                invokeMethod: "JoinLecturerDashboard",
+                invokeArgs: "[\"EXAM_SLOT_ID\"]",
+                events: [
+                    "ExamJoined",
+                    "ExamLeft",
+                    "ExamDashboardJoined",
+                    "StudentOnline",
+                    "StudentHeartbeat",
+                    "StudentOffline",
+                    "StudentJoinedExam",
+                    "ExamSubmitted",
+                    "ViolationDetected",
+                    "Disqualified"
+                ]
+            },
+            {
+                id: "attendance",
+                label: "Attendance",
+                description: "Attendance session va record realtime",
+                pathPrefixes: ["/api/attendance-sessions", "/api/attendance-records"],
+                defaultEndpoint: { method: "GET", path: "/api/attendance-sessions" },
+                hubPath: "/hubs/attendance",
+                invokeMethod: "JoinAttendanceSession",
+                invokeArgs: "[\"ATTENDANCE_SESSION_ID\"]",
+                events: [
+                    "AttendanceSessionJoined",
+                    "ClassAttendanceJoined",
+                    "AttendanceSessionLeft",
+                    "AttendanceSessionOpened",
+                    "AttendanceProgressChanged",
+                    "AttendanceCompleted"
+                ]
+            },
+            {
+                id: "storage",
+                label: "Storage",
+                description: "Upload, download, signed URL, delete, cleanup",
+                pathPrefixes: ["/api/storage"],
+                defaultEndpoint: { method: "POST", path: "/api/storage/signed-url" },
+                hubPath: "/hubs/dashboard",
+                invokeMethod: "JoinSystemDashboard",
+                invokeArgs: "[]",
+                events: [
+                    "DashboardHubConnected",
+                    "DashboardScopeJoined",
+                    "StorageObjectChanged",
+                    "ResourceChanged",
+                    "DashboardStatsChanged",
+                    "ReportDataChanged"
+                ]
+            },
+            {
+                id: "reports",
+                label: "Reports",
+                description: "Attendance, violation, wallet, revenue reports",
+                pathPrefixes: ["/api/reports"],
+                defaultEndpoint: { method: "GET", path: "/api/reports/revenue" },
+                hubPath: "/hubs/dashboard",
+                invokeMethod: "JoinSystemDashboard",
+                invokeArgs: "[]",
+                events: [
+                    "DashboardHubConnected",
+                    "DashboardScopeJoined",
+                    "ReportDataChanged",
+                    "ResourceChanged",
+                    "DashboardStatsChanged"
+                ]
+            },
+            {
+                id: "all",
+                label: "All",
+                description: "Tat ca endpoint va tat ca event",
+                pathPrefixes: null,
+                defaultEndpoint: null,
+                hubPath: "/hubs/notifications",
+                invokeMethod: "JoinSuperAdminNotifications",
+                invokeArgs: "[]",
+                events: allSignalREvents
+            }
+        ];
+
+        baseUrlInput.value = window.location.origin;
+        swaggerUrlInput.value = window.location.origin + "/swagger/v1/swagger.json";
 
         function setStatus(element, state, text) {
             element.className = "status " + state;
@@ -443,28 +703,103 @@
             return base.replace(/\/+$/, "") + "/" + path.replace(/^\/+/, "");
         }
 
-        function loadOperations(doc) {
-            operations = [];
-            Object.keys(doc.paths || {}).forEach(function (path) {
-                var pathItem = doc.paths[path];
-                httpMethods.forEach(function (method) {
-                    var operation = pathItem[method];
-                    if (!operation) {
-                        return;
-                    }
+        function getPagePreset(id) {
+            return pagePresets.find(function (page) { return page.id === id; }) || pagePresets[0];
+        }
 
-                    operations.push({
-                        method: method.toUpperCase(),
-                        path: path,
-                        operation: operation,
-                        parameters: (pathItem.parameters || []).concat(operation.parameters || [])
-                    });
+        function renderPageTabs() {
+            pageTabs.innerHTML = "";
+            pagePresets.forEach(function (page) {
+                var button = document.createElement("button");
+                button.type = "button";
+                button.className = "page-tab" + (page.id === activePageId ? " active" : "");
+                button.textContent = page.label;
+                button.addEventListener("click", function () {
+                    setActivePage(page.id, true);
                 });
+                pageTabs.appendChild(button);
             });
+        }
 
-            operations.sort(function (a, b) {
-                return (a.path + a.method).localeCompare(b.path + b.method);
+        function setActivePage(id, updateHash) {
+            var previousPageId = activePageId;
+            activePageId = getPagePreset(id).id;
+            var preset = getPagePreset(activePageId);
+
+            if (previousPageId !== activePageId) {
+                endpointSearchInput.value = "";
+                if (currentConnection) {
+                    disconnectHub().catch(function (error) {
+                        appendLog(hubLog, "Disconnect error", String(error));
+                    });
+                }
+            }
+
+            renderPageTabs();
+            applyActivePreset();
+            renderOperationsForActivePage();
+
+            if (updateHash && location.hash.substring(1) !== activePageId) {
+                history.replaceState(null, "", "#" + activePageId);
+            }
+
+            activePageTitle.textContent = preset.label;
+            updateActivePageMeta();
+        }
+
+        function applyActivePreset() {
+            var preset = getPagePreset(activePageId);
+            hubUrlInput.value = joinUrl(baseUrlInput.value.trim(), preset.hubPath);
+            eventsInput.value = preset.events.join("\n");
+            invokeMethodInput.value = preset.invokeMethod;
+            invokeArgsInput.value = preset.invokeArgs;
+        }
+
+        function updateActivePageMeta() {
+            var preset = getPagePreset(activePageId);
+            var countText = openApiDoc ? operations.length + " endpoint dang hien" : "Swagger chua load";
+            activePageMeta.textContent = preset.description + " - " + countText;
+        }
+
+        function resolveInitialPageId() {
+            var hash = location.hash.replace("#", "").trim();
+            return getPagePreset(hash).id;
+        }
+
+        function matchesActivePage(item) {
+            var preset = getPagePreset(activePageId);
+            if (!preset.pathPrefixes) {
+                return true;
+            }
+
+            var path = item.path.toLowerCase();
+            return preset.pathPrefixes.some(function (prefix) {
+                return path.startsWith(prefix.toLowerCase());
             });
+        }
+
+        function matchesEndpointSearch(item) {
+            var query = endpointSearchInput.value.trim().toLowerCase();
+            if (!query) {
+                return true;
+            }
+
+            var operation = item.operation || {};
+            var haystack = [
+                item.method,
+                item.path,
+                operation.summary || "",
+                operation.operationId || "",
+                (operation.tags || []).join(" ")
+            ].join(" ").toLowerCase();
+
+            return haystack.indexOf(query) >= 0;
+        }
+
+        function renderOperationsForActivePage() {
+            operations = allOperations
+                .filter(matchesActivePage)
+                .filter(matchesEndpointSearch);
 
             operationSelect.innerHTML = "";
             operations.forEach(function (item, index) {
@@ -474,13 +809,63 @@
                 operationSelect.appendChild(option);
             });
 
+            var defaultIndex = findDefaultOperationIndex();
+            if (defaultIndex >= 0) {
+                operationSelect.value = String(defaultIndex);
+            }
+
             renderSelectedOperation();
+            updateActivePageMeta();
+        }
+
+        function findDefaultOperationIndex() {
+            var defaultEndpoint = getPagePreset(activePageId).defaultEndpoint;
+            if (!defaultEndpoint) {
+                return operations.length ? 0 : -1;
+            }
+
+            var index = operations.findIndex(function (item) {
+                return item.method === defaultEndpoint.method && item.path === defaultEndpoint.path;
+            });
+
+            return index >= 0 ? index : (operations.length ? 0 : -1);
+        }
+
+        function loadOperations(doc) {
+            allOperations = [];
+            Object.keys(doc.paths || {}).forEach(function (path) {
+                var pathItem = doc.paths[path];
+                httpMethods.forEach(function (method) {
+                    var operation = pathItem[method];
+                    if (!operation) {
+                        return;
+                    }
+
+                    allOperations.push({
+                        method: method.toUpperCase(),
+                        path: path,
+                        operation: operation,
+                        parameters: (pathItem.parameters || []).concat(operation.parameters || [])
+                    });
+                });
+            });
+
+            allOperations.sort(function (a, b) {
+                return (a.path + a.method).localeCompare(b.path + b.method);
+            });
+
+            renderOperationsForActivePage();
         }
 
         function renderSelectedOperation() {
             var item = operations[Number(operationSelect.value)];
             pathParams.innerHTML = "";
             queryParams.innerHTML = "";
+            multipartFields.innerHTML = "";
+            multipartFields.hidden = true;
+            multipartFieldsLabel.hidden = true;
+            bodyInput.hidden = false;
+            bodyInputLabel.hidden = false;
             bodyInput.value = "";
 
             if (!item) {
@@ -516,6 +901,22 @@
                 queryParams.className = "param-grid";
             }
 
+            applyPresetParameters(item);
+
+            var multipartSchema = findMultipartSchema(item.operation);
+            if (multipartSchema) {
+                renderMultipartFields(multipartSchema);
+                bodyInput.hidden = true;
+                bodyInputLabel.hidden = true;
+                return;
+            }
+
+            var presetBody = findPresetRequestBody(item);
+            if (presetBody) {
+                bodyInput.value = stringify(presetBody);
+                return;
+            }
+
             var bodySchema = findJsonBodySchema(item.operation);
             if (bodySchema) {
                 bodyInput.value = stringify(createSampleFromSchema(resolveSchema(bodySchema)));
@@ -532,9 +933,85 @@
             name.textContent = param.name + (param.required ? " *" : "");
             input.dataset.paramName = param.name;
             input.dataset.paramIn = param.in;
+            input.dataset.paramRequired = param.required ? "true" : "false";
             input.placeholder = param.schema && param.schema.type ? param.schema.type : "value";
 
             row.appendChild(name);
+            row.appendChild(input);
+            return row;
+        }
+
+        function applyPresetParameters(item) {
+            if (item.method === "POST" && item.path === "/api/storage/signed-url") {
+                setParamInputValue("query", "bucket", "exam-recordings");
+                setParamInputValue("query", "expiresInSeconds", "3600");
+                setParamInputPlaceholder("query", "path", "Dán metadata path từ database");
+            }
+        }
+
+        function setParamInputValue(paramIn, name, value) {
+            var input = document.querySelector(
+                "[data-param-in='" + paramIn + "'][data-param-name='" + name + "']");
+            if (input) {
+                input.value = value;
+            }
+        }
+
+        function setParamInputPlaceholder(paramIn, name, value) {
+            var input = document.querySelector(
+                "[data-param-in='" + paramIn + "'][data-param-name='" + name + "']");
+            if (input) {
+                input.placeholder = value;
+            }
+        }
+
+        function findMultipartSchema(operation) {
+            var content = operation.requestBody && operation.requestBody.content;
+            if (!content || !content["multipart/form-data"]) {
+                return null;
+            }
+
+            return resolveSchema(content["multipart/form-data"].schema);
+        }
+
+        function renderMultipartFields(schema) {
+            schema = resolveSchema(schema) || {};
+            var requiredFields = schema.required || [];
+
+            Object.keys(schema.properties || {}).forEach(function (name) {
+                var property = resolveSchema(schema.properties[name]) || {};
+                multipartFields.appendChild(
+                    createMultipartInput(name, property, requiredFields.indexOf(name) >= 0));
+            });
+
+            multipartFields.hidden = false;
+            multipartFieldsLabel.hidden = false;
+
+            if (!multipartFields.children.length) {
+                multipartFields.textContent = "Swagger không mô tả trường multipart.";
+                multipartFields.className = "help";
+            } else {
+                multipartFields.className = "param-grid";
+            }
+        }
+
+        function createMultipartInput(name, schema, required) {
+            var row = document.createElement("div");
+            var label = document.createElement("div");
+            var input = document.createElement("input");
+            var isFile = schema.type === "string" && schema.format === "binary";
+
+            row.className = "param-row";
+            label.className = "param-name";
+            label.textContent = name + (required ? " *" : "") + (isFile ? " (file)" : "");
+
+            input.type = isFile ? "file" : "text";
+            input.dataset.formField = name;
+            input.dataset.formRequired = required ? "true" : "false";
+            input.dataset.formFile = isFile ? "true" : "false";
+            input.placeholder = schema.format || schema.type || "value";
+
+            row.appendChild(label);
             row.appendChild(input);
             return row;
         }
@@ -622,6 +1099,17 @@
             return "";
         }
 
+        function findPresetRequestBody(item) {
+            if (item.method === "POST" && item.path === "/api/auth/login") {
+                return {
+                    email: "superadmin@gmail.com",
+                    password: "string"
+                };
+            }
+
+            return null;
+        }
+
         async function loadSwagger() {
             setStatus(swaggerStatus, "loading", "Dang load Swagger...");
             try {
@@ -632,8 +1120,8 @@
 
                 openApiDoc = await response.json();
                 loadOperations(openApiDoc);
-                setStatus(swaggerStatus, "connected", "Loaded " + operations.length + " endpoints");
-                appendLog(apiLog, "Swagger loaded", { endpoints: operations.length });
+                setStatus(swaggerStatus, "connected", "Loaded " + allOperations.length + " endpoints");
+                appendLog(apiLog, "Swagger loaded", { endpoints: allOperations.length, currentPageEndpoints: operations.length });
             } catch (error) {
                 setStatus(swaggerStatus, "error", "Load Swagger failed");
                 appendLog(apiLog, "Swagger error", String(error));
@@ -653,6 +1141,9 @@
             var path = item.path;
             selectedParamInputs("path").forEach(function (input) {
                 var value = input.value.trim();
+                if (!value && input.dataset.paramRequired === "true") {
+                    throw new Error("Thiếu path param bắt buộc: " + input.dataset.paramName);
+                }
                 path = path.replace("{" + input.dataset.paramName + "}", encodeURIComponent(value));
             });
 
@@ -675,23 +1166,85 @@
                 headers: headers
             };
 
-            var bodyText = bodyInput.value.trim();
-            if (bodyText && !["GET", "HEAD"].includes(item.method)) {
-                headers["Content-Type"] = "application/json";
-                JSON.parse(bodyText);
-                options.body = bodyText;
+            var bodyPreview = null;
+            var curlFormFields = [];
+            var multipartSchema = findMultipartSchema(item.operation);
+
+            if (multipartSchema && !["GET", "HEAD"].includes(item.method)) {
+                var formData = new FormData();
+                bodyPreview = {};
+
+                Array.prototype.slice.call(
+                    multipartFields.querySelectorAll("[data-form-field]"))
+                    .forEach(function (input) {
+                        var name = input.dataset.formField;
+                        var required = input.dataset.formRequired === "true";
+                        var isFile = input.dataset.formFile === "true";
+
+                        if (isFile) {
+                            var file = input.files && input.files[0];
+                            if (!file) {
+                                if (required) {
+                                    throw new Error("Thiếu file bắt buộc: " + name);
+                                }
+                                return;
+                            }
+
+                            formData.append(name, file);
+                            bodyPreview[name] = {
+                                fileName: file.name,
+                                size: file.size,
+                                contentType: file.type || "application/octet-stream"
+                            };
+                            curlFormFields.push({
+                                name: name,
+                                value: "@<path-to-" + file.name + ">"
+                            });
+                            return;
+                        }
+
+                        var value = input.value.trim();
+                        if (!value) {
+                            if (required) {
+                                throw new Error("Thiếu form field bắt buộc: " + name);
+                            }
+                            return;
+                        }
+
+                        formData.append(name, value);
+                        bodyPreview[name] = value;
+                        curlFormFields.push({ name: name, value: value });
+                    });
+
+                options.body = formData;
+            } else {
+                var bodyText = bodyInput.value.trim();
+                if (bodyText && !["GET", "HEAD"].includes(item.method)) {
+                    headers["Content-Type"] = "application/json";
+                    bodyPreview = JSON.parse(bodyText);
+                    options.body = bodyText;
+                }
             }
 
-            lastCurl = buildCurl(url.toString(), options);
-            return { url: url.toString(), options: options };
+            lastCurl = buildCurl(url.toString(), options, curlFormFields);
+            return {
+                url: url.toString(),
+                options: options,
+                bodyPreview: bodyPreview
+            };
         }
 
-        function buildCurl(url, options) {
+        function buildCurl(url, options, curlFormFields) {
             var parts = ["curl", "-X", options.method, quoteForCurl(url)];
             Object.keys(options.headers || {}).forEach(function (key) {
                 parts.push("-H", quoteForCurl(key + ": " + options.headers[key]));
             });
-            if (options.body) {
+
+            (curlFormFields || []).forEach(function (field) {
+                parts.push("-F", quoteForCurl(field.name + "=" + field.value));
+            });
+
+            if (options.body && !(options.body instanceof FormData)) {
                 parts.push("-d", quoteForCurl(options.body));
             }
             return parts.join(" ");
@@ -704,7 +1257,10 @@
         async function sendApi() {
             try {
                 var request = buildApiRequest();
-                appendLog(apiLog, "REQUEST " + request.options.method + " " + request.url, request.options.body ? JSON.parse(request.options.body) : null);
+                appendLog(
+                    apiLog,
+                    "REQUEST " + request.options.method + " " + request.url,
+                    request.bodyPreview);
 
                 var response = await fetch(request.url, request.options);
                 var text = await response.text();
@@ -717,9 +1273,23 @@
                 }
 
                 appendLog(apiLog, "RESPONSE " + response.status + " " + response.statusText, payload);
+                captureAccessToken(payload);
             } catch (error) {
                 appendLog(apiLog, "API error", String(error));
             }
+        }
+
+        function captureAccessToken(payload) {
+            var token = payload &&
+                payload.data &&
+                (payload.data.accessToken || payload.data.AccessToken);
+
+            if (!token) {
+                return;
+            }
+
+            tokenInput.value = token;
+            appendLog(apiLog, "Bearer token updated", { tokenLength: token.length });
         }
 
         async function connectHub() {
@@ -751,9 +1321,12 @@
                 appendLog(hubLog, "Reconnecting", error ? String(error) : "");
             });
 
-            currentConnection.onreconnected(function (connectionId) {
+            currentConnection.onreconnected(async function (connectionId) {
                 setStatus(hubStatus, "connected", "Connected");
                 appendLog(hubLog, "Reconnected", { connectionId: connectionId });
+                if (autoInvokeInput.checked) {
+                    await invokeConfiguredHubMethod("AUTO REJOIN");
+                }
             });
 
             currentConnection.onclose(function (error) {
@@ -772,6 +1345,9 @@
                 disconnectHubButton.disabled = false;
                 invokeButton.disabled = false;
                 appendLog(hubLog, "Connected", { hubUrl: hubUrlInput.value.trim(), events: eventNames });
+                if (autoInvokeInput.checked) {
+                    await invokeConfiguredHubMethod("AUTO JOIN");
+                }
             } catch (error) {
                 setStatus(hubStatus, "error", "Connect failed");
                 appendLog(hubLog, "SignalR connect error", String(error));
@@ -799,14 +1375,22 @@
                 return;
             }
 
+            await invokeConfiguredHubMethod("INVOKE");
+        }
+
+        async function invokeConfiguredHubMethod(logPrefix) {
             try {
                 var method = invokeMethodInput.value.trim();
+                if (!method) {
+                    throw new Error("Invoke method is empty.");
+                }
+
                 var args = JSON.parse(invokeArgsInput.value.trim() || "[]");
                 if (!Array.isArray(args)) {
                     throw new Error("Invoke args must be a JSON array.");
                 }
                 await currentConnection.invoke.apply(currentConnection, [method].concat(args));
-                appendLog(hubLog, "INVOKE " + method, args);
+                appendLog(hubLog, logPrefix + " " + method, args);
             } catch (error) {
                 appendLog(hubLog, "Invoke error", String(error));
             }
@@ -831,6 +1415,7 @@
         }
 
         loadSwaggerButton.addEventListener("click", loadSwagger);
+        endpointSearchInput.addEventListener("input", renderOperationsForActivePage);
         operationSelect.addEventListener("change", renderSelectedOperation);
         sendApiButton.addEventListener("click", sendApi);
         clearApiLogButton.addEventListener("click", function () { apiLog.textContent = ""; });
@@ -839,7 +1424,14 @@
         clearHubLogButton.addEventListener("click", function () { hubLog.textContent = ""; });
         invokeButton.addEventListener("click", invokeHubMethod);
         copyCurlButton.addEventListener("click", copyCurl);
+        applyPresetButton.addEventListener("click", applyActivePreset);
+        showAllButton.addEventListener("click", function () { setActivePage("all", true); });
+        baseUrlInput.addEventListener("change", applyActivePreset);
+        window.addEventListener("hashchange", function () {
+            setActivePage(resolveInitialPageId(), false);
+        });
 
+        setActivePage(resolveInitialPageId(), false);
         loadSwagger();
     </script>
 </body>

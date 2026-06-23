@@ -1,5 +1,6 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Hubs;
 using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
@@ -14,6 +15,9 @@ public class AttendanceRecordService : IAttendanceRecordService
     private readonly IAttendanceSessionRepository _sessionRepo;
     private readonly IClassRepository _classRepo;
     private readonly ICurrentUserService _currentUser;
+    private readonly INotificationDispatcher _notifications;
+    private readonly IRealtimeEventDispatcher _realtime;
+    private readonly IStorageService _storage;
     private readonly AppDbContext _context;
 
     public AttendanceRecordService(
@@ -21,12 +25,18 @@ public class AttendanceRecordService : IAttendanceRecordService
         IAttendanceSessionRepository sessionRepo,
         IClassRepository classRepo,
         ICurrentUserService currentUser,
+        INotificationDispatcher notifications,
+        IRealtimeEventDispatcher realtime,
+        IStorageService storage,
         AppDbContext context)
     {
         _repo = repo;
         _sessionRepo = sessionRepo;
         _classRepo = classRepo;
         _currentUser = currentUser;
+        _notifications = notifications;
+        _realtime = realtime;
+        _storage = storage;
         _context = context;
     }
 
@@ -85,6 +95,7 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await _repo.AddAsync(entity);
         await UpdateSessionRecognizedCountAsync(dto.SessionId);
+        await DispatchAttendanceProgressAsync(entity, "created");
         return await AcademicMapper.MapRecordAsync(_context, entity, null);
     }
 
@@ -114,6 +125,7 @@ public class AttendanceRecordService : IAttendanceRecordService
                 existing.Method = dto.Method;
                 existing.CheckinAt = now;
                 await _repo.UpdateAsync(existing);
+                await DispatchAttendanceProgressAsync(existing, "updated");
                 results.Add(await AcademicMapper.MapRecordAsync(_context, existing, null));
                 continue;
             }
@@ -134,7 +146,10 @@ public class AttendanceRecordService : IAttendanceRecordService
             await _repo.AddRangeAsync(records);
 
         foreach (var record in records)
+        {
+            await DispatchAttendanceProgressAsync(record, "created");
             results.Add(await AcademicMapper.MapRecordAsync(_context, record, null));
+        }
 
         await UpdateSessionRecognizedCountAsync(sessionId);
         return results;
@@ -160,6 +175,7 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await _repo.UpdateAsync(entity);
         await UpdateSessionRecognizedCountAsync(entity.SessionId);
+        await DispatchAttendanceProgressAsync(entity, "updated");
         return true;
     }
 
@@ -173,8 +189,12 @@ public class AttendanceRecordService : IAttendanceRecordService
         if (session != null) await EnsureSessionAccessAsync(session);
 
         var user = await _currentUser.GetRequiredUserAsync();
+        var snapshotPath = entity.SnapshotPath;
         await _repo.SoftDeleteAsync(entity, user.Id);
+        if (!string.IsNullOrWhiteSpace(snapshotPath))
+            await _storage.DeleteAsync(StorageService.AttendanceSnapshotsBucket, snapshotPath);
         await UpdateSessionRecognizedCountAsync(entity.SessionId);
+        await DispatchAttendanceProgressAsync(entity, "deleted");
         return true;
     }
 
@@ -199,6 +219,62 @@ public class AttendanceRecordService : IAttendanceRecordService
         session.TotalRecognized = count;
         session.UpdatedAt = DateTime.UtcNow;
         await _sessionRepo.UpdateAsync(session);
+    }
+
+    private async Task DispatchAttendanceProgressAsync(AttendanceRecord entity, string action)
+    {
+        var session = await _context.AttendanceSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == entity.SessionId);
+        if (session == null) return;
+
+        var student = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == entity.StudentId);
+
+        var totalRecognized = await _context.AttendanceRecords.CountAsync(r =>
+            r.SessionId == entity.SessionId && r.Status == AttendanceStatus.Present);
+        var totalStudents = await _context.ClassEnrollments.CountAsync(e =>
+            e.ClassId == session.ClassId && e.Status == EnrollmentStatus.Active);
+
+        var payload = new
+        {
+            sessionId = entity.SessionId,
+            session.ClassId,
+            recordId = entity.Id,
+            entity.StudentId,
+            fullName = student?.FullName,
+            entity.Status,
+            entity.Method,
+            entity.ConfidenceScore,
+            entity.SnapshotPath,
+            entity.CheckinAt,
+            totalRecognized,
+            totalStudents
+        };
+
+        await _realtime.PushAttendanceSessionAsync(entity.SessionId, HubEvents.AttendanceProgressChanged, payload);
+        var cls = await _context.Classes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == session.ClassId && c.DeletedAt == null);
+
+        await _realtime.PublishDataChangedAsync(
+            "attendance-records",
+            action,
+            institutionId: cls?.InstitutionId,
+            lecturerId: cls?.LecturerId,
+            userId: entity.StudentId,
+            data: payload);
+
+        if (entity.Status == AttendanceStatus.Present)
+        {
+            await _notifications.SendToUserAsync(
+                entity.StudentId,
+                "Điểm danh thành công",
+                "Bạn đã được ghi nhận có mặt trong ca điểm danh.",
+                NotificationType.AttendanceSessionStarted,
+                ReferenceTypeEnum.AttendanceSession,
+                entity.SessionId);
+        }
     }
 
     private async Task EnsureRecordAccessAsync(AttendanceRecord entity)

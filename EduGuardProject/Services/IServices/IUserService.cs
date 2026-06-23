@@ -9,6 +9,7 @@ namespace EduGuardProject.Services.IServices
         Task<UserResponseDto?> GetUserByIdAsync(Guid id);
         Task<UserResponseDto> CreateUserAsync(CreateUserDto dto);
         Task<bool> UpdateUserAsync(Guid id, UpdateUserDto dto);
+        Task<bool> UpdateMyProfileAsync(Guid id, UpdateMyProfileDto dto);
         Task<bool> DeleteUserAsync(Guid id);
     }
 }

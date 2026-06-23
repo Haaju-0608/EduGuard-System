@@ -1,11 +1,12 @@
 using System.Security.Claims;
-using System.IdentityModel.Tokens.Jwt;
 using EduGuardProject.Models;
+using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace EduGuardProject.Hubs;
 
+[Authorize]
 public abstract class EduGuardHubBase : Hub
 {
     protected readonly AppDbContext DbContext;
@@ -23,8 +24,14 @@ public abstract class EduGuardHubBase : Hub
 
     protected async Task<User> GetRequiredCurrentUserAsync()
     {
-        if (!TryGetUserIdFromClaimsOrToken(out var userId))
+        var userIdText = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier)
+            ?? Context.User?.FindFirstValue("sub");
+
+        if (Context.User?.Identity?.IsAuthenticated != true ||
+            !Guid.TryParse(userIdText, out var userId))
+        {
             throw new HubException("User is not authenticated.");
+        }
 
         var user = await DbContext.Users
             .AsNoTracking()
@@ -34,40 +41,6 @@ public abstract class EduGuardHubBase : Hub
             throw new HubException("User profile was not found or is inactive.");
 
         return user;
-    }
-
-    private bool TryGetUserIdFromClaimsOrToken(out Guid userId)
-    {
-        var userIdText = Context.User?.FindFirstValue(ClaimTypes.NameIdentifier)
-            ?? Context.User?.FindFirstValue("sub");
-
-        if (Guid.TryParse(userIdText, out userId))
-            return true;
-
-        var httpContext = Context.GetHttpContext();
-        var token = httpContext?.Request.Query["access_token"].ToString();
-
-        if (string.IsNullOrWhiteSpace(token))
-        {
-            var authHeader = httpContext?.Request.Headers.Authorization.ToString();
-            if (!string.IsNullOrWhiteSpace(authHeader) &&
-                authHeader.StartsWith("Bearer ", StringComparison.OrdinalIgnoreCase))
-            {
-                token = authHeader["Bearer ".Length..].Trim();
-            }
-        }
-
-        if (string.IsNullOrWhiteSpace(token))
-            return false;
-
-        var handler = new JwtSecurityTokenHandler();
-        if (!handler.CanReadToken(token))
-            return false;
-
-        var jwtToken = handler.ReadJwtToken(token);
-        var sub = jwtToken.Claims.FirstOrDefault(c => c.Type == "sub")?.Value;
-
-        return Guid.TryParse(sub, out userId);
     }
 
     protected static bool IsAdminForInstitution(User user, Guid institutionId)

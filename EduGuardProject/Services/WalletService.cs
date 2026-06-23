@@ -1,5 +1,6 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Hubs;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
@@ -10,11 +11,19 @@ namespace EduGuardProject.Services
     {
         private readonly AppDbContext _context;
         private readonly IConfiguration _configuration;
+        private readonly IRealtimeEventDispatcher _realtime;
+        private readonly INotificationDispatcher _notifications;
 
-        public WalletService(AppDbContext context, IConfiguration configuration)
+        public WalletService(
+            AppDbContext context,
+            IConfiguration configuration,
+            IRealtimeEventDispatcher realtime,
+            INotificationDispatcher notifications)
         {
             _context = context;
             _configuration = configuration;
+            _realtime = realtime;
+            _notifications = notifications;
         }
 
         public async Task<WalletResponseDto?> GetWalletByInstitutionIdAsync(Guid institutionId)
@@ -38,88 +47,77 @@ namespace EduGuardProject.Services
         {
             var query = _context.Transactions.Where(t => t.WalletId == walletId);
 
-            // Đếm tổng số lượng để làm Metadata
             var totalItems = await query.CountAsync();
 
-            // Lấy dữ liệu theo trang
-            var data = await query
+            var transactions = await query
+                .AsNoTracking()
                 .OrderByDescending(t => t.CreatedAt)
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
-                .Select(t => new TransactionResponseDto
-                {
-                    Id = t.Id,
-                    Amount = t.Amount,
-                    Type = t.Type.ToString(),
-                    Status = t.Status.ToString(),
-                    Description = t.Description,
-                    CreatedAt = t.CreatedAt,
-                    ProcessedAt = t.ProcessedAt
-                })
                 .ToListAsync();
 
+            var data = transactions.Select(MapTransaction).ToList();
             return (data, totalItems);
         }
 
         public async Task<TransactionResponseDto> ProcessTopUpAsync(TopUpRequestDto dto)
         {
-            // 1. Tìm ví của Institution
             var wallet = await _context.Wallets
                 .FirstOrDefaultAsync(w => w.InstitutionId == dto.InstitutionId);
 
             if (wallet == null)
-                throw new Exception("Không tìm thấy ví của trường học này.");
+                throw new InvalidOperationException("Không tìm thấy ví của trường học này.");
 
             if (dto.Amount <= 0)
-                throw new Exception("Số tiền nạp phải lớn hơn 0.");
+                throw new InvalidOperationException("Số tiền nạp phải lớn hơn 0.");
 
-            // 2. Tạo Transaction lịch sử
             var transaction = new Transaction
             {
+                Id = Guid.NewGuid(),
                 WalletId = wallet.Id,
                 Amount = dto.Amount,
                 Type = TransactionType.TOP_UP,
-                Status = TransactionStatus.SUCCESS, // Nạp trực tiếp nên thành công luôn
+                Status = TransactionStatus.SUCCESS,
                 Description = dto.Description ?? "Nạp tiền vào ví hệ thống",
-                ProcessedAt = DateTime.UtcNow
+                ProcessedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
             };
 
-            // 3. Cộng tiền vào ví
             wallet.Balance += dto.Amount;
             wallet.UpdatedAt = DateTime.UtcNow;
 
-            // 4. Lưu tất cả vào DB (EF Core sẽ tự động quản lý transaction nếu 1 trong 2 lỗi)
             _context.Transactions.Add(transaction);
             _context.Wallets.Update(wallet);
 
             await _context.SaveChangesAsync();
+            await DispatchWalletUpdatedAsync(wallet, transaction, dto.Amount);
 
-            return new TransactionResponseDto
-            {
-                Id = transaction.Id,
-                Amount = transaction.Amount,
-                Type = transaction.Type.ToString(),
-                Status = transaction.Status.ToString(),
-                Description = transaction.Description,
-                CreatedAt = transaction.CreatedAt,
-                ProcessedAt = transaction.ProcessedAt
-            };
+            return MapTransaction(transaction);
         }
 
-        //Phần VN Pay
         public async Task<string> ProcessTopUpAsync(TopUpRequestDto dto, HttpContext httpContext)
         {
+            var wallet = await _context.Wallets
+                .FirstOrDefaultAsync(w => w.InstitutionId == dto.InstitutionId);
+
+            if (wallet == null)
+                throw new InvalidOperationException("Không tìm thấy ví của trường học này.");
+
+            if (dto.Amount <= 0)
+                throw new InvalidOperationException("Số tiền nạp phải lớn hơn 0.");
+
             var vnpay = new VnPayLibrary();
 
-            // 1. Lấy cấu hình từ appsettings.json
-            string tmnCode = _configuration["VnPay:TmnCode"];
-            string hashSecret = _configuration["VnPay:HashSecret"];
-            string baseUrl = _configuration["VnPay:BaseUrl"];
+            string tmnCode = _configuration["VnPay:TmnCode"]
+                ?? throw new InvalidOperationException("VnPay:TmnCode is not configured.");
+            string hashSecret = _configuration["VnPay:HashSecret"]
+                ?? throw new InvalidOperationException("VnPay:HashSecret is not configured.");
+            string baseUrl = _configuration["VnPay:BaseUrl"]
+                ?? throw new InvalidOperationException("VnPay:BaseUrl is not configured.");
 
-            // 2. Ép kiểu số tiền sang long và nhân 100 (Tuyệt đối không để dính dấu thập phân)
             long amountInCents = (long)(dto.Amount * 100);
 
-            // 3. Đưa dữ liệu vào bộ thư viện VnPayLibrary mới cập nhật
             vnpay.AddRequestData("vnp_Version", "2.1.0");
             vnpay.AddRequestData("vnp_Command", "pay");
             vnpay.AddRequestData("vnp_TmnCode", tmnCode);
@@ -127,35 +125,50 @@ namespace EduGuardProject.Services
             vnpay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
             vnpay.AddRequestData("vnp_CurrCode", "VND");
 
-            // 🔥 BẪY IP: Không dùng httpContext để lấy IP lúc test Local/Ngrok (tránh bị dính "::1")
-            // Ép cứng luôn IPv4 chuẩn này để VNPay Sandbox không bắt bẻ chữ ký
-            string ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();
-
-            if (string.IsNullOrEmpty(ipAddress) || ipAddress == "::1")
-            {
-                ipAddress = "14.169.25.10"; // test tạm IPv4 public
-            }
-
+            string ipAddress = ResolveVnPayIpAddress(httpContext);
             vnpay.AddRequestData("vnp_IpAddr", ipAddress);
 
             vnpay.AddRequestData("vnp_Locale", "vn");
             vnpay.AddRequestData("vnp_OrderInfo", "NapTienVi_EduGuard");
             vnpay.AddRequestData("vnp_OrderType", "other");
 
-            // 🔥 BẪY URL RETURN: Khớp hoàn toàn với Route [HttpGet("vnpay-return")] ở Controller của bạn
-            // Hãy lấy chính xác link Ngrok đang active của bạn điền vào đây
-            string returnUrl = _configuration["VnPay:ReturnUrl"];
+            string returnUrl = _configuration["VnPay:ReturnUrl"]
+                ?? throw new InvalidOperationException("VnPay:ReturnUrl is not configured.");
             vnpay.AddRequestData("vnp_ReturnUrl", returnUrl);
 
-            // Mã giao dịch duy nhất (Ví dụ dùng Guid hoặc Id tự tăng từ DB)
-            string txnRef = Guid.NewGuid().ToString().Substring(0, 8);
+            string txnRef = Guid.NewGuid().ToString("N")[..16];
+            var transaction = new Transaction
+            {
+                Id = Guid.NewGuid(),
+                WalletId = wallet.Id,
+                VnpayRef = txnRef,
+                Amount = dto.Amount,
+                Type = TransactionType.TOP_UP,
+                Status = TransactionStatus.PENDING,
+                Description = dto.Description ?? "Nạp tiền vào ví qua VNPay",
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+
+            _context.Transactions.Add(transaction);
+            await _context.SaveChangesAsync();
+            await _realtime.PublishDataChangedAsync(
+                "transactions",
+                "created",
+                institutionId: wallet.InstitutionId,
+                data: new
+                {
+                    transactionId = transaction.Id,
+                    walletId = wallet.Id,
+                    transaction.Amount,
+                    transaction.Type,
+                    transaction.Status,
+                    transaction.CreatedAt
+                });
+
             vnpay.AddRequestData("vnp_TxnRef", txnRef);
 
-            // 4. Tiến hành sinh URL (Sử dụng hàm băm tự động sửa lỗi %20 và chữ HOA)
             string paymentUrl = vnpay.CreateRequestUrl(baseUrl, hashSecret);
-            Console.WriteLine("========= FINAL PAYMENT URL =========");
-            Console.WriteLine(paymentUrl);
-            Console.WriteLine("=====================================");
 
             return paymentUrl;
         }
@@ -164,36 +177,138 @@ namespace EduGuardProject.Services
         {
             var vnpay = new VnPayLibrary();
 
-            // 1. Đọc toàn bộ Query string do VNPay gửi về đưa vào Library
             foreach (var key in query.Keys)
             {
                 if (!string.IsNullOrEmpty(key) && key.StartsWith("vnp_"))
                 {
-                    vnpay.AddResponseData(key, query[key]);
+                    vnpay.AddResponseData(key, query[key].ToString());
                 }
             }
 
-            // 2. Lấy chữ ký do VNPay gửi qua và mã Secret Key trong máy của bạn
-            string vnp_SecureHash = query["vnp_SecureHash"];
-            string secretKey = _configuration["VnPay:HashSecret"];
+            string vnpSecureHash = query["vnp_SecureHash"].ToString();
+            if (string.IsNullOrWhiteSpace(vnpSecureHash))
+                return false;
 
-            // 3. Xác thực chữ ký song phương
-            bool isValidSignature = vnpay.ValidateSignature(vnp_SecureHash, secretKey);
+            string secretKey = _configuration["VnPay:HashSecret"]
+                ?? throw new InvalidOperationException("VnPay:HashSecret is not configured.");
+
+            bool isValidSignature = vnpay.ValidateSignature(vnpSecureHash, secretKey);
 
             if (isValidSignature)
             {
-                string responseCode = query["vnp_ResponseCode"];
+                string responseCode = query["vnp_ResponseCode"].ToString();
                 if (responseCode == "00")
                 {
-                    // Giao dịch thành công quả quyết! 
-                    // Thực hiện logic cộng tiền vào DB của bạn ở đây...
+                    string txnRef = query["vnp_TxnRef"].ToString();
+                    var transaction = await _context.Transactions
+                        .Include(t => t.Wallet)
+                        .FirstOrDefaultAsync(t => t.VnpayRef == txnRef);
+
+                    if (transaction == null)
+                        return false;
+
+                    if (!transaction.Status.IsSuccess())
+                    {
+                        transaction.Status = TransactionStatus.SUCCESS;
+                        transaction.ProcessedAt = DateTime.UtcNow;
+                        transaction.UpdatedAt = DateTime.UtcNow;
+                        transaction.Wallet.Balance += transaction.Amount;
+                        transaction.Wallet.UpdatedAt = DateTime.UtcNow;
+                        await _context.SaveChangesAsync();
+
+                        await DispatchWalletUpdatedAsync(transaction.Wallet, transaction, transaction.Amount);
+                    }
 
                     return true;
                 }
+
+                string failedTxnRef = query["vnp_TxnRef"].ToString();
+                var failedTransaction = await _context.Transactions
+                    .FirstOrDefaultAsync(t => t.VnpayRef == failedTxnRef);
+                if (failedTransaction != null && failedTransaction.Status.IsPending())
+                {
+                    failedTransaction.Status = TransactionStatus.FAILED;
+                    failedTransaction.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    var failedWallet = await _context.Wallets
+                        .AsNoTracking()
+                        .FirstOrDefaultAsync(w => w.Id == failedTransaction.WalletId);
+
+                    await _realtime.PublishDataChangedAsync(
+                        "transactions",
+                        "failed",
+                        institutionId: failedWallet?.InstitutionId,
+                        data: new
+                        {
+                            transactionId = failedTransaction.Id,
+                            failedTransaction.WalletId,
+                            failedTransaction.Amount,
+                            failedTransaction.Type,
+                            failedTransaction.Status,
+                            failedTransaction.UpdatedAt
+                        });
+                }
             }
 
-            // Chữ ký sai hoặc giao dịch thất bại (Hủy thanh toán)
             return false;
         }
+
+        private string ResolveVnPayIpAddress(HttpContext httpContext)
+        {
+            var ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();
+            if (!string.IsNullOrWhiteSpace(ipAddress) &&
+                ipAddress != "::1" &&
+                ipAddress != "127.0.0.1")
+            {
+                return ipAddress;
+            }
+
+            return _configuration["VnPay:DefaultIpAddress"] ?? "127.0.0.1";
+        }
+
+        private async Task DispatchWalletUpdatedAsync(Wallet wallet, Transaction transaction, decimal amount)
+        {
+            var payload = new
+            {
+                wallet.InstitutionId,
+                walletId = wallet.Id,
+                wallet.Balance,
+                amount,
+                transactionId = transaction.Id,
+                transaction.Status,
+                transaction.ProcessedAt
+            };
+
+            await _realtime.PushInstitutionAdminsAsync(wallet.InstitutionId, HubEvents.WalletBalanceUpdated, payload);
+            await _realtime.PublishDataChangedAsync(
+                "wallet",
+                "updated",
+                institutionId: wallet.InstitutionId,
+                data: payload);
+            await _realtime.PublishDataChangedAsync(
+                "transactions",
+                "succeeded",
+                institutionId: wallet.InstitutionId,
+                data: payload);
+            await _notifications.SendToInstitutionAdminsAsync(
+                wallet.InstitutionId,
+                "Nạp tiền thành công",
+                $"Ví đã được cập nhật thêm {amount:N0} {wallet.Currency}.",
+                NotificationType.LowBalanceAlert,
+                ReferenceTypeEnum.Transaction,
+                transaction.Id);
+        }
+
+        private static TransactionResponseDto MapTransaction(Transaction transaction) => new()
+        {
+            Id = transaction.Id,
+            WalletId = transaction.WalletId,
+            Amount = transaction.Amount,
+            Type = transaction.Type.ToCanonicalName(),
+            Status = transaction.Status.ToCanonicalName(),
+            Description = transaction.Description,
+            CreatedAt = transaction.CreatedAt,
+            ProcessedAt = transaction.ProcessedAt
+        };
     }
 }

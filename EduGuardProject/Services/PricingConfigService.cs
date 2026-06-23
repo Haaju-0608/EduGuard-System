@@ -9,10 +9,12 @@ namespace EduGuardProject.Services
     public class PricingConfigService : IPricingConfigService
     {
         private readonly IPricingConfigRepository _repo;
+        private readonly IRealtimeEventDispatcher _realtime;
 
-        public PricingConfigService(IPricingConfigRepository repo)
+        public PricingConfigService(IPricingConfigRepository repo, IRealtimeEventDispatcher realtime)
         {
             _repo = repo;
+            _realtime = realtime;
         }
 
         public async Task<IEnumerable<PricingConfigResponseDto>> GetAllConfigsAsync()
@@ -35,6 +37,9 @@ namespace EduGuardProject.Services
 
         public async Task<PricingConfigResponseDto> CreateConfigAsync(CreatePricingConfigDto dto, Guid adminId)
         {
+            if (dto.UnitPrice <= 0)
+                throw new InvalidOperationException("Đơn giá phải lớn hơn 0.");
+
             // LOGIC: Tắt cấu hình giá đang hoạt động cũ của dịch vụ này đi
             var currentActive = await _repo.GetActiveConfigByServiceTypeAsync(dto.ServiceType);
             if (currentActive != null)
@@ -42,6 +47,7 @@ namespace EduGuardProject.Services
                 currentActive.IsActive = false;
                 currentActive.UpdatedAt = DateTime.UtcNow;
                 await _repo.UpdateAsync(currentActive);
+                await PublishPricingChangedAsync(currentActive, "deactivated");
             }
 
             // Tạo cấu hình giá mới
@@ -58,8 +64,22 @@ namespace EduGuardProject.Services
             };
 
             await _repo.AddAsync(newConfig);
+            await PublishPricingChangedAsync(newConfig, "created");
             return MapToDto(newConfig);
         }
+
+        private Task PublishPricingChangedAsync(PricingConfig config, string action) =>
+            _realtime.PublishDataChangedAsync(
+                "pricing-configs",
+                action,
+                data: new
+                {
+                    pricingConfigId = config.Id,
+                    config.ServiceType,
+                    config.UnitPrice,
+                    config.EffectiveDate,
+                    config.IsActive
+                });
 
         private static PricingConfigResponseDto MapToDto(PricingConfig p) => new()
         {

@@ -12,51 +12,50 @@ namespace EduGuardProject.Services
     {
         private readonly AppDbContext _context;
         private readonly Supabase.Client _supabaseClient; // Tiêm client Supabase vào đây
+        private readonly INotificationDispatcher _notifications;
+        private readonly IRealtimeEventDispatcher _realtime;
 
-        public AuthService(AppDbContext context, Supabase.Client supabaseClient)
+        public AuthService(
+            AppDbContext context,
+            Supabase.Client supabaseClient,
+            INotificationDispatcher notifications,
+            IRealtimeEventDispatcher realtime)
         {
             _context = context;
             _supabaseClient = supabaseClient;
+            _notifications = notifications;
+            _realtime = realtime;
         }
 
         // CHỨC NĂNG ĐĂNG NHẬP (LOGIN)
         public async Task<LoginResponseDto?> LoginAsync(LoginRequestDto request)
         {
-            try
+            var session = await _supabaseClient.Auth.SignIn(request.Email, request.Password);
+
+            if (session == null || string.IsNullOrEmpty(session.AccessToken))
             {
-                // Bước 1: Gọi lên Supabase Auth để xác thực tài khoản
-                var session = await _supabaseClient.Auth.SignIn(request.Email, request.Password);
-
-                if (session == null || string.IsNullOrEmpty(session.AccessToken))
-                {
-                    return null;
-                }
-
-                // Bước 2: Tìm thông tin chi tiết (Role, InstitutionId) của User đó trong Database local của mình
-                var userDetail = await _context.Users
-                    .FirstOrDefaultAsync(u => u.Email.ToLower() == request.Email.ToLower());
-
-                if (userDetail == null)
-                {
-                    throw new Exception("Tài khoản tồn tại trên Auth hệ thống nhưng không tìm thấy dữ liệu phân quyền trong Database.");
-                }
-
-                // Bước 3: Đóng gói toàn bộ thông tin trả về cho Controller
-                return new LoginResponseDto
-                {
-                    AccessToken = session.AccessToken,
-                    RefreshToken = session.RefreshToken ?? string.Empty,
-                    ExpiresIn = (int)session.ExpiresIn,
-                    FullName = userDetail.FullName,
-                    Role = userDetail.Role,
-                    InstitutionId = userDetail.InstitutionId
-                };
+                return null;
             }
-            catch (Exception ex)
+
+            var normalizedEmail = request.Email.Trim().ToLower();
+            var userDetail = await _context.Users
+                .FirstOrDefaultAsync(user => user.Email.ToLower() == normalizedEmail);
+
+            if (userDetail == null)
             {
-                // Có thể bổ sung Log lỗi ở đây
-                throw new Exception(ex.Message);
+                throw new InvalidOperationException(
+                    "Tài khoản tồn tại trên Auth hệ thống nhưng không tìm thấy dữ liệu phân quyền trong Database.");
             }
+
+            return new LoginResponseDto
+            {
+                AccessToken = session.AccessToken,
+                RefreshToken = session.RefreshToken ?? string.Empty,
+                ExpiresIn = (int)session.ExpiresIn,
+                FullName = userDetail.FullName,
+                Role = userDetail.Role,
+                InstitutionId = userDetail.InstitutionId
+            };
         }
 
         // CHỨC NĂNG TIẾP NHẬN ĐĂNG KÝ TRƯỜNG HỌC (CONTACT)
@@ -75,6 +74,23 @@ namespace EduGuardProject.Services
 
             _context.ContactRequests.Add(newContact);
             var result = await _context.SaveChangesAsync();
+            if (result > 0)
+            {
+                await _notifications.PushContactRequestAsync(newContact);
+                await _realtime.PublishDataChangedAsync(
+                    "contact-requests",
+                    "created",
+                    data: new
+                    {
+                        newContact.Id,
+                        newContact.SchoolName,
+                        newContact.ContactPersonName,
+                        newContact.Email,
+                        newContact.PhoneNumber,
+                        newContact.Status,
+                        newContact.CreatedAt
+                    });
+            }
 
             return result > 0;
         }

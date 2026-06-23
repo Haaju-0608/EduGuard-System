@@ -1,5 +1,6 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Hubs;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
@@ -9,10 +10,12 @@ namespace EduGuardProject.Services
     public class NotificationService : INotificationService
     {
         private readonly AppDbContext _context;
+        private readonly IRealtimeEventDispatcher _realtime;
 
-        public NotificationService(AppDbContext context)
+        public NotificationService(AppDbContext context, IRealtimeEventDispatcher realtime)
         {
             _context = context;
+            _realtime = realtime;
         }
 
         // ================= 1. BẮN THÔNG BÁO (INTERNAL) =================
@@ -35,6 +38,27 @@ namespace EduGuardProject.Services
 
             _context.Notifications.Add(notification);
             await _context.SaveChangesAsync();
+
+            var payload = new
+            {
+                notification.Id,
+                notification.UserId,
+                notification.Title,
+                notification.Body,
+                notification.Type,
+                notification.SentVia,
+                notification.ReferenceId,
+                notification.ReferenceType,
+                notification.IsRead,
+                notification.CreatedAt
+            };
+
+            await _realtime.PushUserAsync(notification.UserId, HubEvents.NotificationCreated, payload);
+            await _realtime.PublishDataChangedAsync(
+                "notifications",
+                "created",
+                userId: notification.UserId,
+                data: payload);
             return true;
         }
 
@@ -79,6 +103,22 @@ namespace EduGuardProject.Services
             notification.UpdatedAt = DateTime.UtcNow;
             _context.Notifications.Update(notification);
             await _context.SaveChangesAsync();
+
+            var unreadCount = await _context.Notifications.CountAsync(n => n.UserId == userId && !n.IsRead);
+            var payload = new
+            {
+                notificationId,
+                userId,
+                unreadCount,
+                readAt = notification.UpdatedAt
+            };
+
+            await _realtime.PushUserAsync(userId, HubEvents.NotificationRead, payload);
+            await _realtime.PublishDataChangedAsync(
+                "notifications",
+                "read",
+                userId: userId,
+                data: payload);
             return true;
         }
 
@@ -98,6 +138,21 @@ namespace EduGuardProject.Services
 
             _context.Notifications.UpdateRange(unreadNotifications);
             await _context.SaveChangesAsync();
+
+            var payload = new
+            {
+                userId,
+                markedCount = unreadNotifications.Count,
+                unreadCount = 0,
+                readAt = DateTime.UtcNow
+            };
+
+            await _realtime.PushUserAsync(userId, HubEvents.NotificationsRead, payload);
+            await _realtime.PublishDataChangedAsync(
+                "notifications",
+                "read-all",
+                userId: userId,
+                data: payload);
             return true;
         }
     }
