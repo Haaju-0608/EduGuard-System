@@ -16,7 +16,9 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
     {
         var query = _context.AttendanceSessions
             .AsNoTracking()
-            .Where(s => s.Status != SessionStatus.Cancelled);
+            .Where(s =>
+                s.Status != SessionStatus.Cancelled &&
+                _context.Classes.Any(c => c.Id == s.ClassId && c.DeletedAt == null));
 
         if (classId.HasValue)
             query = query.Where(s => s.ClassId == classId.Value);
@@ -42,7 +44,10 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
     }
 
     public Task<AttendanceSession?> GetByIdAsync(Guid id) =>
-        _context.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id && s.Status != SessionStatus.Cancelled);
+        _context.AttendanceSessions.FirstOrDefaultAsync(s =>
+            s.Id == id &&
+            s.Status != SessionStatus.Cancelled &&
+            _context.Classes.Any(c => c.Id == s.ClassId && c.DeletedAt == null));
 
     public async Task AddAsync(AttendanceSession entity)
     {

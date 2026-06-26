@@ -1,3 +1,4 @@
+using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Filters;
 using EduGuardProject.Models;
@@ -17,6 +18,24 @@ namespace EduGuardProject.Controllers
         {
             _notificationService = notificationService;
             _currentUser = currentUser;
+        }
+
+        [HttpPost]
+        [SupabaseAuthorize(AppRole.SuperAdmin)]
+        public async Task<IActionResult> Create([FromBody] CreateNotificationDto dto)
+        {
+            try
+            {
+                var success = await _notificationService.SendNotificationAsync(dto);
+                if (!success)
+                    return BadRequest(ApiResponse<object>.OnFail("Unable to create notification."));
+
+                return StatusCode(201, ApiResponse<object>.OnSuccess(null!, "Notification created successfully."));
+            }
+            catch (Exception ex)
+            {
+                return HandleException(ex);
+            }
         }
 
         [HttpGet("me")]

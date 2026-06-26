@@ -46,6 +46,7 @@ public interface INotificationDispatcher
 
 public interface IRealtimeEventDispatcher
 {
+    Task SendGroupAsync(RealtimeHubKind hub, string group, string eventName, object payload, CancellationToken cancellationToken = default);
     Task PushUserAsync(Guid userId, string eventName, object payload, CancellationToken cancellationToken = default);
     Task PushExamLecturersAsync(Guid examSlotId, string eventName, object payload, CancellationToken cancellationToken = default);
     Task PushExamStudentAsync(Guid examSlotId, Guid studentId, string eventName, object payload, CancellationToken cancellationToken = default);
@@ -64,6 +65,14 @@ public interface IRealtimeEventDispatcher
         Guid? userId = null,
         object? data = null,
         CancellationToken cancellationToken = default);
+}
+
+public enum RealtimeHubKind
+{
+    Notifications,
+    Exams,
+    Attendance,
+    Dashboard
 }
 
 public interface IExamWorkflowService

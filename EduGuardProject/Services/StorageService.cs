@@ -70,13 +70,16 @@ public class StorageService : IStorageService
             throw new UnauthorizedAccessException("Only Super Admin can use the generic storage upload endpoint.");
 
         bucket = NormalizeBucket(bucket);
-        var extension = await ValidateFileAsync(file, GetPolicy(bucket), cancellationToken);
-        var path = BuildBusinessPath(
+        if (bucket == BiometricFacesBucket)
+            throw new InvalidOperationException("Use /api/storage/biometric so raw face images stay tied to a review request.");
+
+        var result = await UploadBusinessFileAsync(
+            file,
+            bucket,
             string.IsNullOrWhiteSpace(folder) ? [] : NormalizeStoragePath(folder).Split('/'),
             actor.Id,
-            extension);
-
-        var result = await UploadObjectAsync(file, bucket, path, upsert, cancellationToken);
+            upsert,
+            cancellationToken);
         await DispatchStorageChangedAsync("uploaded", result, actor, actor.InstitutionId, cancellationToken);
         LogUpload(actor, result, file.FileName);
         return result;
@@ -90,30 +93,31 @@ public class StorageService : IStorageService
         var actor = await _currentUser.GetRequiredUserAsync();
         var datum = await _context.BiometricData
             .Include(b => b.User)
+            .Include(b => b.BioRequest)
             .FirstOrDefaultAsync(b => b.Id == biometricDataId, cancellationToken)
             ?? throw new InvalidOperationException("Biometric data was not found.");
 
         EnsureBiometricAccess(actor, datum.User);
+        EnsureTemporaryBiometricUpload(datum);
         var institutionId = RequireInstitution(datum.User);
-        var extension = await ValidateFileAsync(file, StoragePolicy.Images, cancellationToken);
-        var path = BuildBusinessPath([institutionId.ToString("N"), datum.UserId.ToString("N")], datum.UserId, extension);
-        var previousPath = datum.FaceImageUrl;
 
         return await UploadAndPersistAsync(
             file,
-            BiometricFacesBucket,
-            path,
-            previousPath,
-            actor,
-            institutionId,
-            "biometricDataId",
-            datum.Id,
-            async uploadedPath =>
-            {
-                datum.FaceImageUrl = uploadedPath;
-                datum.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync(cancellationToken);
-            },
+            new StorageUploadPlan(
+                BiometricFacesBucket,
+                [institutionId.ToString("N"), datum.UserId.ToString("N")],
+                datum.UserId,
+                datum.FaceImageUrl,
+                actor,
+                institutionId,
+                "biometricDataId",
+                datum.Id,
+                async uploadedPath =>
+                {
+                    datum.FaceImageUrl = uploadedPath;
+                    datum.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }),
             cancellationToken);
     }
 
@@ -131,27 +135,23 @@ public class StorageService : IStorageService
 
         EnsureAttendanceRecordAccess(actor, record);
         var institutionId = record.Session.Class.InstitutionId;
-        var extension = await ValidateFileAsync(file, StoragePolicy.Images, cancellationToken);
-        var path = BuildBusinessPath(
-            [institutionId.ToString("N"), record.SessionId.ToString("N")],
-            record.StudentId,
-            extension);
-        var previousPath = record.SnapshotPath;
 
         return await UploadAndPersistAsync(
             file,
-            AttendanceSnapshotsBucket,
-            path,
-            previousPath,
-            actor,
-            institutionId,
-            "attendanceRecordId",
-            record.Id,
-            async uploadedPath =>
-            {
-                record.SnapshotPath = uploadedPath;
-                await _context.SaveChangesAsync(cancellationToken);
-            },
+            new StorageUploadPlan(
+                AttendanceSnapshotsBucket,
+                [institutionId.ToString("N"), record.SessionId.ToString("N")],
+                record.StudentId,
+                record.SnapshotPath,
+                actor,
+                institutionId,
+                "attendanceRecordId",
+                record.Id,
+                async uploadedPath =>
+                {
+                    record.SnapshotPath = uploadedPath;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }),
             cancellationToken);
     }
 
@@ -167,28 +167,24 @@ public class StorageService : IStorageService
             ?? throw new InvalidOperationException("Attendance session was not found.");
 
         EnsureClassStaffAccess(actor, session.Class);
-        var extension = await ValidateFileAsync(file, StoragePolicy.Videos, cancellationToken);
-        var path = BuildBusinessPath(
-            [session.Class.InstitutionId.ToString("N"), session.Id.ToString("N")],
-            session.Id,
-            extension);
-        var previousPath = session.VideoPath;
 
         return await UploadAndPersistAsync(
             file,
-            AttendanceVideosBucket,
-            path,
-            previousPath,
-            actor,
-            session.Class.InstitutionId,
-            "attendanceSessionId",
-            session.Id,
-            async uploadedPath =>
-            {
-                session.VideoPath = uploadedPath;
-                session.UpdatedAt = DateTime.UtcNow;
-                await _context.SaveChangesAsync(cancellationToken);
-            },
+            new StorageUploadPlan(
+                AttendanceVideosBucket,
+                [session.Class.InstitutionId.ToString("N"), session.Id.ToString("N")],
+                session.Id,
+                session.VideoPath,
+                actor,
+                session.Class.InstitutionId,
+                "attendanceSessionId",
+                session.Id,
+                async uploadedPath =>
+                {
+                    session.VideoPath = uploadedPath;
+                    session.UpdatedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }),
             cancellationToken);
     }
 
@@ -202,27 +198,23 @@ public class StorageService : IStorageService
         EnsureParticipationAccess(actor, participation);
 
         var institutionId = participation.ExamSlot.Class.InstitutionId;
-        var extension = await ValidateFileAsync(file, StoragePolicy.Images, cancellationToken);
-        var path = BuildBusinessPath(
-            [institutionId.ToString("N"), participation.ExamSlotId.ToString("N")],
-            participation.StudentId,
-            extension);
-        var previousPath = participation.IdentitySnapshotPath;
 
         return await UploadAndPersistAsync(
             file,
-            ExamIdentityBucket,
-            path,
-            previousPath,
-            actor,
-            institutionId,
-            "participationId",
-            participation.Id,
-            async uploadedPath =>
-            {
-                participation.IdentitySnapshotPath = uploadedPath;
-                await _context.SaveChangesAsync(cancellationToken);
-            },
+            new StorageUploadPlan(
+                ExamIdentityBucket,
+                [institutionId.ToString("N"), participation.ExamSlotId.ToString("N")],
+                participation.StudentId,
+                participation.IdentitySnapshotPath,
+                actor,
+                institutionId,
+                "participationId",
+                participation.Id,
+                async uploadedPath =>
+                {
+                    participation.IdentitySnapshotPath = uploadedPath;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }),
             cancellationToken);
     }
 
@@ -236,27 +228,23 @@ public class StorageService : IStorageService
         EnsureParticipationAccess(actor, participation);
 
         var institutionId = participation.ExamSlot.Class.InstitutionId;
-        var extension = await ValidateFileAsync(file, StoragePolicy.Videos, cancellationToken);
-        var path = BuildBusinessPath(
-            [institutionId.ToString("N"), participation.ExamSlotId.ToString("N")],
-            participation.StudentId,
-            extension);
-        var previousPath = participation.RecordingVideoPath;
 
         return await UploadAndPersistAsync(
             file,
-            ExamRecordingsBucket,
-            path,
-            previousPath,
-            actor,
-            institutionId,
-            "participationId",
-            participation.Id,
-            async uploadedPath =>
-            {
-                participation.RecordingVideoPath = uploadedPath;
-                await _context.SaveChangesAsync(cancellationToken);
-            },
+            new StorageUploadPlan(
+                ExamRecordingsBucket,
+                [institutionId.ToString("N"), participation.ExamSlotId.ToString("N")],
+                participation.StudentId,
+                participation.RecordingVideoPath,
+                actor,
+                institutionId,
+                "participationId",
+                participation.Id,
+                async uploadedPath =>
+                {
+                    participation.RecordingVideoPath = uploadedPath;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }),
             cancellationToken);
     }
 
@@ -275,31 +263,27 @@ public class StorageService : IStorageService
 
         EnsureClassStaffAccess(actor, violation.Participation.ExamSlot.Class);
         var institutionId = violation.Participation.ExamSlot.Class.InstitutionId;
-        var extension = await ValidateFileAsync(file, StoragePolicy.Images, cancellationToken);
-        var path = BuildBusinessPath(
-            [
-                institutionId.ToString("N"),
-                violation.Participation.ExamSlotId.ToString("N"),
-                violation.Participation.StudentId.ToString("N")
-            ],
-            violation.Id,
-            extension);
-        var previousPath = violation.EvidencePath;
 
         return await UploadAndPersistAsync(
             file,
-            ExamEvidenceBucket,
-            path,
-            previousPath,
-            actor,
-            institutionId,
-            "violationId",
-            violation.Id,
-            async uploadedPath =>
-            {
-                violation.EvidencePath = uploadedPath;
-                await _context.SaveChangesAsync(cancellationToken);
-            },
+            new StorageUploadPlan(
+                ExamEvidenceBucket,
+                [
+                    institutionId.ToString("N"),
+                    violation.Participation.ExamSlotId.ToString("N"),
+                    violation.Participation.StudentId.ToString("N")
+                ],
+                violation.Id,
+                violation.EvidencePath,
+                actor,
+                institutionId,
+                "violationId",
+                violation.Id,
+                async uploadedPath =>
+                {
+                    violation.EvidencePath = uploadedPath;
+                    await _context.SaveChangesAsync(cancellationToken);
+                }),
             cancellationToken);
     }
 
@@ -464,33 +448,32 @@ public class StorageService : IStorageService
 
     private async Task<StorageUploadResponseDto> UploadAndPersistAsync(
         IFormFile file,
-        string bucket,
-        string path,
-        string? previousPath,
-        User actor,
-        Guid institutionId,
-        string referenceName,
-        Guid referenceId,
-        Func<string, Task> persistMetadata,
+        StorageUploadPlan plan,
         CancellationToken cancellationToken)
     {
-        var result = await UploadObjectAsync(file, bucket, path, upsert: false, cancellationToken);
+        var result = await UploadBusinessFileAsync(
+            file,
+            plan.Bucket,
+            plan.Folders,
+            plan.NameOwnerId,
+            upsert: false,
+            cancellationToken);
 
         try
         {
-            await persistMetadata(result.Path);
+            await plan.PersistMetadata(result.Path);
         }
         catch
         {
-            await TryDeleteObjectAsync(bucket, result.Path, cancellationToken);
+            await TryDeleteObjectAsync(plan.Bucket, result.Path, cancellationToken);
             throw;
         }
 
-        if (!string.IsNullOrWhiteSpace(previousPath))
+        if (!string.IsNullOrWhiteSpace(plan.PreviousPath))
         {
-            var normalizedPreviousPath = NormalizeObjectPathForBucket(bucket, previousPath);
+            var normalizedPreviousPath = NormalizeObjectPathForBucket(plan.Bucket, plan.PreviousPath);
             if (!string.Equals(normalizedPreviousPath, result.Path, StringComparison.OrdinalIgnoreCase))
-                await TryDeleteObjectAsync(bucket, normalizedPreviousPath, cancellationToken);
+                await TryDeleteObjectAsync(plan.Bucket, normalizedPreviousPath, cancellationToken);
         }
 
         var eventData = new
@@ -501,13 +484,27 @@ public class StorageService : IStorageService
             result.Size,
             result.ContentType,
             result.UploadedAt,
-            referenceName,
-            referenceId
+            referenceName = plan.ReferenceName,
+            referenceId = plan.ReferenceId
         };
 
-        await DispatchStorageChangedAsync("uploaded", eventData, actor, institutionId, cancellationToken);
-        LogUpload(actor, result, file.FileName);
+        await DispatchStorageChangedAsync("uploaded", eventData, plan.Actor, plan.InstitutionId, cancellationToken);
+        LogUpload(plan.Actor, result, file.FileName);
         return result;
+    }
+
+    private async Task<StorageUploadResponseDto> UploadBusinessFileAsync(
+        IFormFile file,
+        string bucket,
+        IEnumerable<string> folders,
+        Guid nameOwnerId,
+        bool upsert,
+        CancellationToken cancellationToken)
+    {
+        bucket = NormalizeBucket(bucket);
+        var extension = await ValidateFileAsync(file, GetPolicy(bucket), cancellationToken);
+        var path = BuildBusinessPath(folders, nameOwnerId, extension);
+        return await UploadObjectAsync(file, bucket, path, upsert, cancellationToken, validateFile: false);
     }
 
     private async Task<StorageUploadResponseDto> UploadObjectAsync(
@@ -515,11 +512,13 @@ public class StorageService : IStorageService
         string bucket,
         string path,
         bool upsert,
-        CancellationToken cancellationToken)
+        CancellationToken cancellationToken,
+        bool validateFile = true)
     {
         bucket = NormalizeBucket(bucket);
         path = NormalizeStoragePath(path);
-        await ValidateFileAsync(file, GetPolicy(bucket), cancellationToken);
+        if (validateFile)
+            await ValidateFileAsync(file, GetPolicy(bucket), cancellationToken);
 
         var uploadedAt = DateTime.UtcNow;
         if (UseLocalStorage)
@@ -799,6 +798,13 @@ public class StorageService : IStorageService
         }
 
         throw new UnauthorizedAccessException("You do not have access to this biometric file.");
+    }
+
+    private static void EnsureTemporaryBiometricUpload(BiometricDatum datum)
+    {
+        // ponytail: review-only raw face image; add an audit table if permanent retention becomes required.
+        if (datum.BioRequestId == null || datum.BioRequest?.Status != BiometricReqStatus.Pending)
+            throw new InvalidOperationException("Raw biometric images can only be uploaded for a pending biometric request.");
     }
 
     private static void EnsureAttendanceRecordAccess(User actor, AttendanceRecord record)
@@ -1115,6 +1121,17 @@ public class StorageService : IStorageService
     }
 
     private sealed record StorageAccess(Guid? InstitutionId);
+
+    private sealed record StorageUploadPlan(
+        string Bucket,
+        IEnumerable<string> Folders,
+        Guid NameOwnerId,
+        string? PreviousPath,
+        User Actor,
+        Guid InstitutionId,
+        string ReferenceName,
+        Guid ReferenceId,
+        Func<string, Task> PersistMetadata);
 
     private sealed record StorageObjectEvent(
         string Bucket,

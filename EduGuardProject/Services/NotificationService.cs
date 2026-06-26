@@ -21,12 +21,26 @@ namespace EduGuardProject.Services
         // ================= 1. BẮN THÔNG BÁO (INTERNAL) =================
         public async Task<bool> SendNotificationAsync(CreateNotificationDto dto)
         {
+            if (dto.UserId == Guid.Empty)
+                throw new InvalidOperationException("Notification recipient is required.");
+
+            if (string.IsNullOrWhiteSpace(dto.Title) || string.IsNullOrWhiteSpace(dto.Body))
+                throw new InvalidOperationException("Notification title and body are required.");
+
+            var recipientExists = await _context.Users.AnyAsync(u =>
+                u.Id == dto.UserId &&
+                u.DeletedAt == null &&
+                u.Status == UserStatus.Active);
+
+            if (!recipientExists)
+                throw new InvalidOperationException("Notification recipient not found.");
+
             var notification = new Notification
             {
                 Id = Guid.NewGuid(),
                 UserId = dto.UserId,
-                Title = dto.Title,
-                Body = dto.Body, // Sửa thành Body
+                Title = dto.Title.Trim(),
+                Body = dto.Body.Trim(),
                 Type = dto.Type,
                 SentVia = dto.SentVia,
                 ReferenceId = dto.ReferenceId,

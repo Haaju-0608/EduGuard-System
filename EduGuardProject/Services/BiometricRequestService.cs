@@ -95,6 +95,7 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
+        await DeleteBiometricFilesAsync(entity.Id);
         await _notifications.SendToUserAsync(
             entity.StudentId,
             "Khuôn mặt đã được phê duyệt",
@@ -121,7 +122,7 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
-        await DeleteRejectedBiometricFilesAsync(entity.Id);
+        await DeleteBiometricFilesAsync(entity.Id);
         await _notifications.SendToUserAsync(
             entity.StudentId,
             "Đăng ký khuôn mặt bị từ chối",
@@ -211,7 +212,7 @@ public class BiometricRequestService : IBiometricRequestService
         throw new UnauthorizedAccessException("You cannot review biometric requests from another institution.");
     }
 
-    private async Task DeleteRejectedBiometricFilesAsync(Guid biometricRequestId)
+    private async Task DeleteBiometricFilesAsync(Guid biometricRequestId)
     {
         var paths = await _context.BiometricData
             .AsNoTracking()
@@ -229,7 +230,7 @@ public class BiometricRequestService : IBiometricRequestService
             {
                 _logger.LogWarning(
                     ex,
-                    "Could not delete rejected biometric file {Path} for request {RequestId}.",
+                    "Could not delete biometric review file {Path} for request {RequestId}.",
                     path,
                     biometricRequestId);
             }

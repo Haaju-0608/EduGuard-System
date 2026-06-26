@@ -68,6 +68,9 @@ public class BiometricDatumService : IBiometricDatumService
 
     public async Task<BiometricDatumResponseDto> CreateAsync(CreateBiometricDatumDto dto)
     {
+        if (!string.IsNullOrWhiteSpace(dto.FaceImageUrl))
+            throw new InvalidOperationException("Upload biometric images through /api/storage/biometric.");
+
         var user = await _currentUser.GetRequiredUserAsync();
 
         if (user.Role == AppRole.Student)
@@ -92,7 +95,7 @@ public class BiometricDatumService : IBiometricDatumService
             UserId = dto.UserId,
             BioRequestId = dto.BioRequestId,
             ModelVersion = dto.ModelVersion,
-            FaceImageUrl = dto.FaceImageUrl,
+            FaceImageUrl = null,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
@@ -113,7 +116,7 @@ public class BiometricDatumService : IBiometricDatumService
         if (!string.IsNullOrWhiteSpace(dto.ModelVersion))
             entity.ModelVersion = dto.ModelVersion;
         if (dto.FaceImageUrl != null)
-            entity.FaceImageUrl = dto.FaceImageUrl;
+            throw new InvalidOperationException("Upload biometric images through /api/storage/biometric.");
         if (dto.IsActive.HasValue)
             entity.IsActive = dto.IsActive.Value;
         entity.UpdatedAt = DateTime.UtcNow;

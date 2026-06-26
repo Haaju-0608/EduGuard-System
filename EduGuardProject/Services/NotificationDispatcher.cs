@@ -2,7 +2,6 @@ using EduGuardProject.DTOs.Response;
 using EduGuardProject.Hubs;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.SignalR;
 using Microsoft.EntityFrameworkCore;
 
 namespace EduGuardProject.Services;
@@ -10,16 +9,13 @@ namespace EduGuardProject.Services;
 public class NotificationDispatcher : INotificationDispatcher
 {
     private readonly AppDbContext _context;
-    private readonly IHubContext<NotificationHub> _notificationHub;
     private readonly IRealtimeEventDispatcher _realtime;
 
     public NotificationDispatcher(
         AppDbContext context,
-        IHubContext<NotificationHub> notificationHub,
         IRealtimeEventDispatcher realtime)
     {
         _context = context;
-        _notificationHub = notificationHub;
         _realtime = realtime;
     }
 
@@ -37,9 +33,7 @@ public class NotificationDispatcher : INotificationDispatcher
         await _context.SaveChangesAsync(cancellationToken);
 
         var dto = Map(notification);
-        await _notificationHub.Clients
-            .Group(HubGroups.User(userId))
-            .SendAsync(HubEvents.NotificationCreated, dto, cancellationToken);
+        await _realtime.PushUserAsync(userId, HubEvents.NotificationCreated, dto, cancellationToken);
         await _realtime.PublishDataChangedAsync(
             "notifications",
             "created",
@@ -72,9 +66,7 @@ public class NotificationDispatcher : INotificationDispatcher
         var dtos = notifications.Select(Map).ToList();
         foreach (var dto in dtos)
         {
-            await _notificationHub.Clients
-                .Group(HubGroups.User(dto.UserId))
-                .SendAsync(HubEvents.NotificationCreated, dto, cancellationToken);
+            await _realtime.PushUserAsync(dto.UserId, HubEvents.NotificationCreated, dto, cancellationToken);
             await _realtime.PublishDataChangedAsync(
                 "notifications",
                 "created",
@@ -139,9 +131,7 @@ public class NotificationDispatcher : INotificationDispatcher
             request.CreatedAt
         };
 
-        await _notificationHub.Clients
-            .Group(HubGroups.Role(AppRole.SuperAdmin))
-            .SendAsync(HubEvents.NewSchoolRegistrationRequest, payload, cancellationToken);
+        await _realtime.PushSuperAdminsAsync(HubEvents.NewSchoolRegistrationRequest, payload, cancellationToken);
     }
 
     private static Notification CreateNotification(

@@ -30,17 +30,14 @@ public class StorageController : AcademicApiControllerBase
         [FromForm] GenericStorageUploadRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await _storage.UploadAsync(
+        return await UploadCore(
+            () => _storage.UploadAsync(
                 request.File,
                 request.Bucket,
                 request.Folder,
                 request.Upsert,
-                cancellationToken);
-            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, "File uploaded successfully."));
-        }
-        catch (Exception ex) { return HandleException(ex); }
+                cancellationToken),
+            "File uploaded successfully.");
     }
 
     [HttpPost("biometric")]
@@ -51,15 +48,12 @@ public class StorageController : AcademicApiControllerBase
         [FromForm] BiometricStorageUploadRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await _storage.UploadBiometricAsync(
+        return await UploadCore(
+            () => _storage.UploadBiometricAsync(
                 request.File,
                 request.BiometricDataId,
-                cancellationToken);
-            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, "Biometric image uploaded successfully."));
-        }
-        catch (Exception ex) { return HandleException(ex); }
+                cancellationToken),
+            "Biometric image uploaded successfully.");
     }
 
     [HttpPost("attendance")]
@@ -70,15 +64,12 @@ public class StorageController : AcademicApiControllerBase
         [FromForm] AttendanceSnapshotStorageUploadRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await _storage.UploadAttendanceSnapshotAsync(
+        return await UploadCore(
+            () => _storage.UploadAttendanceSnapshotAsync(
                 request.File,
                 request.AttendanceRecordId,
-                cancellationToken);
-            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, "Attendance snapshot uploaded successfully."));
-        }
-        catch (Exception ex) { return HandleException(ex); }
+                cancellationToken),
+            "Attendance snapshot uploaded successfully.");
     }
 
     [HttpPost("attendance-video")]
@@ -89,15 +80,12 @@ public class StorageController : AcademicApiControllerBase
         [FromForm] AttendanceVideoStorageUploadRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await _storage.UploadAttendanceVideoAsync(
+        return await UploadCore(
+            () => _storage.UploadAttendanceVideoAsync(
                 request.File,
                 request.AttendanceSessionId,
-                cancellationToken);
-            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, "Attendance video uploaded successfully."));
-        }
-        catch (Exception ex) { return HandleException(ex); }
+                cancellationToken),
+            "Attendance video uploaded successfully.");
     }
 
     [HttpPost("exam-identity")]
@@ -108,15 +96,12 @@ public class StorageController : AcademicApiControllerBase
         [FromForm] ExamStorageUploadRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await _storage.UploadExamIdentityAsync(
+        return await UploadCore(
+            () => _storage.UploadExamIdentityAsync(
                 request.File,
                 request.ParticipationId,
-                cancellationToken);
-            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, "Exam identity image uploaded successfully."));
-        }
-        catch (Exception ex) { return HandleException(ex); }
+                cancellationToken),
+            "Exam identity image uploaded successfully.");
     }
 
     [HttpPost("exam-recording")]
@@ -127,15 +112,12 @@ public class StorageController : AcademicApiControllerBase
         [FromForm] ExamStorageUploadRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await _storage.UploadExamRecordingAsync(
+        return await UploadCore(
+            () => _storage.UploadExamRecordingAsync(
                 request.File,
                 request.ParticipationId,
-                cancellationToken);
-            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, "Exam recording uploaded successfully."));
-        }
-        catch (Exception ex) { return HandleException(ex); }
+                cancellationToken),
+            "Exam recording uploaded successfully.");
     }
 
     [HttpPost("evidence")]
@@ -146,15 +128,12 @@ public class StorageController : AcademicApiControllerBase
         [FromForm] EvidenceStorageUploadRequest request,
         CancellationToken cancellationToken = default)
     {
-        try
-        {
-            var result = await _storage.UploadEvidenceAsync(
+        return await UploadCore(
+            () => _storage.UploadEvidenceAsync(
                 request.File,
                 request.ViolationId,
-                cancellationToken);
-            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, "Violation evidence uploaded successfully."));
-        }
-        catch (Exception ex) { return HandleException(ex); }
+                cancellationToken),
+            "Violation evidence uploaded successfully.");
     }
 
     [HttpGet("file")]
@@ -220,6 +199,18 @@ public class StorageController : AcademicApiControllerBase
                 HttpContext.Response.RegisterForDispose(result.Owner);
 
             return File(result.Content, result.ContentType, result.FileName, enableRangeProcessing: true);
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
+    private async Task<IActionResult> UploadCore(
+        Func<Task<StorageUploadResponseDto>> upload,
+        string message)
+    {
+        try
+        {
+            var result = await upload();
+            return Ok(ApiResponse<StorageUploadResponseDto>.OnSuccess(result, message));
         }
         catch (Exception ex) { return HandleException(ex); }
     }

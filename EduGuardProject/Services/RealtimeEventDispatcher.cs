@@ -24,35 +24,43 @@ public class RealtimeEventDispatcher : IRealtimeEventDispatcher
         _dashboardHub = dashboardHub;
     }
 
+    public Task SendGroupAsync(
+        RealtimeHubKind hub,
+        string group,
+        string eventName,
+        object payload,
+        CancellationToken cancellationToken = default) =>
+        HubClients(hub).Group(group).SendAsync(eventName, payload, cancellationToken);
+
     public Task PushUserAsync(Guid userId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _notificationHub.Clients.Group(HubGroups.User(userId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Notifications, HubGroups.User(userId), eventName, payload, cancellationToken);
 
     public Task PushExamLecturersAsync(Guid examSlotId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _examHub.Clients.Group(HubGroups.ExamLecturers(examSlotId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Exams, HubGroups.ExamLecturers(examSlotId), eventName, payload, cancellationToken);
 
     public Task PushExamStudentAsync(Guid examSlotId, Guid studentId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _examHub.Clients.Group(HubGroups.ExamStudent(examSlotId, studentId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Exams, HubGroups.ExamStudent(examSlotId, studentId), eventName, payload, cancellationToken);
 
     public Task PushAttendanceSessionAsync(Guid sessionId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _attendanceHub.Clients.Group(HubGroups.Attendance(sessionId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Attendance, HubGroups.Attendance(sessionId), eventName, payload, cancellationToken);
 
     public Task PushClassStudentsAsync(Guid classId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _attendanceHub.Clients.Group(HubGroups.ClassStudents(classId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Attendance, HubGroups.ClassStudents(classId), eventName, payload, cancellationToken);
 
     public Task PushInstitutionAdminsAsync(Guid institutionId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _notificationHub.Clients.Group(HubGroups.InstitutionAdmins(institutionId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Notifications, HubGroups.InstitutionAdmins(institutionId), eventName, payload, cancellationToken);
 
     public Task PushSuperAdminsAsync(string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _notificationHub.Clients.Group(HubGroups.Role(AppRole.SuperAdmin)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Notifications, HubGroups.Role(AppRole.SuperAdmin), eventName, payload, cancellationToken);
 
     public Task PushDashboardSystemAsync(string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _dashboardHub.Clients.Group(HubGroups.DashboardSystem()).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Dashboard, HubGroups.DashboardSystem(), eventName, payload, cancellationToken);
 
     public Task PushDashboardInstitutionAsync(Guid institutionId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _dashboardHub.Clients.Group(HubGroups.DashboardInstitution(institutionId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Dashboard, HubGroups.DashboardInstitution(institutionId), eventName, payload, cancellationToken);
 
     public Task PushDashboardLecturerAsync(Guid lecturerId, string eventName, object payload, CancellationToken cancellationToken = default) =>
-        _dashboardHub.Clients.Group(HubGroups.DashboardLecturer(lecturerId)).SendAsync(eventName, payload, cancellationToken);
+        SendGroupAsync(RealtimeHubKind.Dashboard, HubGroups.DashboardLecturer(lecturerId), eventName, payload, cancellationToken);
 
     public async Task PublishDataChangedAsync(
         string resource,
@@ -95,8 +103,17 @@ public class RealtimeEventDispatcher : IRealtimeEventDispatcher
         object payload,
         CancellationToken cancellationToken)
     {
-        tasks.Add(_dashboardHub.Clients.Group(group).SendAsync(HubEvents.ResourceChanged, payload, cancellationToken));
-        tasks.Add(_dashboardHub.Clients.Group(group).SendAsync(HubEvents.DashboardStatsChanged, payload, cancellationToken));
-        tasks.Add(_dashboardHub.Clients.Group(group).SendAsync(HubEvents.ReportDataChanged, payload, cancellationToken));
+        tasks.Add(SendGroupAsync(RealtimeHubKind.Dashboard, group, HubEvents.ResourceChanged, payload, cancellationToken));
+        tasks.Add(SendGroupAsync(RealtimeHubKind.Dashboard, group, HubEvents.DashboardStatsChanged, payload, cancellationToken));
+        tasks.Add(SendGroupAsync(RealtimeHubKind.Dashboard, group, HubEvents.ReportDataChanged, payload, cancellationToken));
     }
+
+    private IHubClients HubClients(RealtimeHubKind hub) => hub switch
+    {
+        RealtimeHubKind.Notifications => _notificationHub.Clients,
+        RealtimeHubKind.Exams => _examHub.Clients,
+        RealtimeHubKind.Attendance => _attendanceHub.Clients,
+        RealtimeHubKind.Dashboard => _dashboardHub.Clients,
+        _ => throw new ArgumentOutOfRangeException(nameof(hub), hub, null)
+    };
 }
