@@ -140,7 +140,7 @@ public class StorageService : IStorageService
             file,
             new StorageUploadPlan(
                 AttendanceSnapshotsBucket,
-                [institutionId.ToString("N"), record.SessionId.ToString("N")],
+                [institutionId.ToString("N"), record.Id.ToString("N")],
                 record.StudentId,
                 record.SnapshotPath,
                 actor,
