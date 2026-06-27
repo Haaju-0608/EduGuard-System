@@ -118,6 +118,7 @@ public class ReportService : IReportService
                 violationId = v.Id,
                 v.ParticipationId,
                 v.Participation.ExamSlotId,
+                v.Participation.ExamSlot.ExamName,
                 v.Participation.StudentId,
                 studentName = v.Participation.Student.FullName,
                 type = v.violationType,

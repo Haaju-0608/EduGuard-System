@@ -1,7 +1,9 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Configuration;
 
 namespace EduGuardProject.Services
@@ -12,18 +14,24 @@ namespace EduGuardProject.Services
         private readonly Supabase.Client _supabaseClient;
         private readonly IConfiguration _config;
         private readonly IRealtimeEventDispatcher _realtime;
+        private readonly IStorageService _storage;
+        private readonly AppDbContext _context;
 
         //  3. Tiêm IConfiguration vào để lấy Key tự động
         public UserService(
             IUserRepository repo,
             Supabase.Client supabaseClient,
             IConfiguration config,
-            IRealtimeEventDispatcher realtime)
+            IRealtimeEventDispatcher realtime,
+            IStorageService storage,
+            AppDbContext context)
         {
             _repo = repo;
             _supabaseClient = supabaseClient;
             _config = config;
             _realtime = realtime;
+            _storage = storage;
+            _context = context;
         }
 
         public async Task<(IEnumerable<UserResponseDto> Items, int TotalCount)> GetUsersAsync(string? search, string? sort, int page, int pageSize)
@@ -140,6 +148,7 @@ namespace EduGuardProject.Services
             var entity = await _repo.GetByIdAsync(id);
             if (entity == null) return false;
 
+            await DeleteStudentStorageAsync(entity);
             await _repo.DeleteAsync(entity);
 
             var serviceKey = _config["Supabase:ServiceRoleKey"]
@@ -149,6 +158,46 @@ namespace EduGuardProject.Services
 
             await PublishUserChangedAsync(entity, "deleted");
             return true;
+        }
+
+        private async Task DeleteStudentStorageAsync(EduGuardProject.Models.User user)
+        {
+            if (user.Role != AppRole.Student)
+                return;
+
+            var storageDeletes = new List<(string Bucket, string? Path)>();
+
+            storageDeletes.AddRange(await _context.BiometricData
+                .Where(b => b.UserId == user.Id && b.FaceImageUrl != null)
+                .Select(b => new ValueTuple<string, string?>(StorageService.BiometricFacesBucket, b.FaceImageUrl))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.AttendanceRecords
+                .Where(r => r.StudentId == user.Id && r.SnapshotPath != null)
+                .Select(r => new ValueTuple<string, string?>(StorageService.AttendanceSnapshotsBucket, r.SnapshotPath))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.ExamParticipations
+                .Where(p => p.StudentId == user.Id && p.IdentitySnapshotPath != null)
+                .Select(p => new ValueTuple<string, string?>(StorageService.ExamIdentityBucket, p.IdentitySnapshotPath))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.ExamParticipations
+                .Where(p => p.StudentId == user.Id && p.RecordingVideoPath != null)
+                .Select(p => new ValueTuple<string, string?>(StorageService.ExamRecordingsBucket, p.RecordingVideoPath))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.ViolationLogs
+                .Where(v => v.Participation.StudentId == user.Id && v.EvidencePath != null)
+                .Select(v => new ValueTuple<string, string?>(StorageService.ExamEvidenceBucket, v.EvidencePath))
+                .ToListAsync());
+
+            foreach (var (bucket, path) in storageDeletes
+                .Where(x => !string.IsNullOrWhiteSpace(x.Path))
+                .Distinct())
+            {
+                await _storage.DeleteAsync(bucket, path!);
+            }
         }
 
         private Task PublishUserChangedAsync(EduGuardProject.Models.User entity, string action) =>

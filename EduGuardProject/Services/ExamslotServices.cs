@@ -45,6 +45,8 @@ public class ExamslotServices : IExamSlotServices
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var user = await _currentUser.GetRequiredUserAsync();
+        if (string.IsNullOrWhiteSpace(dto.ExamName))
+            throw new InvalidOperationException("Exam name is required.");
 
         var cls = await _context.Classes
             .AsNoTracking()
@@ -58,9 +60,7 @@ public class ExamslotServices : IExamSlotServices
             Id = Guid.NewGuid(),
             ClassId = dto.ClassId,
             CreatedBy = user.Id,
-            ExamName = string.IsNullOrWhiteSpace(dto.ExamName)
-                ? $"Exam-{dto.ClassId}"
-                : dto.ExamName.Trim(),
+            ExamName = dto.ExamName.Trim(),
             StartTime = dto.StartTime,
             EndTime = dto.EndTime,
             ExpectedDurationMinutes = dto.ExpectedDurationMinutes,

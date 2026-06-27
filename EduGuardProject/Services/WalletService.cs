@@ -4,6 +4,7 @@ using EduGuardProject.Hubs;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace EduGuardProject.Services
 {
@@ -293,7 +294,7 @@ namespace EduGuardProject.Services
             await _notifications.SendToInstitutionAdminsAsync(
                 wallet.InstitutionId,
                 "Nạp tiền thành công",
-                $"Ví đã được cập nhật thêm {amount:N0} {wallet.Currency}.",
+                $"Nạp {amount.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"))} VNĐ thành công.",
                 NotificationType.LowBalanceAlert,
                 ReferenceTypeEnum.Transaction,
                 transaction.Id);

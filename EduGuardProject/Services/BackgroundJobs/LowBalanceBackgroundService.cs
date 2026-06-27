@@ -1,6 +1,7 @@
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace EduGuardProject.Services.BackgroundJobs;
 
@@ -43,16 +44,17 @@ public class LowBalanceBackgroundService : BackgroundService
 
         var wallets = await context.Wallets
             .Where(w =>
-                w.Balance <= w.LowBalanceThreshold &&
+                w.Balance < w.LowBalanceThreshold &&
                 (w.LowBalanceAlertSentAt == null || w.LowBalanceAlertSentAt.Value.Date < today))
             .ToListAsync(cancellationToken);
 
         foreach (var wallet in wallets)
         {
+            var threshold = wallet.LowBalanceThreshold.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
             await notifications.SendToInstitutionAdminsAsync(
                 wallet.InstitutionId,
                 "Số dư ví thấp",
-                $"Số dư ví hiện còn {wallet.Balance:N0} {wallet.Currency}, dưới hoặc bằng ngưỡng {wallet.LowBalanceThreshold:N0}.",
+                $"Số dư ví còn dưới {threshold} VNĐ.",
                 NotificationType.LowBalanceAlert,
                 ReferenceTypeEnum.Institution,
                 wallet.InstitutionId,

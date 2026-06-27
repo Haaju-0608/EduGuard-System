@@ -3,6 +3,7 @@ using EduGuardProject.Hubs;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
+using System.Globalization;
 
 namespace EduGuardProject.Services
 {
@@ -180,12 +181,13 @@ namespace EduGuardProject.Services
                 institutionId: wallet.InstitutionId,
                 data: payload);
 
-            if (wallet.Balance <= wallet.LowBalanceThreshold)
+            if (wallet.Balance < wallet.LowBalanceThreshold)
             {
+                var threshold = wallet.LowBalanceThreshold.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
                 await _notifications.SendToInstitutionAdminsAsync(
                     wallet.InstitutionId,
                     "Số dư ví thấp",
-                    $"Số dư ví hiện còn {wallet.Balance:N0} {wallet.Currency}, dưới hoặc bằng ngưỡng {wallet.LowBalanceThreshold:N0}.",
+                    $"Số dư ví còn dưới {threshold} VNĐ.",
                     NotificationType.LowBalanceAlert,
                     ReferenceTypeEnum.Transaction,
                     transaction.Id);

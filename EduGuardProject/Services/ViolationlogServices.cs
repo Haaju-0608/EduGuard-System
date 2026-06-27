@@ -79,6 +79,7 @@ public class ViolationLogServices : IViolationLogService
             violationId = entity.Id,
             entity.ParticipationId,
             participation.ExamSlotId,
+            examName = participation.ExamSlot.ExamName,
             participation.StudentId,
             participation.Student.FullName,
             type = entity.violationType,
@@ -97,9 +98,9 @@ public class ViolationLogServices : IViolationLogService
             userId: participation.StudentId,
             data: payload);
         await _notifications.SendToUserAsync(
-            participation.StudentId,
+            participation.ExamSlot.Class.LecturerId,
             "Phát hiện vi phạm trong kỳ thi",
-            $"Hệ thống ghi nhận vi phạm: {entity.violationType}.",
+            $"Sinh viên {participation.Student.FullName}. {DescribeViolation(entity.violationType)}.",
             NotificationType.ViolationDetected,
             ReferenceTypeEnum.ExamSlot,
             participation.ExamSlotId);
@@ -159,6 +160,7 @@ public class ViolationLogServices : IViolationLogService
                 violationId = violation.Id,
                 violation.ParticipationId,
                 violation.Participation.ExamSlotId,
+                examName = violation.Participation.ExamSlot.ExamName,
                 violation.Participation.StudentId,
                 violation.Participation.Student.FullName,
                 type = violation.violationType,
@@ -195,6 +197,15 @@ public class ViolationLogServices : IViolationLogService
 
         throw new UnauthorizedAccessException("Access denied.");
     }
+
+    private static string DescribeViolation(ViolationType type) => type switch
+    {
+        ViolationType.GazeDiversion => "Phát hiện quay đầu nhiều lần",
+        ViolationType.MultipleFaces => "Phát hiện nhiều khuôn mặt",
+        ViolationType.Absence => "Không phát hiện khuôn mặt",
+        ViolationType.Impersonation => "Nghi ngờ mạo danh",
+        _ => $"Phát hiện vi phạm {type}"
+    };
 
     private static ViolationlogResponeDto MapToResponseDto(ViolationLog entity) => new()
     {

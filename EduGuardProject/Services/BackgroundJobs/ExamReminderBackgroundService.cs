@@ -59,7 +59,7 @@ public class ExamReminderBackgroundService : BackgroundService
             await notifications.SendToClassStudentsAsync(
                 exam.ClassId,
                 "Nhắc lịch thi",
-                $"Kỳ thi {exam.ExamName} sẽ bắt đầu lúc {exam.StartTime:yyyy-MM-dd HH:mm}.",
+                $"Nhắc nhở kỳ thi {exam.ExamName} sắp bắt đầu lúc {exam.StartTime:yyyy-MM-dd HH:mm}.",
                 NotificationType.ExamReminder,
                 ReferenceTypeEnum.ExamSlot,
                 exam.Id,

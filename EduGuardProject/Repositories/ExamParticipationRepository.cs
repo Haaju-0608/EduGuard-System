@@ -15,7 +15,14 @@ public class ExamParticipationRepository : IExamParticipationRepository
     {
         var query = _context.ExamParticipations
             .AsNoTracking()
+            .Include(p => p.ExamSlot)
             .AsQueryable();
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.ToLower();
+            query = query.Where(p => p.ExamSlot.ExamName.ToLower().Contains(s));
+        }
 
         var totalCount = await query.CountAsync();
         query = ApplySort(query, sort);
@@ -32,6 +39,7 @@ public class ExamParticipationRepository : IExamParticipationRepository
     {
         Id = e.Id,
         ExamSlotId = e.ExamSlotId,
+        ExamName = e.ExamSlot.ExamName,
         StudentId = e.StudentId,
         BillingTransId = e.BillingTransId,
         ActualStart = e.ActualStart,
@@ -83,6 +91,8 @@ public class ExamParticipationRepository : IExamParticipationRepository
             "-actualstart" => query.OrderByDescending(p => p.ActualStart),
             "actualend" => query.OrderBy(p => p.ActualEnd),
             "-actualend" => query.OrderByDescending(p => p.ActualEnd),
+            "examname" => query.OrderBy(p => p.ExamSlot.ExamName),
+            "-examname" => query.OrderByDescending(p => p.ExamSlot.ExamName),
             "status" => query.OrderBy(p => p.Status),
             "-status" => query.OrderByDescending(p => p.Status),
             _ => query.OrderByDescending(p => p.ActualStart)

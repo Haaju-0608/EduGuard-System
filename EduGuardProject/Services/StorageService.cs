@@ -355,6 +355,16 @@ public class StorageService : IStorageService
                 "local");
         }
 
+        if (await IsSupabaseBucketPublicAsync(bucket, cancellationToken))
+        {
+            return new StorageSignedUrlResponseDto(
+                bucket,
+                path,
+                BuildSupabasePublicObjectUrl(bucket, path),
+                0,
+                "supabase-public");
+        }
+
         var client = CreateSupabaseClient();
         var body = JsonSerializer.Serialize(new { expiresIn = expiresInSeconds });
         using var content = new StringContent(body, Encoding.UTF8, "application/json");
@@ -377,7 +387,7 @@ public class StorageService : IStorageService
         if (signedUrl.StartsWith('/'))
             signedUrl = $"{SupabaseUrl}{signedUrl}";
 
-        return new StorageSignedUrlResponseDto(bucket, path, signedUrl, expiresInSeconds, "supabase");
+        return new StorageSignedUrlResponseDto(bucket, path, signedUrl, expiresInSeconds, "supabase-signed");
     }
 
     public async Task DeleteAsync(
@@ -878,8 +888,29 @@ public class StorageService : IStorageService
         return $"{SupabaseUrl}/storage/v1/{prefix}/{Uri.EscapeDataString(bucket)}/{EscapeObjectPath(path)}";
     }
 
+    private string BuildSupabasePublicObjectUrl(string bucket, string path) =>
+        $"{SupabaseUrl}/storage/v1/object/public/{Uri.EscapeDataString(bucket)}/{EscapeObjectPath(path)}";
+
     private string BuildSupabaseSignUrl(string bucket, string path) =>
         $"{SupabaseUrl}/storage/v1/object/sign/{Uri.EscapeDataString(bucket)}/{EscapeObjectPath(path)}";
+
+    private async Task<bool> IsSupabaseBucketPublicAsync(
+        string bucket,
+        CancellationToken cancellationToken)
+    {
+        var client = CreateSupabaseClient();
+        using var response = await client.GetAsync(
+            $"{SupabaseUrl}/storage/v1/bucket/{Uri.EscapeDataString(bucket)}",
+            cancellationToken);
+
+        var responseBody = await response.Content.ReadAsStringAsync(cancellationToken);
+        if (!response.IsSuccessStatusCode)
+            throw new InvalidOperationException($"Supabase bucket lookup failed: {(int)response.StatusCode} {responseBody}");
+
+        using var json = JsonDocument.Parse(responseBody);
+        return json.RootElement.TryGetProperty("public", out var isPublic) &&
+               isPublic.ValueKind == JsonValueKind.True;
+    }
 
     private string GetLocalPath(string bucket, string path)
     {

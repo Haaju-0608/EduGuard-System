@@ -5,6 +5,7 @@ using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
+using Pgvector;
 
 namespace EduGuardProject.Services;
 
@@ -95,6 +96,7 @@ public class BiometricDatumService : IBiometricDatumService
             UserId = dto.UserId,
             BioRequestId = dto.BioRequestId,
             ModelVersion = dto.ModelVersion,
+            FaceVector = new Vector(new float[128]),
             FaceImageUrl = null,
             IsActive = true,
             CreatedAt = DateTime.UtcNow,

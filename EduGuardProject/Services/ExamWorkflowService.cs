@@ -43,6 +43,14 @@ public class ExamWorkflowService : IExamWorkflowService
         var payload = await BuildStudentPayloadAsync(participation, now, cancellationToken);
         await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.StudentJoinedExam, payload, cancellationToken);
         await PublishParticipationChangedAsync(participation, "joined", payload, cancellationToken);
+        await _notifications.SendToUserAsync(
+            participation.ExamSlot.Class.LecturerId,
+            "Sinh viên đã tham gia kỳ thi",
+            $"{participation.Student.FullName} đã tham gia kỳ thi.",
+            NotificationType.ExamReminder,
+            ReferenceTypeEnum.ExamSlot,
+            participation.ExamSlotId,
+            cancellationToken);
 
         return payload;
     }
@@ -60,6 +68,7 @@ public class ExamWorkflowService : IExamWorkflowService
         {
             participationId = participation.Id,
             participation.ExamSlotId,
+            examName = participation.ExamSlot.ExamName,
             participation.StudentId,
             participation.Student.FullName,
             lastSeenAt = now,
@@ -93,6 +102,7 @@ public class ExamWorkflowService : IExamWorkflowService
         {
             participationId = participation.Id,
             participation.ExamSlotId,
+            examName = participation.ExamSlot.ExamName,
             participation.StudentId,
             participation.Student.FullName,
             submittedAt = now,
@@ -121,6 +131,7 @@ public class ExamWorkflowService : IExamWorkflowService
         {
             participationId = participation.Id,
             participation.ExamSlotId,
+            examName = participation.ExamSlot.ExamName,
             participation.StudentId,
             participation.Student.FullName,
             disconnectedAt = now,
@@ -149,6 +160,7 @@ public class ExamWorkflowService : IExamWorkflowService
         {
             participationId = participation.Id,
             participation.ExamSlotId,
+            examName = participation.ExamSlot.ExamName,
             participation.StudentId,
             participation.Student.FullName,
             reason,
@@ -255,6 +267,7 @@ public class ExamWorkflowService : IExamWorkflowService
         {
             participationId = participation.Id,
             participation.ExamSlotId,
+            examName = participation.ExamSlot.ExamName,
             participation.StudentId,
             participation.Student.FullName,
             joinedAt,

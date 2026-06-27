@@ -187,8 +187,9 @@ public class CreateExamSlotDto
     [Required]
     public Guid ClassId { get; set; }
 
+    [Required]
     [MaxLength(255)]
-    public string? ExamName { get; set; }
+    public string ExamName { get; set; } = string.Empty;
 
     public ExamSlotStatus Status { get; set; }
     public int ExpectedDurationMinutes { get; set; }

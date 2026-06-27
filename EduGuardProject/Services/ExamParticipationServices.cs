@@ -173,6 +173,7 @@ public class ExamParticipationServices : IExamParticipationService
             {
                 participationId = participation.Id,
                 participation.ExamSlotId,
+                participation.ExamSlot.ExamName,
                 participation.StudentId,
                 participation.Student.FullName,
                 participation.Status,
@@ -186,6 +187,7 @@ public class ExamParticipationServices : IExamParticipationService
     {
         Id = entity.Id,
         ExamSlotId = entity.ExamSlotId,
+        ExamName = entity.ExamSlot?.ExamName,
         StudentId = entity.StudentId,
         BillingTransId = entity.BillingTransId,
         ActualStart = entity.ActualStart,

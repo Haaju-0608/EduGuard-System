@@ -108,6 +108,7 @@ public class BiometricRequestResponseDto
     public BiometricReqStatus Status { get; set; }
     public DateTime? ReviewedAt { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? FaceImageUrl { get; set; }
 
     public UserSummaryDto? Student { get; set; }
     public UserSummaryDto? Approver { get; set; }
@@ -144,6 +145,7 @@ public class ExamParticipationResponseDto
 {
     public Guid Id { get; set; }
     public Guid ExamSlotId { get; set; }
+    public string? ExamName { get; set; }
     public Guid? BillingTransId { get; set; }
     public Guid StudentId { get; set; }
 

@@ -80,7 +80,7 @@ public class AttendanceSessionService : IAttendanceSessionService
             ClassId = dto.ClassId,
             CreatedBy = user.Id,
             VideoPath = dto.VideoPath,
-            StartTime = dto.StartTime,
+            StartTime = ToUtcTimestamp(dto.StartTime),
             Status = SessionStatus.InProgress,
             TotalRecognized = 0,
             CreatedAt = DateTime.UtcNow,
@@ -118,7 +118,7 @@ public class AttendanceSessionService : IAttendanceSessionService
         await EnsureSessionAccessAsync(entity);
 
         var oldStatus = entity.Status;
-        if (dto.EndTime.HasValue) entity.EndTime = dto.EndTime;
+        if (dto.EndTime.HasValue) entity.EndTime = ToUtcTimestamp(dto.EndTime.Value);
         entity.Status = dto.Status;
         if (dto.VideoPath != null) entity.VideoPath = dto.VideoPath;
         if (dto.TotalRecognized.HasValue) entity.TotalRecognized = dto.TotalRecognized.Value;
@@ -176,6 +176,14 @@ public class AttendanceSessionService : IAttendanceSessionService
                 entity.TotalRecognized
             });
     }
+
+    private static DateTime ToUtcTimestamp(DateTime value) =>
+        value.Kind switch
+        {
+            DateTimeKind.Utc => value,
+            DateTimeKind.Local => value.ToUniversalTime(),
+            _ => DateTime.SpecifyKind(value, DateTimeKind.Utc)
+        };
 
     private async Task EnsureSessionAccessAsync(AttendanceSession entity)
     {
