@@ -18,7 +18,7 @@ public partial class AttendanceSession
     /// <summary>
     /// Bucket: attendance-videos
     /// </summary>
-    [MaxLength(500)]
+    [MaxLength(2000)]
     public string? VideoPath { get; set; }
 
     [Range(0, int.MaxValue)]

@@ -12,7 +12,6 @@ using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
-using SignalRChat.Hubs;
 using System.Net.Http.Headers;
 using System.Security.Claims;
 using System.Security.Cryptography;
@@ -217,9 +216,18 @@ builder.Services.AddHostedService<ExamReminderBackgroundService>();
 builder.Services.AddHostedService<LowBalanceBackgroundService>();
 builder.Services.AddHostedService<StorageCleanupBackgroundService>();
 
+var corsOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>() ?? [];
 builder.Services.AddCors(options =>
 {
-    options.AddDefaultPolicy(policy => { policy.AllowAnyHeader().AllowAnyMethod().AllowAnyOrigin(); });
+    options.AddDefaultPolicy(policy =>
+    {
+        policy.AllowAnyHeader().AllowAnyMethod();
+
+        if (corsOrigins.Length > 0)
+            policy.WithOrigins(corsOrigins).AllowCredentials();
+        else
+            policy.AllowAnyOrigin();
+    });
 });
 
 var app = builder.Build();
@@ -239,7 +247,6 @@ app.UseAuthorization();
 app.MapControllers();
 app.MapGet("/", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
 app.MapGet("/index.cshtml", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
-app.MapHub<ChatHub>("/chatHub");
 app.MapHub<NotificationHub>(HubRoutes.Notifications).RequireAuthorization();
 app.MapHub<ExamHub>(HubRoutes.Exams).RequireAuthorization();
 app.MapHub<AttendanceHub>(HubRoutes.Attendance).RequireAuthorization();

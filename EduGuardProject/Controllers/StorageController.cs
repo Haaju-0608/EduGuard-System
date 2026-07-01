@@ -150,7 +150,7 @@ public class StorageController : AcademicApiControllerBase
     public async Task<IActionResult> SignedUrl(
         [FromQuery] string bucket,
         [FromQuery] string path,
-        [FromQuery] int expiresInSeconds = 3600,
+        [FromQuery] int expiresInSeconds = IStorageService.NinetyDaySignedUrlExpiresInSeconds,
         CancellationToken cancellationToken = default)
     {
         try

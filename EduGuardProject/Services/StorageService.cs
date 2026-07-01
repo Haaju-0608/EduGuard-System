@@ -80,6 +80,14 @@ public class StorageService : IStorageService
             actor.Id,
             upsert,
             cancellationToken);
+        result = result with
+        {
+            Url = (await CreateObjectUrlAsync(
+                result.Bucket,
+                result.Path,
+                IStorageService.NinetyDaySignedUrlExpiresInSeconds,
+                cancellationToken)).SignedUrl
+        };
         await DispatchStorageChangedAsync("uploaded", result, actor, actor.InstitutionId, cancellationToken);
         LogUpload(actor, result, file.FileName);
         return result;
@@ -203,7 +211,7 @@ public class StorageService : IStorageService
             file,
             new StorageUploadPlan(
                 ExamIdentityBucket,
-                [institutionId.ToString("N"), participation.ExamSlotId.ToString("N")],
+                ExamFolders(participation),
                 participation.StudentId,
                 participation.IdentitySnapshotPath,
                 actor,
@@ -233,7 +241,7 @@ public class StorageService : IStorageService
             file,
             new StorageUploadPlan(
                 ExamRecordingsBucket,
-                [institutionId.ToString("N"), participation.ExamSlotId.ToString("N")],
+                ExamFolders(participation),
                 participation.StudentId,
                 participation.RecordingVideoPath,
                 actor,
@@ -256,8 +264,11 @@ public class StorageService : IStorageService
         var actor = await _currentUser.GetRequiredUserAsync();
         var violation = await _context.ViolationLogs
             .Include(v => v.Participation)
+            .ThenInclude(p => p.Student)
+            .Include(v => v.Participation)
             .ThenInclude(p => p.ExamSlot)
             .ThenInclude(e => e.Class)
+            .ThenInclude(c => c.Institution)
             .FirstOrDefaultAsync(v => v.Id == violationId, cancellationToken)
             ?? throw new InvalidOperationException("Violation log was not found.");
 
@@ -268,11 +279,7 @@ public class StorageService : IStorageService
             file,
             new StorageUploadPlan(
                 ExamEvidenceBucket,
-                [
-                    institutionId.ToString("N"),
-                    violation.Participation.ExamSlotId.ToString("N"),
-                    violation.Participation.StudentId.ToString("N")
-                ],
+                ExamFolders(violation.Participation),
                 violation.Id,
                 violation.EvidencePath,
                 actor,
@@ -330,16 +337,27 @@ public class StorageService : IStorageService
     public async Task<StorageSignedUrlResponseDto> CreateSignedUrlAsync(
         string bucket,
         string path,
-        int expiresInSeconds = 3600,
+        int expiresInSeconds = IStorageService.NinetyDaySignedUrlExpiresInSeconds,
         CancellationToken cancellationToken = default)
     {
-        if (expiresInSeconds is < 60 or > 86400)
-            throw new InvalidOperationException("expiresInSeconds must be between 60 and 86400.");
-
+        ValidateSignedUrlExpiration(expiresInSeconds);
         var actor = await _currentUser.GetRequiredUserAsync();
         bucket = NormalizeBucket(bucket);
         path = NormalizeObjectPathForBucket(bucket, path);
         await EnsureObjectAccessAsync(actor, bucket, path, cancellationToken);
+
+        return await CreateObjectUrlAsync(bucket, path, expiresInSeconds, cancellationToken);
+    }
+
+    private async Task<StorageSignedUrlResponseDto> CreateObjectUrlAsync(
+        string bucket,
+        string path,
+        int expiresInSeconds,
+        CancellationToken cancellationToken)
+    {
+        ValidateSignedUrlExpiration(expiresInSeconds);
+        bucket = NormalizeBucket(bucket);
+        path = NormalizeObjectPathForBucket(bucket, path);
 
         if (UseLocalStorage)
         {
@@ -385,7 +403,7 @@ public class StorageService : IStorageService
             throw new InvalidOperationException("Supabase did not return a signed URL.");
 
         if (signedUrl.StartsWith('/'))
-            signedUrl = $"{SupabaseUrl}{signedUrl}";
+            signedUrl = $"{SupabaseUrl}/storage/v1{signedUrl}";
 
         return new StorageSignedUrlResponseDto(bucket, path, signedUrl, expiresInSeconds, "supabase-signed");
     }
@@ -468,6 +486,12 @@ public class StorageService : IStorageService
             plan.NameOwnerId,
             upsert: false,
             cancellationToken);
+        var storageUrl = (await CreateObjectUrlAsync(
+            result.Bucket,
+            result.Path,
+            IStorageService.NinetyDaySignedUrlExpiresInSeconds,
+            cancellationToken)).SignedUrl;
+        result = result with { Url = storageUrl };
 
         try
         {
@@ -494,6 +518,7 @@ public class StorageService : IStorageService
             result.Size,
             result.ContentType,
             result.UploadedAt,
+            url = result.Url,
             referenceName = plan.ReferenceName,
             referenceId = plan.ReferenceId
         };
@@ -625,7 +650,8 @@ public class StorageService : IStorageService
                         .AsNoTracking()
                         .Include(b => b.User)
                         .FirstOrDefaultAsync(
-                            b => b.FaceImageUrl == storedPath || b.FaceImageUrl == fullPath,
+                            b => b.FaceImageUrl == storedPath ||
+                                 b.FaceImageUrl == fullPath,
                             cancellationToken);
                     if (datum != null)
                     {
@@ -641,7 +667,8 @@ public class StorageService : IStorageService
                         .Include(r => r.Session)
                         .ThenInclude(s => s.Class)
                         .FirstOrDefaultAsync(
-                            r => r.SnapshotPath == storedPath || r.SnapshotPath == fullPath,
+                            r => r.SnapshotPath == storedPath ||
+                                 r.SnapshotPath == fullPath,
                             cancellationToken);
                     if (record != null)
                     {
@@ -656,7 +683,8 @@ public class StorageService : IStorageService
                         .AsNoTracking()
                         .Include(s => s.Class)
                         .FirstOrDefaultAsync(
-                            s => s.VideoPath == storedPath || s.VideoPath == fullPath,
+                            s => s.VideoPath == storedPath ||
+                                 s.VideoPath == fullPath,
                             cancellationToken);
                     if (session != null)
                     {
@@ -674,8 +702,10 @@ public class StorageService : IStorageService
                         .ThenInclude(e => e.Class)
                         .FirstOrDefaultAsync(
                             p => bucket == ExamIdentityBucket
-                                ? p.IdentitySnapshotPath == storedPath || p.IdentitySnapshotPath == fullPath
-                                : p.RecordingVideoPath == storedPath || p.RecordingVideoPath == fullPath,
+                                ? p.IdentitySnapshotPath == storedPath ||
+                                  p.IdentitySnapshotPath == fullPath
+                                : p.RecordingVideoPath == storedPath ||
+                                  p.RecordingVideoPath == fullPath,
                             cancellationToken);
                     if (participation != null)
                     {
@@ -692,7 +722,8 @@ public class StorageService : IStorageService
                         .ThenInclude(p => p.ExamSlot)
                         .ThenInclude(e => e.Class)
                         .FirstOrDefaultAsync(
-                            v => v.EvidencePath == storedPath || v.EvidencePath == fullPath,
+                            v => v.EvidencePath == storedPath ||
+                                 v.EvidencePath == fullPath,
                             cancellationToken);
                     if (violation != null)
                     {
@@ -721,7 +752,8 @@ public class StorageService : IStorageService
             case BiometricFacesBucket:
                 {
                     var items = await _context.BiometricData
-                        .Where(b => b.FaceImageUrl == path || b.FaceImageUrl == fullPath)
+                        .Where(b => b.FaceImageUrl == path ||
+                                    b.FaceImageUrl == fullPath)
                         .ToListAsync(cancellationToken);
                     foreach (var item in items)
                     {
@@ -733,7 +765,8 @@ public class StorageService : IStorageService
             case AttendanceSnapshotsBucket:
                 {
                     var items = await _context.AttendanceRecords
-                        .Where(r => r.SnapshotPath == path || r.SnapshotPath == fullPath)
+                        .Where(r => r.SnapshotPath == path ||
+                                    r.SnapshotPath == fullPath)
                         .ToListAsync(cancellationToken);
                     foreach (var item in items)
                         item.SnapshotPath = null;
@@ -742,7 +775,8 @@ public class StorageService : IStorageService
             case AttendanceVideosBucket:
                 {
                     var items = await _context.AttendanceSessions
-                        .Where(s => s.VideoPath == path || s.VideoPath == fullPath)
+                        .Where(s => s.VideoPath == path ||
+                                    s.VideoPath == fullPath)
                         .ToListAsync(cancellationToken);
                     foreach (var item in items)
                     {
@@ -754,7 +788,8 @@ public class StorageService : IStorageService
             case ExamIdentityBucket:
                 {
                     var items = await _context.ExamParticipations
-                        .Where(p => p.IdentitySnapshotPath == path || p.IdentitySnapshotPath == fullPath)
+                        .Where(p => p.IdentitySnapshotPath == path ||
+                                    p.IdentitySnapshotPath == fullPath)
                         .ToListAsync(cancellationToken);
                     foreach (var item in items)
                         item.IdentitySnapshotPath = null;
@@ -763,7 +798,8 @@ public class StorageService : IStorageService
             case ExamRecordingsBucket:
                 {
                     var items = await _context.ExamParticipations
-                        .Where(p => p.RecordingVideoPath == path || p.RecordingVideoPath == fullPath)
+                        .Where(p => p.RecordingVideoPath == path ||
+                                    p.RecordingVideoPath == fullPath)
                         .ToListAsync(cancellationToken);
                     foreach (var item in items)
                         item.RecordingVideoPath = null;
@@ -772,7 +808,8 @@ public class StorageService : IStorageService
             case ExamEvidenceBucket:
                 {
                     var items = await _context.ViolationLogs
-                        .Where(v => v.EvidencePath == path || v.EvidencePath == fullPath)
+                        .Where(v => v.EvidencePath == path ||
+                                    v.EvidencePath == fullPath)
                         .ToListAsync(cancellationToken);
                     foreach (var item in items)
                         item.EvidencePath = null;
@@ -787,8 +824,10 @@ public class StorageService : IStorageService
         Guid participationId,
         CancellationToken cancellationToken) =>
         await _context.ExamParticipations
+            .Include(p => p.Student)
             .Include(p => p.ExamSlot)
             .ThenInclude(e => e.Class)
+            .ThenInclude(c => c.Institution)
             .FirstOrDefaultAsync(p => p.Id == participationId, cancellationToken)
         ?? throw new InvalidOperationException("Exam participation was not found.");
 
@@ -862,6 +901,13 @@ public class StorageService : IStorageService
     private static Guid RequireInstitution(User user) =>
         user.InstitutionId
         ?? throw new InvalidOperationException("The target user is not assigned to an institution.");
+
+    private static string[] ExamFolders(ExamParticipation participation) =>
+        [
+            participation.ExamSlot.Class.Institution.Name,
+            participation.ExamSlot.ExamName,
+            participation.Student.FullName
+        ];
 
     private bool UseLocalStorage =>
         string.IsNullOrWhiteSpace(SupabaseUrl) || string.IsNullOrWhiteSpace(SupabaseKey);
@@ -1057,13 +1103,72 @@ public class StorageService : IStorageService
             : $"{string.Join('/', normalizedFolders)}/{fileName}";
     }
 
+    private static void ValidateSignedUrlExpiration(int expiresInSeconds)
+    {
+        if (expiresInSeconds is < 60 or > IStorageService.NinetyDaySignedUrlExpiresInSeconds)
+        {
+            throw new InvalidOperationException(
+                $"expiresInSeconds must be between 60 and {IStorageService.NinetyDaySignedUrlExpiresInSeconds}.");
+        }
+    }
+
     private static string NormalizeObjectPathForBucket(string bucket, string path)
     {
+        path = ExtractObjectPathFromUrl(bucket, path) ?? path;
         path = NormalizeStoragePath(path);
         var prefix = $"{bucket}/";
         return path.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
             ? path[prefix.Length..]
             : path;
+    }
+
+    private static string? ExtractObjectPathFromUrl(string bucket, string value)
+    {
+        var raw = value.Trim();
+        var queryIndex = raw.IndexOf('?');
+        if (queryIndex >= 0)
+        {
+            var bucketQuery = GetQueryValue(raw[(queryIndex + 1)..], "bucket");
+            var pathQuery = GetQueryValue(raw[(queryIndex + 1)..], "path");
+            if (string.Equals(bucketQuery, bucket, StringComparison.OrdinalIgnoreCase) &&
+                !string.IsNullOrWhiteSpace(pathQuery))
+            {
+                return pathQuery;
+            }
+
+            raw = raw[..queryIndex];
+        }
+
+        if (Uri.TryCreate(raw, UriKind.Absolute, out var uri))
+            raw = uri.AbsolutePath;
+
+        raw = Uri.UnescapeDataString(raw);
+        foreach (var marker in new[]
+                 {
+                     $"/object/sign/{bucket}/",
+                     $"/object/public/{bucket}/",
+                     $"/object/authenticated/{bucket}/",
+                     $"/object/{bucket}/"
+                 })
+        {
+            var markerIndex = raw.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+            if (markerIndex >= 0)
+                return raw[(markerIndex + marker.Length)..].Trim('/');
+        }
+
+        return null;
+    }
+
+    private static string? GetQueryValue(string query, string key)
+    {
+        foreach (var part in query.Split('&', StringSplitOptions.RemoveEmptyEntries))
+        {
+            var pair = part.Split('=', 2);
+            if (pair.Length == 2 && string.Equals(pair[0], key, StringComparison.OrdinalIgnoreCase))
+                return Uri.UnescapeDataString(pair[1].Replace("+", " "));
+        }
+
+        return null;
     }
 
     private static string NormalizeStoragePath(string path)

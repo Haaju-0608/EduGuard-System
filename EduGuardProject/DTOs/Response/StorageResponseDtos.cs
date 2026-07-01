@@ -7,7 +7,8 @@ public sealed record StorageUploadResponseDto(
     long Size,
     string ContentType,
     string Storage,
-    DateTime UploadedAt);
+    DateTime UploadedAt,
+    string? Url = null);
 
 public sealed record StorageSignedUrlResponseDto(
     string Bucket,
