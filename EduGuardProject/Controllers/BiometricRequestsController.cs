@@ -1,12 +1,12 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
-[Authorize]
 [Route("api/biometric-requests")]
 [ApiController]
 public class BiometricRequestsController : AcademicApiControllerBase
@@ -16,6 +16,7 @@ public class BiometricRequestsController : AcademicApiControllerBase
     public BiometricRequestsController(IBiometricRequestService service) => _service = service;
 
     [HttpGet]
+    [SupabaseAuthorize]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,
@@ -35,6 +36,7 @@ public class BiometricRequestsController : AcademicApiControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [SupabaseAuthorize]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null, [FromQuery] string? expand = null)
     {
         try
@@ -47,6 +49,7 @@ public class BiometricRequestsController : AcademicApiControllerBase
     }
 
     [HttpPost]
+    [SupabaseAuthorize(AppRole.Student)]
     public async Task<IActionResult> Create([FromBody] CreateBiometricRequestDto dto, [FromQuery] string? fields = null)
     {
         try
@@ -58,6 +61,7 @@ public class BiometricRequestsController : AcademicApiControllerBase
     }
 
     [HttpPost("{id:guid}/approve")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
     public async Task<IActionResult> Approve(Guid id, [FromBody] ReviewBiometricRequestDto? dto)
     {
         try
@@ -70,6 +74,7 @@ public class BiometricRequestsController : AcademicApiControllerBase
     }
 
     [HttpPost("{id:guid}/reject")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
     public async Task<IActionResult> Reject(Guid id, [FromBody] ReviewBiometricRequestDto? dto)
     {
         try
@@ -82,6 +87,7 @@ public class BiometricRequestsController : AcademicApiControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [SupabaseAuthorize]
     public async Task<IActionResult> Delete(Guid id)
     {
         try
