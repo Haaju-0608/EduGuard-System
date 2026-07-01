@@ -73,6 +73,8 @@ public class ExamSlotRepository : IExamslotRepository
         {
             "starttime" => query.OrderBy(s => s.StartTime),
             "-starttime" => query.OrderByDescending(s => s.StartTime),
+            "examname" => query.OrderBy(s => s.ExamName),
+            "-examname" => query.OrderByDescending(s => s.ExamName),
             "endtime" => query.OrderBy(s => s.EndTime),
             "-endtime" => query.OrderByDescending(s => s.EndTime),
             "createdat" => query.OrderBy(s => s.CreatedAt),

@@ -46,7 +46,10 @@ public class CurrentUserService : ICurrentUserService
 
         return await _context.Users
             .AsNoTracking()
-            .FirstOrDefaultAsync(u => u.Id == UserId && u.DeletedAt == null);
+            .FirstOrDefaultAsync(u =>
+                u.Id == UserId &&
+                u.DeletedAt == null &&
+                u.Status == UserStatus.Active);
     }
 
     public async Task<User> GetRequiredUserAsync()

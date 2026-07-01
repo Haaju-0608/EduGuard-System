@@ -112,6 +112,7 @@ namespace EduGuardProject.Controllers
             }
         }
 
+        // VNPay calls this callback without application authentication.
         [HttpGet("vnpay-return")]
         public async Task<IActionResult> VnPayReturn()
         {
@@ -120,7 +121,7 @@ namespace EduGuardProject.Controllers
                 var isSuccess = await _walletService.ProcessVnPayReturnAsync(Request.Query);
                 if (isSuccess)
                 {
-                    return Ok(ApiResponse<object>.OnSuccess(null, "VNPay payment successful, wallet topped up!"));
+                    return Ok(ApiResponse<object>.OnSuccess(null!, "VNPay payment successful, wallet topped up!"));
                 }
                 return BadRequest(ApiResponse<object>.OnFail("Payment failed or invalid signature."));
             }

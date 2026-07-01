@@ -13,17 +13,20 @@ public class ClassEnrollmentService : IClassEnrollmentService
     private readonly IClassEnrollmentRepository _repo;
     private readonly IClassRepository _classRepo;
     private readonly ICurrentUserService _currentUser;
+    private readonly IRealtimeEventDispatcher _realtime;
     private readonly AppDbContext _context;
 
     public ClassEnrollmentService(
         IClassEnrollmentRepository repo,
         IClassRepository classRepo,
         ICurrentUserService currentUser,
+        IRealtimeEventDispatcher realtime,
         AppDbContext context)
     {
         _repo = repo;
         _classRepo = classRepo;
         _currentUser = currentUser;
+        _realtime = realtime;
         _context = context;
     }
 
@@ -91,6 +94,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 existing.Status = EnrollmentStatus.Active;
                 existing.EnrolledAt = DateTime.UtcNow;
                 await _repo.UpdateAsync(existing);
+                await PublishEnrollmentChangedAsync(existing, "reactivated");
                 return await AcademicMapper.MapEnrollmentAsync(_context, existing, null);
             }
             throw new InvalidOperationException("Student is already enrolled in this class.");
@@ -105,6 +109,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
         };
 
         await _repo.AddAsync(entity);
+        await PublishEnrollmentChangedAsync(entity, "created");
         return await AcademicMapper.MapEnrollmentAsync(_context, entity, null);
     }
 
@@ -118,6 +123,7 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
         entity.Status = dto.Status;
         await _repo.UpdateAsync(entity);
+        await PublishEnrollmentChangedAsync(entity, "updated");
         return true;
     }
 
@@ -130,7 +136,26 @@ public class ClassEnrollmentService : IClassEnrollmentService
         await EnsureEnrollmentAccessAsync(entity);
 
         await _repo.SoftDeleteAsync(entity);
+        await PublishEnrollmentChangedAsync(entity, "deleted");
         return true;
+    }
+
+    private async Task PublishEnrollmentChangedAsync(ClassEnrollment entity, string action)
+    {
+        var cls = await _classRepo.GetByIdAsync(entity.ClassId);
+        await _realtime.PublishDataChangedAsync(
+            "class-enrollments",
+            action,
+            institutionId: cls?.InstitutionId,
+            lecturerId: cls?.LecturerId,
+            userId: entity.StudentId,
+            data: new
+            {
+                entity.ClassId,
+                entity.StudentId,
+                entity.Status,
+                entity.EnrolledAt
+            });
     }
 
     private async Task EnsureEnrollmentAccessAsync(ClassEnrollment entity)

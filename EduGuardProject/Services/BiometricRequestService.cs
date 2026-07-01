@@ -4,6 +4,7 @@ using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using Microsoft.EntityFrameworkCore;
 
 namespace EduGuardProject.Services;
 
@@ -11,16 +12,28 @@ public class BiometricRequestService : IBiometricRequestService
 {
     private readonly IBiometricRequestRepository _repo;
     private readonly ICurrentUserService _currentUser;
+    private readonly INotificationDispatcher _notifications;
+    private readonly IRealtimeEventDispatcher _realtime;
+    private readonly IStorageService _storage;
     private readonly AppDbContext _context;
+    private readonly ILogger<BiometricRequestService> _logger;
 
     public BiometricRequestService(
         IBiometricRequestRepository repo,
         ICurrentUserService currentUser,
-        AppDbContext context)
+        INotificationDispatcher notifications,
+        IRealtimeEventDispatcher realtime,
+        IStorageService storage,
+        AppDbContext context,
+        ILogger<BiometricRequestService> logger)
     {
         _repo = repo;
         _currentUser = currentUser;
+        _notifications = notifications;
+        _realtime = realtime;
+        _storage = storage;
         _context = context;
+        _logger = logger;
     }
 
     public async Task<(IEnumerable<BiometricRequestResponseDto> Items, int TotalCount)> GetAllAsync(
@@ -63,6 +76,7 @@ public class BiometricRequestService : IBiometricRequestService
         };
 
         await _repo.AddAsync(entity);
+        await PublishBiometricRequestChangedAsync(entity, "created");
         return await AcademicMapper.MapBiometricRequestAsync(_context, entity, null);
     }
 
@@ -73,6 +87,7 @@ public class BiometricRequestService : IBiometricRequestService
         if (entity == null) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
+        await EnsureReviewerAccessAsync(user, entity.StudentId);
         entity.Status = BiometricReqStatus.Approved;
         entity.ApprovedBy = user.Id;
         entity.ReviewedAt = DateTime.UtcNow;
@@ -80,6 +95,15 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
+        await DeleteBiometricFilesAsync(entity.Id);
+        await _notifications.SendToUserAsync(
+            entity.StudentId,
+            "Khuôn mặt đã được phê duyệt",
+            "Đăng ký khuôn mặt của bạn đã được phê duyệt.",
+            NotificationType.BiometricRequestStatus,
+            null,
+            entity.Id);
+        await PublishBiometricRequestChangedAsync(entity, "approved");
         return true;
     }
 
@@ -90,6 +114,7 @@ public class BiometricRequestService : IBiometricRequestService
         if (entity == null) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
+        await EnsureReviewerAccessAsync(user, entity.StudentId);
         entity.Status = BiometricReqStatus.Rejected;
         entity.ApprovedBy = user.Id;
         entity.ReviewedAt = DateTime.UtcNow;
@@ -97,6 +122,15 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
+        await DeleteBiometricFilesAsync(entity.Id);
+        await _notifications.SendToUserAsync(
+            entity.StudentId,
+            "Đăng ký khuôn mặt bị từ chối",
+            entity.Reason,
+            NotificationType.BiometricRequestStatus,
+            null,
+            entity.Id);
+        await PublishBiometricRequestChangedAsync(entity, "rejected");
         return true;
     }
 
@@ -112,15 +146,94 @@ public class BiometricRequestService : IBiometricRequestService
             await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin);
 
         await _repo.SoftDeleteAsync(entity);
+        await PublishBiometricRequestChangedAsync(entity, "deleted");
         return true;
+    }
+
+    private async Task PublishBiometricRequestChangedAsync(BiometricRequest entity, string action)
+    {
+        var student = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == entity.StudentId);
+
+        await _realtime.PublishDataChangedAsync(
+            "biometric-requests",
+            action,
+            institutionId: student?.InstitutionId,
+            userId: entity.StudentId,
+            data: new
+            {
+                requestId = entity.Id,
+                entity.StudentId,
+                studentName = student?.FullName,
+                entity.Status,
+                entity.ApprovedBy,
+                entity.ReviewedAt,
+                entity.CreatedAt
+            });
     }
 
     private async Task EnsureRequestAccessAsync(BiometricRequest entity)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.SuperAdmin || user.Role == AppRole.SchoolAdmin) return;
+        if (user.Role == AppRole.SuperAdmin)
+            return;
 
-        if (user.Role == AppRole.Student && entity.StudentId != user.Id)
-            throw new UnauthorizedAccessException("Access denied.");
+        if (user.Role == AppRole.SchoolAdmin)
+        {
+            await EnsureReviewerAccessAsync(user, entity.StudentId);
+            return;
+        }
+
+        if (user.Role == AppRole.Student && entity.StudentId == user.Id)
+            return;
+
+        throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private async Task EnsureReviewerAccessAsync(User reviewer, Guid studentId)
+    {
+        if (reviewer.Role == AppRole.SuperAdmin)
+            return;
+
+        var studentInstitutionId = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == studentId)
+            .Select(u => u.InstitutionId)
+            .FirstOrDefaultAsync();
+
+        if (reviewer.Role == AppRole.SchoolAdmin &&
+            reviewer.InstitutionId.HasValue &&
+            reviewer.InstitutionId == studentInstitutionId)
+        {
+            return;
+        }
+
+        throw new UnauthorizedAccessException("You cannot review biometric requests from another institution.");
+    }
+
+    private async Task DeleteBiometricFilesAsync(Guid biometricRequestId)
+    {
+        var paths = await _context.BiometricData
+            .AsNoTracking()
+            .Where(b => b.BioRequestId == biometricRequestId && b.FaceImageUrl != null)
+            .Select(b => b.FaceImageUrl!)
+            .ToListAsync();
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                await _storage.DeleteAsync(StorageService.BiometricFacesBucket, path);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Could not delete biometric review file {Path} for request {RequestId}.",
+                    path,
+                    biometricRequestId);
+            }
+        }
     }
 }

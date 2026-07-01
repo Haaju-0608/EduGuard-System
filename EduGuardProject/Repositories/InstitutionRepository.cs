@@ -55,6 +55,30 @@ namespace EduGuardProject.Repositories
         {
             await _context.Institutions.AddAsync(institution);
             await _context.SaveChangesAsync();
+
+            var wallet = await _context.Wallets
+                .FirstOrDefaultAsync(w => w.InstitutionId == institution.Id);
+            if (wallet == null)
+            {
+                wallet = new Wallet
+                {
+                    Id = Guid.NewGuid(),
+                    InstitutionId = institution.Id,
+                    Balance = 0,
+                    Currency = "VND",
+                    LowBalanceThreshold = 50000,
+                    CreatedAt = DateTime.UtcNow,
+                    UpdatedAt = DateTime.UtcNow
+                };
+                await _context.Wallets.AddAsync(wallet);
+            }
+            else
+            {
+                wallet.LowBalanceThreshold = 50000;
+                wallet.UpdatedAt = DateTime.UtcNow;
+            }
+
+            await _context.SaveChangesAsync();
         }
 
         public async Task UpdateAsync(Institution institution)

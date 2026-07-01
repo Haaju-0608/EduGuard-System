@@ -52,13 +52,13 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpPost]
-        [SupabaseAuthorize(AppRole.SuperAdmin)] // 🔥 CHỈ SUPER_ADMIN MỚI ĐƯỢC TẠO GIÁ MỚI
+        [SupabaseAuthorize(AppRole.SuperAdmin)]
         public async Task<IActionResult> Create([FromBody] CreatePricingConfigDto dto)
         {
             try
             {
-                // Tự động bốc adminId từ HttpContext (do Attribute đã gắn vào)
-                var adminId = (Guid)HttpContext.Items["UserId"];
+                if (HttpContext.Items["UserId"] is not Guid adminId)
+                    return Unauthorized(ApiResponse<object>.OnFail("User is not authenticated."));
 
                 var result = await _service.CreateConfigAsync(dto, adminId);
                 return CreatedAtAction(nameof(GetById), new { id = result.Id }, ApiResponse<object>.OnSuccess(result, "Pricing configuration created successfully."));

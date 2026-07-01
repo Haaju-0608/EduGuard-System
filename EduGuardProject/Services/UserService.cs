@@ -1,8 +1,10 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
-using Microsoft.Extensions.Configuration; 
+using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Configuration;
 
 namespace EduGuardProject.Services
 {
@@ -10,14 +12,26 @@ namespace EduGuardProject.Services
     {
         private readonly IUserRepository _repo;
         private readonly Supabase.Client _supabaseClient;
-        private readonly IConfiguration _config; 
+        private readonly IConfiguration _config;
+        private readonly IRealtimeEventDispatcher _realtime;
+        private readonly IStorageService _storage;
+        private readonly AppDbContext _context;
 
         //  3. Tiêm IConfiguration vào để lấy Key tự động
-        public UserService(IUserRepository repo, Supabase.Client supabaseClient, IConfiguration config)
+        public UserService(
+            IUserRepository repo,
+            Supabase.Client supabaseClient,
+            IConfiguration config,
+            IRealtimeEventDispatcher realtime,
+            IStorageService storage,
+            AppDbContext context)
         {
             _repo = repo;
             _supabaseClient = supabaseClient;
             _config = config;
+            _realtime = realtime;
+            _storage = storage;
+            _context = context;
         }
 
         public async Task<(IEnumerable<UserResponseDto> Items, int TotalCount)> GetUsersAsync(string? search, string? sort, int page, int pageSize)
@@ -42,15 +56,15 @@ namespace EduGuardProject.Services
                 EmailConfirm = true
             };
 
-            //  Lấy Service Role Key từ appsettings và gọi hàm AdminAuth chuẩn của Supabase C#
-            var serviceKey = _config["Supabase:ServiceRoleKey"];
+            var serviceKey = _config["Supabase:ServiceRoleKey"]
+                ?? throw new InvalidOperationException("Supabase:ServiceRoleKey is not configured.");
             var adminAuth = _supabaseClient.AdminAuth(serviceKey);
 
             // Supabase C# trả về thẳng User luôn, không lồng ghép rườm rà
             var authUser = await adminAuth.CreateUser(adminAttrs);
 
             if (authUser?.Id == null)
-                throw new Exception("Lỗi: Supabase không trả về ID người dùng.");
+                throw new InvalidOperationException("Lỗi: Supabase không trả về ID người dùng.");
 
             var realUserId = Guid.Parse(authUser.Id); // Lấy thẳng ID
 
@@ -93,6 +107,7 @@ namespace EduGuardProject.Services
                 await _repo.AddAsync(entity);
             }
 
+            await PublishUserChangedAsync(entity, "created");
             return MapToResponseDto(entity);
         }
 
@@ -110,6 +125,21 @@ namespace EduGuardProject.Services
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _repo.UpdateAsync(entity);
+            await PublishUserChangedAsync(entity, "updated");
+            return true;
+        }
+
+        public async Task<bool> UpdateMyProfileAsync(Guid id, UpdateMyProfileDto dto)
+        {
+            var entity = await _repo.GetByIdAsync(id);
+            if (entity == null) return false;
+
+            entity.FullName = dto.FullName.Trim();
+            entity.Phone = string.IsNullOrWhiteSpace(dto.Phone) ? null : dto.Phone.Trim();
+            entity.UpdatedAt = DateTime.UtcNow;
+
+            await _repo.UpdateAsync(entity);
+            await PublishUserChangedAsync(entity, "profile-updated");
             return true;
         }
 
@@ -118,15 +148,73 @@ namespace EduGuardProject.Services
             var entity = await _repo.GetByIdAsync(id);
             if (entity == null) return false;
 
+            await DeleteStudentStorageAsync(entity);
             await _repo.DeleteAsync(entity);
 
-            // Gọi y hệt như hàm Create ở trên
-            var serviceKey = _config["Supabase:ServiceRoleKey"];
+            var serviceKey = _config["Supabase:ServiceRoleKey"]
+                ?? throw new InvalidOperationException("Supabase:ServiceRoleKey is not configured.");
             var adminAuth = _supabaseClient.AdminAuth(serviceKey);
             await adminAuth.DeleteUser(id.ToString());
 
+            await PublishUserChangedAsync(entity, "deleted");
             return true;
         }
+
+        private async Task DeleteStudentStorageAsync(EduGuardProject.Models.User user)
+        {
+            if (user.Role != AppRole.Student)
+                return;
+
+            var storageDeletes = new List<(string Bucket, string? Path)>();
+
+            storageDeletes.AddRange(await _context.BiometricData
+                .Where(b => b.UserId == user.Id && b.FaceImageUrl != null)
+                .Select(b => new ValueTuple<string, string?>(StorageService.BiometricFacesBucket, b.FaceImageUrl))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.AttendanceRecords
+                .Where(r => r.StudentId == user.Id && r.SnapshotPath != null)
+                .Select(r => new ValueTuple<string, string?>(StorageService.AttendanceSnapshotsBucket, r.SnapshotPath))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.ExamParticipations
+                .Where(p => p.StudentId == user.Id && p.IdentitySnapshotPath != null)
+                .Select(p => new ValueTuple<string, string?>(StorageService.ExamIdentityBucket, p.IdentitySnapshotPath))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.ExamParticipations
+                .Where(p => p.StudentId == user.Id && p.RecordingVideoPath != null)
+                .Select(p => new ValueTuple<string, string?>(StorageService.ExamRecordingsBucket, p.RecordingVideoPath))
+                .ToListAsync());
+
+            storageDeletes.AddRange(await _context.ViolationLogs
+                .Where(v => v.Participation.StudentId == user.Id && v.EvidencePath != null)
+                .Select(v => new ValueTuple<string, string?>(StorageService.ExamEvidenceBucket, v.EvidencePath))
+                .ToListAsync());
+
+            foreach (var (bucket, path) in storageDeletes
+                .Where(x => !string.IsNullOrWhiteSpace(x.Path))
+                .Distinct())
+            {
+                await _storage.DeleteAsync(bucket, path!);
+            }
+        }
+
+        private Task PublishUserChangedAsync(EduGuardProject.Models.User entity, string action) =>
+            _realtime.PublishDataChangedAsync(
+                "users",
+                action,
+                institutionId: entity.InstitutionId,
+                userId: entity.Id,
+                data: new
+                {
+                    userId = entity.Id,
+                    entity.InstitutionId,
+                    entity.Email,
+                    entity.FullName,
+                    entity.Role,
+                    entity.Status
+                });
 
         private static UserResponseDto MapToResponseDto(EduGuardProject.Models.User e) => new()
         {

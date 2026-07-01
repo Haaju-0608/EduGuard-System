@@ -30,8 +30,7 @@ namespace EduGuardProject.DTOs.Request
         public Guid InstitutionId { get; set; }
     }
 
-    // 3. DTO cho School Admin tạo Giảng viên / Sinh viên
-    // 🔥 Thêm IValidatableObject để làm Validate có điều kiện
+    // 3. DTO cho School Admin tạo giảng viên hoặc sinh viên.
     public class CreateUserDto : IValidatableObject
     {
         [Required(ErrorMessage = "Email is required.")]
@@ -54,7 +53,6 @@ namespace EduGuardProject.DTOs.Request
         public string? Phone { get; set; }
         public UserStatus Status { get; set; } = UserStatus.Active;
 
-        // 🔥 XỬ LÝ LOGIC: Nếu là Sinh viên thì BẮT BUỘC phải có StudentCode
         public IEnumerable<ValidationResult> Validate(ValidationContext validationContext)
         {
             if (Role == AppRole.Student && string.IsNullOrWhiteSpace(StudentCode))
