@@ -29,7 +29,7 @@ public class StorageService : IStorageService
             [AttendanceVideosBucket] = StoragePolicy.Videos,
             [ExamIdentityBucket] = StoragePolicy.Images,
             [ExamRecordingsBucket] = StoragePolicy.Videos,
-            [ExamEvidenceBucket] = StoragePolicy.Images
+            [ExamEvidenceBucket] = StoragePolicy.Videos
         };
 
     private readonly IHttpClientFactory _httpClientFactory;
@@ -1288,6 +1288,11 @@ public class StorageService : IStorageService
             VideoLimit,
             new HashSet<string>([".mp4", ".webm"], StringComparer.OrdinalIgnoreCase),
             new HashSet<string>(["video/mp4", "video/webm"], StringComparer.OrdinalIgnoreCase));
+
+        public static StoragePolicy ImgVi { get; } = new(
+          VideoLimit,
+          new HashSet<string>([".mp4", ".webm", ".jpg", ".jpeg", ".png", ".webp"], StringComparer.OrdinalIgnoreCase),
+          new HashSet<string>(["video/mp4", "video/webm", "image/jpeg", "image/png", "image/webp"], StringComparer.OrdinalIgnoreCase));
     }
 
     private sealed record StorageAccess(Guid? InstitutionId);
