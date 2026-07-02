@@ -1,12 +1,12 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Filters;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
-[Authorize]
 [Route("api/enrollments")]
 [ApiController]
 public class EnrollmentsController : AcademicApiControllerBase
@@ -16,6 +16,7 @@ public class EnrollmentsController : AcademicApiControllerBase
     public EnrollmentsController(IClassEnrollmentService service) => _service = service;
 
     [HttpGet]
+    [SupabaseAuthorize]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,
@@ -36,6 +37,7 @@ public class EnrollmentsController : AcademicApiControllerBase
     }
 
     [HttpGet("{classId:guid}/{studentId:guid}")]
+    [SupabaseAuthorize]
     public async Task<IActionResult> GetByKey(
         Guid classId,
         Guid studentId,
@@ -52,6 +54,7 @@ public class EnrollmentsController : AcademicApiControllerBase
     }
 
     [HttpPost]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Create([FromBody] CreateClassEnrollmentDto dto, [FromQuery] string? fields = null)
     {
         try
@@ -63,6 +66,7 @@ public class EnrollmentsController : AcademicApiControllerBase
     }
 
     [HttpPut("{classId:guid}/{studentId:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Update(Guid classId, Guid studentId, [FromBody] UpdateClassEnrollmentDto dto)
     {
         try
@@ -75,6 +79,7 @@ public class EnrollmentsController : AcademicApiControllerBase
     }
 
     [HttpDelete("{classId:guid}/{studentId:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Delete(Guid classId, Guid studentId)
     {
         try

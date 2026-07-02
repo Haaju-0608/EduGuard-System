@@ -16,6 +16,7 @@ public class AttendanceSessionsController : AcademicApiControllerBase
     public AttendanceSessionsController(IAttendanceSessionService service) => _service = service;
 
     [HttpGet]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,
@@ -35,6 +36,7 @@ public class AttendanceSessionsController : AcademicApiControllerBase
     }
 
     [HttpGet("{id:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null, [FromQuery] string? expand = null)
     {
         try
@@ -47,6 +49,7 @@ public class AttendanceSessionsController : AcademicApiControllerBase
     }
 
     [HttpPost]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Create([FromBody] CreateAttendanceSessionDto dto, [FromQuery] string? fields = null)
     {
         try
@@ -58,6 +61,7 @@ public class AttendanceSessionsController : AcademicApiControllerBase
     }
 
     [HttpPut("{id:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateAttendanceSessionDto dto)
     {
         try
@@ -70,6 +74,7 @@ public class AttendanceSessionsController : AcademicApiControllerBase
     }
 
     [HttpDelete("{id:guid}")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Delete(Guid id)
     {
         try

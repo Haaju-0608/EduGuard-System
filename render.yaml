@@ -1,0 +1,34 @@
+# Blueprint Render — deploy từ Dashboard: New > Blueprint > connect repo
+# Hoặc tạo Web Service thủ công với Docker, trỏ Dockerfile Path: ./EduGuardProject/Dockerfile
+
+services:
+  - type: web
+    name: eduguard-api
+    runtime: docker
+    region: singapore
+    plan: free
+    dockerfilePath: ./EduGuardProject/Dockerfile
+    dockerContext: ./EduGuardProject
+    healthCheckPath: /health
+    envVars:
+      - key: ASPNETCORE_ENVIRONMENT
+        value: Production
+      # --- Bắt buộc: điền trong Render Dashboard (sync: false = không commit secret) ---
+      - key: ConnectionStrings__DefaultConnection
+        sync: false
+      - key: Supabase__Url
+        sync: false
+      - key: Supabase__Key
+        sync: false
+      - key: Supabase__ServiceRoleKey
+        sync: false
+      - key: Jwt__Secret
+        sync: false
+      - key: VnPay__TmnCode
+        sync: false
+      - key: VnPay__HashSecret
+        sync: false
+      - key: VnPay__BaseUrl
+        value: https://sandbox.vnpayment.vn/paymentv2/vpcpay.html
+      - key: VnPay__ReturnUrl
+        sync: false

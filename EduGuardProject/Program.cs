@@ -29,6 +29,14 @@ builder.Services.AddDataProtection()
     .PersistKeysToFileSystem(new DirectoryInfo(Path.Combine(builder.Environment.ContentRootPath, ".keys")));
 
 // Database
+// Render (và nhiều PaaS) inject biến PORT — bind Kestrel trước khi Build.
+var port = Environment.GetEnvironmentVariable("PORT");
+if (!string.IsNullOrWhiteSpace(port))
+{
+    builder.WebHost.UseUrls($"http://+:{port}");
+}
+
+// ================= DATABASE =================
 var connectionString = builder.Configuration.GetConnectionString("DefaultConnection");
 var dataSourceBuilder = new NpgsqlDataSourceBuilder(connectionString);
 dataSourceBuilder.UseVector();
@@ -47,10 +55,18 @@ dataSourceBuilder.MapEnum<AttendanceMethod>("attendance_method");
 dataSourceBuilder.MapEnum<AttendanceStatus>("attendance_status");
 dataSourceBuilder.MapEnum<BiometricReqStatus>("biometric_req_status");
 dataSourceBuilder.MapEnum<EnrollmentStatus>("enrollment_status");
+dataSourceBuilder.MapEnum<AttendanceMethod>("attendance_method");
+dataSourceBuilder.MapEnum<AttendanceStatus>("attendance_status");
+dataSourceBuilder.MapEnum<SessionStatus>("session_status");
+dataSourceBuilder.MapEnum<EnrollmentStatus>("enrollment_status");
+dataSourceBuilder.MapEnum<BiometricReqStatus>("biometric_req_status");
 dataSourceBuilder.MapEnum<ParticipationStatus>("participation_status");
 dataSourceBuilder.MapEnum<ExamSlotStatus>("exam_slot_status");
-dataSourceBuilder.MapEnum<ViolationType>("violation_type");
+dataSourceBuilder.MapEnum<NotificationType>("notification_type");
+dataSourceBuilder.MapEnum<NotificationChannel>("notification_channel");
+dataSourceBuilder.MapEnum<ReferenceTypeEnum>("reference_type_enum");
 dataSourceBuilder.MapEnum<ViolationSeverity>("violation_severity");
+dataSourceBuilder.MapEnum<ViolationType>("violation_type");
 var dataSource = dataSourceBuilder.Build();
 
 builder.Services.AddDbContext<AppDbContext>(options =>
@@ -237,6 +253,8 @@ app.UseSwagger();
 app.UseSwaggerUI();
 if (!app.Environment.IsDevelopment())
     app.UseHttpsRedirection();
+
+app.UseHttpsRedirection();
 app.UseStaticFiles();
 app.UseCors();
 
@@ -244,6 +262,7 @@ app.UseCors();
 app.UseAuthentication();
 app.UseAuthorization();
 
+app.MapGet("/health", () => Results.Ok(new { status = "healthy" }));
 app.MapControllers();
 app.MapGet("/", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
 app.MapGet("/index.cshtml", () => Results.File(Path.Combine(app.Environment.WebRootPath, "index.cshtml"), "text/html"));
