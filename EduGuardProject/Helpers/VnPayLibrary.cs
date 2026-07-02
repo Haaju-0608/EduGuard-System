@@ -30,27 +30,21 @@ public class VnPayLibrary
     public string CreateRequestUrl(string baseUrl, string vnpHashSecret)
     {
         var query = new StringBuilder();
-        var signData = new StringBuilder();
+        var data = new StringBuilder();
 
         foreach (var kv in _requestData)
         {
-            if (!string.IsNullOrEmpty(kv.Value))
-            {
-                data.Append(kv.Key + "=" + kv.Value + "&");
-            }
-        }
-
-        string signData = data.ToString().TrimEnd('&');
-
-        string secureHash = HmacSha512(vnpHashSecret, signData);
-
-        var query = new StringBuilder();
+            if (string.IsNullOrEmpty(kv.Value))
+                continue;
 
             if (query.Length > 0)
             {
                 query.Append("&");
-                signData.Append("&");
+                data.Append("&");
             }
+
+            var encodedKey = Uri.EscapeDataString(kv.Key);
+            var encodedValue = Uri.EscapeDataString(kv.Value);
 
             // Query string
             query.Append(encodedKey);
@@ -58,12 +52,13 @@ public class VnPayLibrary
             query.Append(encodedValue);
 
             // Data dùng để ký
-            signData.Append(kv.Key);
-            signData.Append("=");
-            signData.Append(encodedValue);
+            data.Append(kv.Key);
+            data.Append("=");
+            data.Append(encodedValue);
         }
 
-        string secureHash = HmacSha512(vnpHashSecret, signData.ToString());
+        string signData = data.ToString();
+        string secureHash = HmacSha512(vnpHashSecret, signData);
 
         query.Append("&vnp_SecureHash=");
         query.Append(secureHash);

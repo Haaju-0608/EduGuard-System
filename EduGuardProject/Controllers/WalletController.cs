@@ -30,7 +30,9 @@ namespace EduGuardProject.Controllers
             try
             {
                 // ================= BẢO MẬT: CHỐNG XEM TRỘM VÍ TRƯỜNG KHÁC =================
-                var currentUserId = (Guid)HttpContext.Items["UserId"];
+                if (HttpContext.Items["UserId"] is not Guid currentUserId)
+                    return Unauthorized(ApiResponse<object>.OnFail("User session is invalid."));
+
                 var currentUser = await _userService.GetUserByIdAsync(currentUserId);
 
                 if (currentUser == null)
@@ -87,7 +89,9 @@ namespace EduGuardProject.Controllers
         {
             try
             {
-                var currentUserId = (Guid)HttpContext.Items["UserId"];
+                if (HttpContext.Items["UserId"] is not Guid currentUserId)
+                    return Unauthorized(ApiResponse<object>.OnFail("User session is invalid."));
+
                 var currentUser = await _userService.GetUserByIdAsync(currentUserId);
 
                 if (currentUser == null)
