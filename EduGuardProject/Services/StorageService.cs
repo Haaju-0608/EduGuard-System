@@ -101,6 +101,7 @@ public class StorageService : IStorageService
         var actor = await _currentUser.GetRequiredUserAsync();
         var datum = await _context.BiometricData
             .Include(b => b.User)
+            .ThenInclude(u => u.Institution)
             .Include(b => b.BioRequest)
             .FirstOrDefaultAsync(b => b.Id == biometricDataId, cancellationToken)
             ?? throw new InvalidOperationException("Biometric data was not found.");
@@ -113,7 +114,7 @@ public class StorageService : IStorageService
             file,
             new StorageUploadPlan(
                 BiometricFacesBucket,
-                [institutionId.ToString("N"), datum.UserId.ToString("N")],
+                UserFolders(datum.User),
                 datum.UserId,
                 datum.FaceImageUrl,
                 actor,
@@ -136,8 +137,10 @@ public class StorageService : IStorageService
     {
         var actor = await _currentUser.GetRequiredUserAsync();
         var record = await _context.AttendanceRecords
+            .Include(r => r.Student)
             .Include(r => r.Session)
             .ThenInclude(s => s.Class)
+            .ThenInclude(c => c.Institution)
             .FirstOrDefaultAsync(r => r.Id == attendanceRecordId, cancellationToken)
             ?? throw new InvalidOperationException("Attendance record was not found.");
 
@@ -148,7 +151,7 @@ public class StorageService : IStorageService
             file,
             new StorageUploadPlan(
                 AttendanceSnapshotsBucket,
-                [institutionId.ToString("N"), record.Id.ToString("N")],
+                AttendanceRecordFolders(record),
                 record.StudentId,
                 record.SnapshotPath,
                 actor,
@@ -171,6 +174,7 @@ public class StorageService : IStorageService
         var actor = await _currentUser.GetRequiredUserAsync();
         var session = await _context.AttendanceSessions
             .Include(s => s.Class)
+            .ThenInclude(c => c.Institution)
             .FirstOrDefaultAsync(s => s.Id == attendanceSessionId, cancellationToken)
             ?? throw new InvalidOperationException("Attendance session was not found.");
 
@@ -180,7 +184,7 @@ public class StorageService : IStorageService
             file,
             new StorageUploadPlan(
                 AttendanceVideosBucket,
-                [session.Class.InstitutionId.ToString("N"), session.Id.ToString("N")],
+                AttendanceSessionFolders(session),
                 session.Id,
                 session.VideoPath,
                 actor,
@@ -495,7 +499,7 @@ public class StorageService : IStorageService
 
         try
         {
-            await plan.PersistMetadata(result.Path);
+            await plan.PersistMetadata(result.Url ?? result.Path);
         }
         catch
         {
@@ -639,20 +643,16 @@ public class StorageService : IStorageService
         string path,
         CancellationToken cancellationToken)
     {
-        var storedPath = path;
-        var fullPath = $"{bucket}/{path}";
-
         switch (bucket)
         {
             case BiometricFacesBucket:
                 {
-                    var datum = await _context.BiometricData
+                    var items = await _context.BiometricData
                         .AsNoTracking()
                         .Include(b => b.User)
-                        .FirstOrDefaultAsync(
-                            b => b.FaceImageUrl == storedPath ||
-                                 b.FaceImageUrl == fullPath,
-                            cancellationToken);
+                        .Where(b => b.FaceImageUrl != null)
+                        .ToListAsync(cancellationToken);
+                    var datum = items.FirstOrDefault(b => StorageValueMatchesPath(b.FaceImageUrl, bucket, path));
                     if (datum != null)
                     {
                         EnsureBiometricAccess(actor, datum.User);
@@ -662,14 +662,13 @@ public class StorageService : IStorageService
                 }
             case AttendanceSnapshotsBucket:
                 {
-                    var record = await _context.AttendanceRecords
+                    var items = await _context.AttendanceRecords
                         .AsNoTracking()
                         .Include(r => r.Session)
                         .ThenInclude(s => s.Class)
-                        .FirstOrDefaultAsync(
-                            r => r.SnapshotPath == storedPath ||
-                                 r.SnapshotPath == fullPath,
-                            cancellationToken);
+                        .Where(r => r.SnapshotPath != null)
+                        .ToListAsync(cancellationToken);
+                    var record = items.FirstOrDefault(r => StorageValueMatchesPath(r.SnapshotPath, bucket, path));
                     if (record != null)
                     {
                         EnsureAttendanceRecordAccess(actor, record);
@@ -679,13 +678,12 @@ public class StorageService : IStorageService
                 }
             case AttendanceVideosBucket:
                 {
-                    var session = await _context.AttendanceSessions
+                    var items = await _context.AttendanceSessions
                         .AsNoTracking()
                         .Include(s => s.Class)
-                        .FirstOrDefaultAsync(
-                            s => s.VideoPath == storedPath ||
-                                 s.VideoPath == fullPath,
-                            cancellationToken);
+                        .Where(s => s.VideoPath != null)
+                        .ToListAsync(cancellationToken);
+                    var session = items.FirstOrDefault(s => StorageValueMatchesPath(s.VideoPath, bucket, path));
                     if (session != null)
                     {
                         EnsureClassStaffAccess(actor, session.Class);
@@ -696,17 +694,18 @@ public class StorageService : IStorageService
             case ExamIdentityBucket:
             case ExamRecordingsBucket:
                 {
-                    var participation = await _context.ExamParticipations
+                    var items = await _context.ExamParticipations
                         .AsNoTracking()
                         .Include(p => p.ExamSlot)
                         .ThenInclude(e => e.Class)
-                        .FirstOrDefaultAsync(
-                            p => bucket == ExamIdentityBucket
-                                ? p.IdentitySnapshotPath == storedPath ||
-                                  p.IdentitySnapshotPath == fullPath
-                                : p.RecordingVideoPath == storedPath ||
-                                  p.RecordingVideoPath == fullPath,
-                            cancellationToken);
+                        .Where(p => bucket == ExamIdentityBucket
+                            ? p.IdentitySnapshotPath != null
+                            : p.RecordingVideoPath != null)
+                        .ToListAsync(cancellationToken);
+                    var participation = items.FirstOrDefault(p => StorageValueMatchesPath(
+                        bucket == ExamIdentityBucket ? p.IdentitySnapshotPath : p.RecordingVideoPath,
+                        bucket,
+                        path));
                     if (participation != null)
                     {
                         EnsureParticipationAccess(actor, participation);
@@ -716,15 +715,14 @@ public class StorageService : IStorageService
                 }
             case ExamEvidenceBucket:
                 {
-                    var violation = await _context.ViolationLogs
+                    var items = await _context.ViolationLogs
                         .AsNoTracking()
                         .Include(v => v.Participation)
                         .ThenInclude(p => p.ExamSlot)
                         .ThenInclude(e => e.Class)
-                        .FirstOrDefaultAsync(
-                            v => v.EvidencePath == storedPath ||
-                                 v.EvidencePath == fullPath,
-                            cancellationToken);
+                        .Where(v => v.EvidencePath != null)
+                        .ToListAsync(cancellationToken);
+                    var violation = items.FirstOrDefault(v => StorageValueMatchesPath(v.EvidencePath, bucket, path));
                     if (violation != null)
                     {
                         EnsureViolationAccess(actor, violation);
@@ -745,16 +743,14 @@ public class StorageService : IStorageService
         string path,
         CancellationToken cancellationToken)
     {
-        var fullPath = $"{bucket}/{path}";
-
         switch (bucket)
         {
             case BiometricFacesBucket:
                 {
-                    var items = await _context.BiometricData
-                        .Where(b => b.FaceImageUrl == path ||
-                                    b.FaceImageUrl == fullPath)
-                        .ToListAsync(cancellationToken);
+                    var items = (await _context.BiometricData
+                        .Where(b => b.FaceImageUrl != null)
+                        .ToListAsync(cancellationToken))
+                        .Where(b => StorageValueMatchesPath(b.FaceImageUrl, bucket, path));
                     foreach (var item in items)
                     {
                         item.FaceImageUrl = null;
@@ -764,20 +760,20 @@ public class StorageService : IStorageService
                 }
             case AttendanceSnapshotsBucket:
                 {
-                    var items = await _context.AttendanceRecords
-                        .Where(r => r.SnapshotPath == path ||
-                                    r.SnapshotPath == fullPath)
-                        .ToListAsync(cancellationToken);
+                    var items = (await _context.AttendanceRecords
+                        .Where(r => r.SnapshotPath != null)
+                        .ToListAsync(cancellationToken))
+                        .Where(r => StorageValueMatchesPath(r.SnapshotPath, bucket, path));
                     foreach (var item in items)
                         item.SnapshotPath = null;
                     break;
                 }
             case AttendanceVideosBucket:
                 {
-                    var items = await _context.AttendanceSessions
-                        .Where(s => s.VideoPath == path ||
-                                    s.VideoPath == fullPath)
-                        .ToListAsync(cancellationToken);
+                    var items = (await _context.AttendanceSessions
+                        .Where(s => s.VideoPath != null)
+                        .ToListAsync(cancellationToken))
+                        .Where(s => StorageValueMatchesPath(s.VideoPath, bucket, path));
                     foreach (var item in items)
                     {
                         item.VideoPath = null;
@@ -787,30 +783,30 @@ public class StorageService : IStorageService
                 }
             case ExamIdentityBucket:
                 {
-                    var items = await _context.ExamParticipations
-                        .Where(p => p.IdentitySnapshotPath == path ||
-                                    p.IdentitySnapshotPath == fullPath)
-                        .ToListAsync(cancellationToken);
+                    var items = (await _context.ExamParticipations
+                        .Where(p => p.IdentitySnapshotPath != null)
+                        .ToListAsync(cancellationToken))
+                        .Where(p => StorageValueMatchesPath(p.IdentitySnapshotPath, bucket, path));
                     foreach (var item in items)
                         item.IdentitySnapshotPath = null;
                     break;
                 }
             case ExamRecordingsBucket:
                 {
-                    var items = await _context.ExamParticipations
-                        .Where(p => p.RecordingVideoPath == path ||
-                                    p.RecordingVideoPath == fullPath)
-                        .ToListAsync(cancellationToken);
+                    var items = (await _context.ExamParticipations
+                        .Where(p => p.RecordingVideoPath != null)
+                        .ToListAsync(cancellationToken))
+                        .Where(p => StorageValueMatchesPath(p.RecordingVideoPath, bucket, path));
                     foreach (var item in items)
                         item.RecordingVideoPath = null;
                     break;
                 }
             case ExamEvidenceBucket:
                 {
-                    var items = await _context.ViolationLogs
-                        .Where(v => v.EvidencePath == path ||
-                                    v.EvidencePath == fullPath)
-                        .ToListAsync(cancellationToken);
+                    var items = (await _context.ViolationLogs
+                        .Where(v => v.EvidencePath != null)
+                        .ToListAsync(cancellationToken))
+                        .Where(v => StorageValueMatchesPath(v.EvidencePath, bucket, path));
                     foreach (var item in items)
                         item.EvidencePath = null;
                     break;
@@ -907,6 +903,26 @@ public class StorageService : IStorageService
             participation.ExamSlot.Class.Institution.Name,
             participation.ExamSlot.ExamName,
             participation.Student.FullName
+        ];
+
+    private static string[] UserFolders(User user) =>
+        [
+            user.Institution?.Name ?? RequireInstitution(user).ToString("N"),
+            user.FullName
+        ];
+
+    private static string[] AttendanceRecordFolders(AttendanceRecord record) =>
+        [
+            record.Session.Class.Institution.Name,
+            record.Session.Class.CourseName,
+            record.Student.FullName
+        ];
+
+    private static string[] AttendanceSessionFolders(AttendanceSession session) =>
+        [
+            session.Class.Institution.Name,
+            session.Class.CourseName,
+            $"Attendance_{session.StartTime:yyyyMMddHHmmss}"
         ];
 
     private bool UseLocalStorage =>
@@ -1109,6 +1125,24 @@ public class StorageService : IStorageService
         {
             throw new InvalidOperationException(
                 $"expiresInSeconds must be between 60 and {IStorageService.NinetyDaySignedUrlExpiresInSeconds}.");
+        }
+    }
+
+    private static bool StorageValueMatchesPath(string? value, string bucket, string path)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+            return false;
+
+        try
+        {
+            return string.Equals(
+                NormalizeObjectPathForBucket(bucket, value),
+                path,
+                StringComparison.OrdinalIgnoreCase);
+        }
+        catch
+        {
+            return false;
         }
     }
 
