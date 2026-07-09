@@ -97,7 +97,9 @@ public interface IExamSlotServices
 
     Task<ExamslotReponseDto?> GetByIdAsync(Guid id);
 
-    Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid id);
+    Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid id, Guid studentId);
+
+    Task<IEnumerable<ExamslotReponseDto>> GetByStudentIdAsync(Guid studentId);
 
     Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto);
 
