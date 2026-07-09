@@ -3,6 +3,7 @@ using EduGuardProject.Repositories;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services;
 using EduGuardProject.Services.BackgroundJobs;
+using EduGuardProject.Services.Email;
 using EduGuardProject.Services.IServices;
 using EduGuardProject.Hubs;
 using Microsoft.AspNetCore.Authentication.JwtBearer;
@@ -97,6 +98,7 @@ builder.Services.AddScoped<IStudentExamRecordRepository, StudentExamRecordReposi
 builder.Services.AddScoped<IViolationLogRepository, ViolationLogRepository>();
 
 // Services
+builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
 builder.Services.AddScoped<ICurrentUserService, CurrentUserService>();
 builder.Services.AddScoped<IAuthService, AuthService>();
 builder.Services.AddScoped<IInstitutionService, InstitutionService>();
@@ -122,6 +124,8 @@ builder.Services.AddSingleton<IExamPresenceTracker, ExamPresenceTracker>();
 builder.Services.AddScoped<IDashboardStatsService, DashboardStatsService>();
 builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
+builder.Services.AddScoped<EmailTemplateService>();
+builder.Services.AddScoped<IEmailService, EmailService>();
 
 // Authentication
 builder.Services.AddAuthentication(options =>

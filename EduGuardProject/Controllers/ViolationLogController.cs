@@ -9,7 +9,6 @@ using Microsoft.AspNetCore.Mvc;
 namespace EduGuardProject.Controllers;
 
 [Route("api/violation-logs")]
-[Route("api/violations")]
 [ApiController]
 [SupabaseAuthorize]
 public class ViolationLogController : AcademicApiControllerBase
