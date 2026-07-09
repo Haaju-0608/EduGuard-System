@@ -43,6 +43,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<ContactRequest> ContactRequests { get; set; }
 
+    public virtual DbSet<StudentExamRecord> StudentExamRecords { get; set; }
+
     public virtual DbSet<ViolationLog> ViolationLogs { get; set; }
 
     public virtual DbSet<Wallet> Wallets { get; set; }
@@ -80,6 +82,7 @@ public partial class AppDbContext : DbContext
             .HasPostgresEnum("realtime", "equality_op", new[] { "eq", "neq", "lt", "lte", "gt", "gte", "in" })
             .HasPostgresEnum<ReferenceTypeEnum>("reference_type_enum")
             .HasPostgresEnum<SessionStatus>("session_status")
+            .HasPostgresEnum<StudentExamRecordStatus>("student_exam_record_status")
             .HasPostgresEnum("storage", "buckettype", new[] { "STANDARD", "ANALYTICS", "VECTOR" })
             .HasPostgresEnum<TransactionStatus>("transaction_status")
             .HasPostgresEnum<TransactionType>("transaction_type")
@@ -502,6 +505,45 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.User).WithMany(p => p.Notifications)
                 .HasForeignKey(d => d.UserId)
                 .HasConstraintName("notifications_user_id_fkey");
+        });
+
+        modelBuilder.Entity<StudentExamRecord>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("student_exam_records_pkey");
+
+            entity.ToTable("student_exam_records");
+
+            entity.HasIndex(e => e.ExamSlotId, "idx_student_exam_records_exam_slot");
+
+            entity.HasIndex(e => e.StudentId, "idx_student_exam_records_student");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.ExamSlotId).HasColumnName("exam_slot_id");
+            entity.Property(e => e.StudentId)
+                .HasComment("Must reference a users.id whose role is STUDENT.")
+                .HasColumnName("student_id");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+            entity.Property(e => e.EndedAt).HasColumnName("ended_at");
+            entity.Property(e => e.ExamRecord)
+                .HasColumnType("text")
+                .HasColumnName("exam_record");
+            entity.Property(e => e.Status)
+                .HasColumnName("status")
+                .HasColumnType("student_exam_record_status")
+                .HasDefaultValue(StudentExamRecordStatus.Marked);
+
+            entity.HasOne(d => d.ExamSlot).WithMany(p => p.StudentExamRecords)
+                .HasForeignKey(d => d.ExamSlotId)
+                .HasConstraintName("student_exam_records_exam_slot_id_fkey");
+
+            entity.HasOne(d => d.Student).WithMany(p => p.StudentExamRecords)
+                .HasForeignKey(d => d.StudentId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("student_exam_records_student_id_fkey");
         });
 
         modelBuilder.Entity<PricingConfig>(entity =>

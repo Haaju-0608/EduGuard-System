@@ -181,6 +181,26 @@ public class UpdateExamParticipationStatusDto
     public ParticipationStatus Status { get; set; }
 }
 
+public class CreateStudentExamRecordDto
+{
+    [Required]
+    public Guid ExamSlotId { get; set; }
+
+    [Required]
+    public Guid StudentId { get; set; }
+
+    public DateTime? EndedAt { get; set; }
+    public string? ExamRecord { get; set; }
+    public StudentExamRecordStatus Status { get; set; } = StudentExamRecordStatus.Marked;
+}
+
+public class UpdateStudentExamRecordDto
+{
+    public DateTime? EndedAt { get; set; }
+    public string? ExamRecord { get; set; }
+    public StudentExamRecordStatus Status { get; set; }
+}
+
 
 public class CreateExamSlotDto
 {

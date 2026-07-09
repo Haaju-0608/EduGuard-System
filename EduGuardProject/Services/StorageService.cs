@@ -499,7 +499,7 @@ public class StorageService : IStorageService
 
         try
         {
-            await plan.PersistMetadata(result.Url ?? result.Path);
+            await plan.PersistMetadata(result.Path);
         }
         catch
         {

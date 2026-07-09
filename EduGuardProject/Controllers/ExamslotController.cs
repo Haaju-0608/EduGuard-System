@@ -50,6 +50,19 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        [HttpGet("{examId:guid}/student")]
+        [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> GetByIdForStudent(Guid examId)
+        {
+            try
+            {
+                var item = await _service.GetByIdForStudentAsync(examId);
+                if (item == null) return NotFound(ApiResponse<object>.OnFail("Exam slot not found."));
+                return OkSingle(item, "Exam slot retrieved successfully.");
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
         [HttpGet("{examId:guid}/realtime-state")]
         [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> GetRealtimeState(Guid examId)

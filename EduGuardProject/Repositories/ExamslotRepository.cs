@@ -15,6 +15,8 @@ public class ExamSlotRepository : IExamslotRepository
     {
         var query = _context.ExamSlots
             .AsNoTracking()
+            .Include(e => e.Class)
+            .ThenInclude(c => c.Lecturer)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -45,10 +47,24 @@ public class ExamSlotRepository : IExamslotRepository
         ExpectedDurationMinutes = e.ExpectedDurationMinutes,
         Status = e.Status,
         CreatedAt = e.CreatedAt,
-        UpdatedAt = e.UpdatedAt
+        UpdatedAt = e.UpdatedAt,
+        Lecturer = ToUserSummary(e.Lecturer)
     };
+
+    private static UserSummaryDto? ToUserSummary(User? user) =>
+        user == null ? null : new UserSummaryDto
+        {
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            StudentCode = user.StudentCode
+        };
+
     public Task<ExamSlot?> GetByIdAsync(Guid id) =>
-        _context.ExamSlots.FirstOrDefaultAsync(s => s.Id == id);
+        _context.ExamSlots
+            .Include(e => e.Class)
+            .ThenInclude(c => c.Lecturer)
+            .FirstOrDefaultAsync(s => s.Id == id);
 
     public async Task AddAsync(ExamSlot entity)
     {
