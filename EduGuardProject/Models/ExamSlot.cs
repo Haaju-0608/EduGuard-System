@@ -28,7 +28,12 @@ public partial class ExamSlot
 
     public virtual Class Class { get; set; } = null!;
 
+    [NotMapped]
+    public User? Lecturer => Class?.Lecturer;
+
     public virtual User CreatedByNavigation { get; set; } = null!;
 
     public virtual ICollection<ExamParticipation> ExamParticipations { get; set; } = new List<ExamParticipation>();
+
+    public virtual ICollection<StudentExamRecord> StudentExamRecords { get; set; } = new List<StudentExamRecord>();
 }

@@ -139,6 +139,7 @@ public class ExamslotReponseDto
     public ExamSlotStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public UserSummaryDto? Lecturer { get; set; }
 }
 
 public class ExamParticipationResponseDto
@@ -158,6 +159,19 @@ public class ExamParticipationResponseDto
 
     public string? IdentitySnapshotPath { get; set; }
 
+}
+
+public class StudentExamRecordResponseDto
+{
+    public Guid Id { get; set; }
+    public Guid ExamSlotId { get; set; }
+    public string? ExamName { get; set; }
+    public Guid StudentId { get; set; }
+    public string? StudentName { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public DateTime? EndedAt { get; set; }
+    public string? ExamRecord { get; set; }
+    public StudentExamRecordStatus Status { get; set; }
 }
 
 public class ViolationlogResponeDto

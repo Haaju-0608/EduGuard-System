@@ -79,11 +79,25 @@ public interface IExamParticipationService
 
     Task<bool> DeleteAsync(Guid id);
 }
+
+public interface IStudentExamRecordService
+{
+    Task<(IEnumerable<StudentExamRecordResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize,
+        Guid? examSlotId = null, Guid? studentId = null, StudentExamRecordStatus? status = null);
+    Task<StudentExamRecordResponseDto?> GetByIdAsync(Guid id);
+    Task<StudentExamRecordResponseDto> CreateAsync(CreateStudentExamRecordDto dto);
+    Task<bool> UpdateAsync(Guid id, UpdateStudentExamRecordDto dto);
+    Task<bool> DeleteAsync(Guid id);
+}
+
 public interface IExamSlotServices
 {
     Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel);
 
     Task<ExamslotReponseDto?> GetByIdAsync(Guid id);
+
+    Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid id);
 
     Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto);
 

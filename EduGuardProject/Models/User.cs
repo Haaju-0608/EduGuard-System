@@ -52,6 +52,8 @@ public partial class User
 
     public virtual ICollection<ExamParticipation> ExamParticipations { get; set; } = new List<ExamParticipation>();
 
+    public virtual ICollection<StudentExamRecord> StudentExamRecords { get; set; } = new List<StudentExamRecord>();
+
     public virtual ICollection<ExamSlot> ExamSlots { get; set; } = new List<ExamSlot>();
 
     public virtual Institution? Institution { get; set; }

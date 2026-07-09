@@ -41,6 +41,16 @@ public class ExamslotServices : IExamSlotServices
         return entity == null ? null : MapToResponseDto(entity);
     }
 
+    public async Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid ExamId)
+    {
+        var entity = await _repo.GetByIdAsync(ExamId);
+        if (entity == null) return null;
+        if (entity.Status != ExamSlotStatus.Scheduled) return null;
+
+        await EnsureStudentExamSlotAccessAsync(entity);
+        return MapToResponseDto(entity);
+    }
+
     public async Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto)
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
@@ -50,6 +60,7 @@ public class ExamslotServices : IExamSlotServices
 
         var cls = await _context.Classes
             .AsNoTracking()
+            .Include(c => c.Lecturer)
             .FirstOrDefaultAsync(c => c.Id == dto.ClassId && c.DeletedAt == null)
             ?? throw new InvalidOperationException("Class not found.");
 
@@ -78,7 +89,7 @@ public class ExamslotServices : IExamSlotServices
             ReferenceTypeEnum.ExamSlot,
             entity.Id);
         await PublishExamSlotChangedAsync(entity, "created");
-        return MapToResponseDto(entity);
+        return MapToResponseDto(entity, cls.Lecturer);
     }
 
     public async Task<bool> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto)
@@ -130,6 +141,31 @@ public class ExamslotServices : IExamSlotServices
         await _currentUser.EnsureInstitutionAccessAsync(institutionId);
     }
 
+    private async Task EnsureStudentExamSlotAccessAsync(ExamSlot entity)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.SuperAdmin) return;
+
+        if (entity.Class.DeletedAt != null)
+            throw new InvalidOperationException("Class not found.");
+
+        if (user.Role == AppRole.SchoolAdmin)
+        {
+            await _currentUser.EnsureInstitutionAccessAsync(entity.Class.InstitutionId);
+            return;
+        }
+
+        if (user.Role == AppRole.Student &&
+            await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
+                p.ExamSlotId == entity.Id &&
+                p.StudentId == user.Id))
+        {
+            return;
+        }
+
+        throw new UnauthorizedAccessException("Access denied.");
+    }
+
     private async Task PublishExamSlotChangedAsync(ExamSlot entity, string action)
     {
         var cls = await _context.Classes
@@ -152,7 +188,7 @@ public class ExamslotServices : IExamSlotServices
             });
     }
 
-    private static ExamslotReponseDto MapToResponseDto(ExamSlot entity) => new()
+    private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null) => new()
     {
         Id = entity.Id,
         ClassId = entity.ClassId,
@@ -162,8 +198,18 @@ public class ExamslotServices : IExamSlotServices
         ExpectedDurationMinutes = entity.ExpectedDurationMinutes,
         Status = entity.Status,
         CreatedAt = entity.CreatedAt,
-        UpdatedAt = entity.UpdatedAt
+        UpdatedAt = entity.UpdatedAt,
+        Lecturer = ToUserSummary(lecturer ?? entity.Lecturer)
     };
+
+    private static UserSummaryDto? ToUserSummary(User? user) =>
+        user == null ? null : new UserSummaryDto
+        {
+            Id = user.Id,
+            FullName = user.FullName,
+            Email = user.Email,
+            StudentCode = user.StudentCode
+        };
 
 }
 

@@ -288,6 +288,19 @@ public enum ParticipationStatus
     Left
 }
 
+//ENUM cho student exam record
+public enum StudentExamRecordStatus
+{
+    [PgName("MARKED")]
+    Marked = 0,
+
+    [PgName("COMPLETED")]
+    Completed = 1,
+
+    [PgName("DELETED")]
+    Deleted = 2
+}
+
 //ENUM cho violation log
 public enum ViolationSeverity
 {
