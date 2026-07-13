@@ -59,9 +59,9 @@ public class ViolationLogController : AcademicApiControllerBase
 
     // Create Violation Log
     // Truyền dữ liệu: body participationId, severity, violationType, evidencePath, aiConfidence, reviewedBy, recordedAt; query fields.
-    // Điều kiện: Lecturer đúng class, SchoolAdmin cùng institution hoặc SuperAdmin; exam participation phải tồn tại.
+    // Điều kiện: Student chính chủ participation, Lecturer đúng class, SchoolAdmin cùng institution hoặc SuperAdmin; exam participation phải tồn tại.
     [HttpPost]
-    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateViolationLogDto dto, [FromQuery] string? fields = null)
     {
         try

@@ -119,7 +119,7 @@ public class ViolationLogServices : IViolationLogService
     {
         var existing = await GetViolationWithAccessDataAsync(id);
         if (existing == null) return false;
-        await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         await EnsureViolationAccessAsync(existing.Participation);
 
         // update allowed fields
