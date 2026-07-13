@@ -88,6 +88,25 @@ public class ExamslotServices : IExamSlotServices
         return items.Select(e => MapToResponseDto(e));
     }
 
+    public async Task<IEnumerable<ExamslotReponseDto>> GetMyExamHistoryAsync()
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role != AppRole.Student)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        var items = await _context.ExamSlots
+            .AsNoTracking()
+            .Include(e => e.Class)
+            .ThenInclude(c => c.Lecturer)
+            .Where(e =>
+                e.Class.DeletedAt == null &&
+                e.ExamParticipations.Any(p => p.StudentId == user.Id))
+            .OrderByDescending(e => e.StartTime)
+            .ToListAsync();
+
+        return items.Select(e => MapToResponseDto(e));
+    }
+
     public async Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto)
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);

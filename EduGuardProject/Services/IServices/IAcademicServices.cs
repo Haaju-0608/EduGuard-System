@@ -101,6 +101,8 @@ public interface IExamSlotServices
 
     Task<IEnumerable<ExamslotReponseDto>> GetByStudentIdAsync(Guid studentId);
 
+    Task<IEnumerable<ExamslotReponseDto>> GetMyExamHistoryAsync();
+
     Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto);
 
     Task<bool> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto);

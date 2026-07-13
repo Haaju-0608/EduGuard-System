@@ -21,6 +21,9 @@ namespace EduGuardProject.Controllers
             _workflowService = workflowService;
         }
 
+        // Get All Exam Slots
+        // Truyền dữ liệu: query search, sort, page, pageSize.
+        // Điều kiện: user đã đăng nhập; page và pageSize phải lớn hơn 0.
         [HttpGet]
         public async Task<IActionResult> GetAll(
            [FromQuery] string? search,
@@ -38,6 +41,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam Slot By Id
+        // Truyền dữ liệu: route examId.
+        // Điều kiện: user đã đăng nhập; exam slot phải tồn tại.
         [HttpGet("{examId:guid}")]
         public async Task<IActionResult> GetById(Guid examId)
         {
@@ -50,6 +56,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Scheduled Exam Slot For Student
+        // Truyền dữ liệu: route examId, query studentId.
+        // Điều kiện: Student chỉ xem chính mình; SchoolAdmin cùng institution; SuperAdmin xem tất cả; exam slot phải có status Scheduled.
         [HttpGet("{examId:guid}/student")]
         [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> GetByIdForStudent(Guid examId, [FromQuery] Guid studentId)
@@ -65,6 +74,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam History By StudentId
+        // Truyền dữ liệu: route studentId.
+        // Điều kiện: SchoolAdmin chỉ xem student cùng institution; SuperAdmin xem tất cả.
         [HttpGet("GetStudentExamHistory/{studentId:guid}")]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> GetByStudentId(Guid studentId)
@@ -79,6 +91,24 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam History For Student
+        // Truyền dữ liệu: bearer token.
+        // Điều kiện: role Student; trả về các exam slot student hiện tại đã tham gia.
+        [HttpGet("GetMyExamHistory")]
+        [SupabaseAuthorize(AppRole.Student)]
+        public async Task<IActionResult> GetMyExamHistory()
+        {
+            try
+            {
+                var items = await _service.GetMyExamHistoryAsync();
+                return Ok(ApiResponse<IEnumerable<ExamslotReponseDto>>.OnSuccess(items, "Exam slots retrieved successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        // Get Exam Realtime State
+        // Truyền dữ liệu: route examId.
+        // Điều kiện: Lecturer, SchoolAdmin hoặc SuperAdmin có quyền truy cập workflow của exam.
         [HttpGet("{examId:guid}/realtime-state")]
         [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> GetRealtimeState(Guid examId)
@@ -91,6 +121,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Create Exam Slot
+        // Truyền dữ liệu: body classId, examName, status, expectedDurationMinutes, startTime, endTime.
+        // Điều kiện: SchoolAdmin hoặc SuperAdmin; class phải tồn tại và thuộc institution được phép truy cập.
         [HttpPost]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateExamSlotDto dto)
@@ -103,6 +136,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Update Exam Slot
+        // Truyền dữ liệu: route examId, body examName, startTime, endTime, expectedDurationMinutes.
+        // Điều kiện: SchoolAdmin hoặc SuperAdmin; exam slot phải tồn tại và thuộc institution được phép truy cập.
         [HttpPut("{examId:guid}")]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Update(Guid examId, [FromBody] UpdateExamSlotDto dto)
@@ -116,6 +152,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Delete Exam Slot
+        // Truyền dữ liệu: route examId.
+        // Điều kiện: SchoolAdmin hoặc SuperAdmin; exam slot phải tồn tại và thuộc institution được phép truy cập.
         [HttpDelete("{examId:guid}")]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Delete(Guid examId)

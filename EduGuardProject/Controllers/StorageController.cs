@@ -22,6 +22,9 @@ public class StorageController : AcademicApiControllerBase
         _storage = storage;
     }
 
+    // Generic Upload File
+    // Truyền dữ liệu: form-data file, bucket, folder, upsert.
+    // Điều kiện: role SuperAdmin; không dùng endpoint này cho biometric raw face image.
     [HttpPost("upload")]
     [RequestSizeLimit(VideoRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = VideoRequestLimit)]
@@ -40,6 +43,9 @@ public class StorageController : AcademicApiControllerBase
             "File uploaded successfully.");
     }
 
+    // Upload Biometric Image
+    // Truyền dữ liệu: form-data file, biometricDataId.
+    // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; biometric request phải Pending.
     [HttpPost("biometric")]
     [RequestSizeLimit(ImageRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = ImageRequestLimit)]
@@ -56,6 +62,9 @@ public class StorageController : AcademicApiControllerBase
             "Biometric image uploaded successfully.");
     }
 
+    // Upload Attendance Snapshot
+    // Truyền dữ liệu: form-data file, attendanceRecordId.
+    // Điều kiện: Student chính chủ attendance record; hoặc Lecturer/SchoolAdmin/SuperAdmin có quyền với class.
     [HttpPost("attendance")]
     [RequestSizeLimit(ImageRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = ImageRequestLimit)]
@@ -72,6 +81,9 @@ public class StorageController : AcademicApiControllerBase
             "Attendance snapshot uploaded successfully.");
     }
 
+    // Upload Attendance Video
+    // Truyền dữ liệu: form-data file, attendanceSessionId.
+    // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; attendance session phải tồn tại.
     [HttpPost("attendance-video")]
     [RequestSizeLimit(VideoRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = VideoRequestLimit)]
@@ -88,6 +100,9 @@ public class StorageController : AcademicApiControllerBase
             "Attendance video uploaded successfully.");
     }
 
+    // Upload Exam Identity Image
+    // Truyền dữ liệu: form-data file, participationId.
+    // Điều kiện: Student chính chủ participation; hoặc Lecturer/SchoolAdmin/SuperAdmin có quyền với class của exam.
     [HttpPost("exam-identity")]
     [RequestSizeLimit(ImageRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = ImageRequestLimit)]
@@ -104,6 +119,9 @@ public class StorageController : AcademicApiControllerBase
             "Exam identity image uploaded successfully.");
     }
 
+    // Upload Exam Recording
+    // Truyền dữ liệu: form-data file, participationId.
+    // Điều kiện: Student chính chủ participation; hoặc Lecturer/SchoolAdmin/SuperAdmin có quyền với class của exam.
     [HttpPost("exam-recording")]
     [RequestSizeLimit(VideoRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = VideoRequestLimit)]
@@ -120,9 +138,12 @@ public class StorageController : AcademicApiControllerBase
             "Exam recording uploaded successfully.");
     }
 
+    // Upload Violation Evidence
+    // Truyền dữ liệu: form-data file, violationId.
+    // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; violation log phải tồn tại.
     [HttpPost("evidence")]
-    [RequestSizeLimit(ImageRequestLimit)]
-    [RequestFormLimits(MultipartBodyLengthLimit = ImageRequestLimit)]
+    [RequestSizeLimit(VideoRequestLimit)]
+    [RequestFormLimits(MultipartBodyLengthLimit = VideoRequestLimit)]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> UploadEvidence(
         [FromForm] EvidenceStorageUploadRequest request,
@@ -136,6 +157,9 @@ public class StorageController : AcademicApiControllerBase
             "Violation evidence uploaded successfully.");
     }
 
+    // Download Storage File
+    // Truyền dữ liệu: query bucket, path.
+    // Điều kiện: user đã đăng nhập và có quyền truy cập object theo owner/class/institution.
     [HttpGet("file")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
     public Task<IActionResult> DownloadFile(
@@ -145,6 +169,9 @@ public class StorageController : AcademicApiControllerBase
         DownloadCore(bucket, path, cancellationToken);
 
 
+    // Create Signed URL
+    // Truyền dữ liệu: query bucket, path, expiresInSeconds.
+    // Điều kiện: user đã đăng nhập và có quyền truy cập object; expiresInSeconds từ 60 đến giới hạn 90 ngày.
     [HttpPost("signed-url")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
     public async Task<IActionResult> SignedUrl(
@@ -161,6 +188,9 @@ public class StorageController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Delete Storage File
+    // Truyền dữ liệu: query bucket, path.
+    // Điều kiện: user đã đăng nhập và có quyền truy cập object theo owner/class/institution.
     [HttpDelete]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
     public Task<IActionResult> Delete(
@@ -170,6 +200,9 @@ public class StorageController : AcademicApiControllerBase
         DeleteCore(bucket, path, cancellationToken);
 
 
+    // Cleanup Local Temp Files
+    // Truyền dữ liệu: query maxAgeHours.
+    // Điều kiện: role SuperAdmin; maxAgeHours phải lớn hơn 0.
     [HttpPost("cleanup")]
     [SupabaseAuthorize(AppRole.SuperAdmin)]
     public async Task<IActionResult> Cleanup(
