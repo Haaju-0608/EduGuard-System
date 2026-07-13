@@ -19,9 +19,9 @@ public class ViolationLogController : AcademicApiControllerBase
 
     // Get All Violation Logs
     // Truyền dữ liệu: query search, sort, page, pageSize, fields, participationId, isReviewed.
-    // Điều kiện: SuperAdmin xem tất cả; SchoolAdmin cùng institution; Lecturer xem log của class mình dạy; page và pageSize phải lớn hơn 0.
+    // Điều kiện: SuperAdmin xem tất cả; SchoolAdmin cùng institution; Lecturer xem log của class mình dạy; Student xem log của bản thân; page và pageSize phải lớn hơn 0.
     [HttpGet]
-    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,
@@ -44,7 +44,7 @@ public class ViolationLogController : AcademicApiControllerBase
 
     // Get Violation Log By Id
     // Truyền dữ liệu: route id, query fields.
-    // Điều kiện: user đã đăng nhập; SuperAdmin xem tất cả, SchoolAdmin cùng institution, Lecturer đúng class của exam.
+    // Điều kiện: user đã đăng nhập; SuperAdmin xem tất cả, SchoolAdmin cùng institution, Lecturer đúng class của exam, Student chỉ xem log của bản thân.
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null)
     {

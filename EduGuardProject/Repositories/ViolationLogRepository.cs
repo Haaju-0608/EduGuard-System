@@ -15,7 +15,7 @@ public class ViolationLogRepository : IViolationLogRepository
     public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
         Guid? participationId = null, bool? isReviewed = null,
-        Guid? institutionId = null, Guid? lecturerId = null)
+        Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null)
     {
         var query = _context.ViolationLogs
             .AsNoTracking()
@@ -29,6 +29,8 @@ public class ViolationLogRepository : IViolationLogRepository
             query = query.Where(v => v.Participation.ExamSlot.Class.InstitutionId == institutionId.Value);
         if (lecturerId.HasValue)
             query = query.Where(v => v.Participation.ExamSlot.Class.LecturerId == lecturerId.Value);
+        if (studentId.HasValue)
+            query = query.Where(v => v.Participation.StudentId == studentId.Value);
 
         if (!string.IsNullOrWhiteSpace(search))
         {

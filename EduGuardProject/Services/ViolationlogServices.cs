@@ -42,9 +42,10 @@ public class ViolationLogServices : IViolationLogService
             ? user.InstitutionId ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.")
             : (Guid?)null;
         var lecturerId = user.Role == AppRole.Lecturer ? user.Id : (Guid?)null;
+        var studentId = user.Role == AppRole.Student ? user.Id : (Guid?)null;
 
         return await _repo.GetAllAsync(
-            search, sort, page, pageSize, participationId, isReviewed, institutionId, lecturerId);
+            search, sort, page, pageSize, participationId, isReviewed, institutionId, lecturerId, studentId);
     }
     public async Task<ViolationlogResponeDto?> GetByIdAsync(Guid id)
     {
@@ -52,7 +53,7 @@ public class ViolationLogServices : IViolationLogService
         if (violation == null)
             return null;
 
-        await EnsureViolationAccessAsync(violation.Participation.ExamSlot.Class);
+        await EnsureViolationAccessAsync(violation.Participation);
         return MapToResponseDto(violation);
     }
 
@@ -66,7 +67,7 @@ public class ViolationLogServices : IViolationLogService
             .FirstOrDefaultAsync(p => p.Id == dto.ParticipationId)
             ?? throw new InvalidOperationException("Exam participation not found.");
 
-        await EnsureViolationAccessAsync(participation.ExamSlot.Class);
+        await EnsureViolationAccessAsync(participation);
 
         var entity = new ViolationLog
         {
@@ -118,7 +119,8 @@ public class ViolationLogServices : IViolationLogService
     {
         var existing = await GetViolationWithAccessDataAsync(id);
         if (existing == null) return false;
-        await EnsureViolationAccessAsync(existing.Participation.ExamSlot.Class);
+        await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        await EnsureViolationAccessAsync(existing.Participation);
 
         // update allowed fields
         existing.IsReviewed = dto.IsReviewed;
@@ -133,7 +135,8 @@ public class ViolationLogServices : IViolationLogService
     {
         var existing = await GetViolationWithAccessDataAsync(id);
         if (existing == null) return false;
-        await EnsureViolationAccessAsync(existing.Participation.ExamSlot.Class);
+        await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        await EnsureViolationAccessAsync(existing.Participation);
 
         await PublishViolationChangedAsync(id, "deleted");
         if (!string.IsNullOrWhiteSpace(existing.EvidencePath))
@@ -187,12 +190,16 @@ public class ViolationLogServices : IViolationLogService
             .ThenInclude(e => e.Class)
             .FirstOrDefaultAsync(v => v.Id == violationId);
 
-    private async Task EnsureViolationAccessAsync(Class cls)
+    private async Task EnsureViolationAccessAsync(ExamParticipation participation)
     {
         var user = await _currentUser.GetRequiredUserAsync();
+        var cls = participation.ExamSlot.Class;
         if (user.Role == AppRole.SuperAdmin) return;
 
         if (user.Role == AppRole.SchoolAdmin && user.InstitutionId == cls.InstitutionId)
+            return;
+
+        if (user.Role == AppRole.Student && user.Id == participation.StudentId)
             return;
 
         if (user.Role == AppRole.Lecturer &&
