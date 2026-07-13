@@ -10,6 +10,8 @@ namespace EduGuardProject.Controllers
     [Route("api/exam-slots")]
     [ApiController]
     [SupabaseAuthorize]
+    // Controller quản lý Exam Slot.
+    // Mỗi API bên dưới có comment ghi rõ dữ liệu cần truyền và điều kiện được gọi.
     public class ExamslotController : AcademicApiControllerBase
     {
         private readonly IExamSlotServices _service;

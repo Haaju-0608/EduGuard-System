@@ -24,6 +24,9 @@ namespace EduGuardProject.Controllers
         }
 
 
+        // Get All Exam Participations
+        // Truyền dữ liệu: query search, sort, page, pageSize.
+        // Điều kiện: role SuperAdmin; page và pageSize phải lớn hơn 0.
         [HttpGet]
         [SupabaseAuthorize(AppRole.SuperAdmin)]
         public async Task<IActionResult> GetAll(
@@ -43,6 +46,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam Participation By Id
+        // Truyền dữ liệu: route id.
+        // Điều kiện: user đã đăng nhập; SuperAdmin xem tất cả, SchoolAdmin/Lecturer cùng institution/class, Student chỉ xem participation của chính mình.
         [HttpGet("{id:guid}")]
         [SupabaseAuthorize]
         public async Task<IActionResult> GetById(Guid id)
@@ -56,6 +62,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Create Exam Participation
+        // Truyền dữ liệu: body examSlotId, studentId, billingTransId, actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
+        // Điều kiện: role SuperAdmin; examSlotId và studentId phải hợp lệ theo dữ liệu gửi lên.
         [HttpPost]
         [SupabaseAuthorize(AppRole.SuperAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateExamParticipationDto dto)
@@ -68,6 +77,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Update Exam Participation
+        // Truyền dữ liệu: route id, body actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
+        // Điều kiện: SuperAdmin hoặc SchoolAdmin cùng institution; exam participation phải tồn tại.
         [HttpPut("{id:guid}")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateExamParticipationDto dto)
@@ -81,6 +93,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Update Exam Participation Status
+        // Truyền dữ liệu: route id, body status.
+        // Điều kiện: SuperAdmin hoặc SchoolAdmin cùng institution; exam participation phải tồn tại.
         [HttpPut("{id:guid}/status")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> UpdateExamParticipationStatus(Guid id, [FromBody] UpdateExamParticipationStatusDto dto)
@@ -94,6 +109,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Delete Exam Participation
+        // Truyền dữ liệu: route id.
+        // Điều kiện: SuperAdmin hoặc SchoolAdmin cùng institution; exam participation phải tồn tại.
         [HttpDelete("{id:guid}")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Delete(Guid id)
@@ -107,6 +125,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Join Exam
+        // Truyền dữ liệu: route id là participationId.
+        // Điều kiện: role Student; Student phải là chủ participation; participation không được Submitted hoặc Disqualified.
         [HttpPost("{id:guid}/join")]
         [SupabaseAuthorize(AppRole.Student)]
         public async Task<IActionResult> Join(Guid id)
@@ -119,6 +140,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Send Exam Heartbeat
+        // Truyền dữ liệu: route id là participationId, body clientTime.
+        // Điều kiện: role Student; Student phải là chủ participation; participation phải đang Joined.
         [HttpPost("{id:guid}/heartbeat")]
         [SupabaseAuthorize(AppRole.Student)]
         public async Task<IActionResult> Heartbeat(Guid id, [FromBody] ExamHeartbeatRequestDto? dto)
@@ -131,6 +155,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Submit Exam
+        // Truyền dữ liệu: route id là participationId, body recordingVideoPath.
+        // Điều kiện: role Student; Student phải là chủ participation; participation phải đang Joined.
         [HttpPost("{id:guid}/submit")]
         [SupabaseAuthorize(AppRole.Student)]
         public async Task<IActionResult> Submit(Guid id, [FromBody] ExamSubmitRequestDto? dto)
@@ -143,6 +170,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Leave Exam
+        // Truyền dữ liệu: route id là participationId, body reason.
+        // Điều kiện: role Student; Student phải là chủ participation; participation phải đang Joined.
         [HttpPost("{id:guid}/leave")]
         [SupabaseAuthorize(AppRole.Student)]
         public async Task<IActionResult> Leave(Guid id, [FromBody] ExamLeaveRequestDto? dto)
@@ -155,6 +185,9 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Disqualify Student From Exam
+        // Truyền dữ liệu: route id là participationId, body reason.
+        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; participation phải đang Joined.
         [HttpPost("{id:guid}/disqualify")]
         [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Disqualify(Guid id, [FromBody] ExamDisqualifyRequestDto dto)

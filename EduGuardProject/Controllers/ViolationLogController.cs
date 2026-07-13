@@ -17,6 +17,9 @@ public class ViolationLogController : AcademicApiControllerBase
 
     public ViolationLogController(IViolationLogService service) => _service = service;
 
+    // Get All Violation Logs
+    // Truyền dữ liệu: query search, sort, page, pageSize, fields, participationId, isReviewed.
+    // Điều kiện: role SuperAdmin; page và pageSize phải lớn hơn 0.
     [HttpGet]
     [SupabaseAuthorize(AppRole.SuperAdmin)]
     public async Task<IActionResult> GetAll(
@@ -39,6 +42,9 @@ public class ViolationLogController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Get Violation Log By Id
+    // Truyền dữ liệu: route id, query fields.
+    // Điều kiện: user đã đăng nhập; SuperAdmin xem tất cả, SchoolAdmin cùng institution, Lecturer đúng class của exam.
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null)
     {
@@ -51,6 +57,9 @@ public class ViolationLogController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Create Violation Log
+    // Truyền dữ liệu: body participationId, severity, violationType, evidencePath, aiConfidence, reviewedBy, recordedAt; query fields.
+    // Điều kiện: Lecturer đúng class, SchoolAdmin cùng institution hoặc SuperAdmin; exam participation phải tồn tại.
     [HttpPost]
     [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateViolationLogDto dto, [FromQuery] string? fields = null)
@@ -63,6 +72,9 @@ public class ViolationLogController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Update Violation Log
+    // Truyền dữ liệu: route id, body isReviewed, reviewedBy.
+    // Điều kiện: Lecturer đúng class, SchoolAdmin cùng institution hoặc SuperAdmin; violation log phải tồn tại.
     [HttpPut("{id:guid}")]
     [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateViolationLogDto dto)
@@ -76,6 +88,9 @@ public class ViolationLogController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Delete Violation Log
+    // Truyền dữ liệu: route id.
+    // Điều kiện: Lecturer đúng class, SchoolAdmin cùng institution hoặc SuperAdmin; violation log phải tồn tại.
     [HttpDelete("{id:guid}")]
     [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Delete(Guid id)
