@@ -52,13 +52,29 @@ namespace EduGuardProject.Controllers
 
         [HttpGet("{examId:guid}/student")]
         [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
-        public async Task<IActionResult> GetByIdForStudent(Guid examId)
+        public async Task<IActionResult> GetByIdForStudent(Guid examId, [FromQuery] Guid studentId)
         {
             try
             {
-                var item = await _service.GetByIdForStudentAsync(examId);
+                if (studentId == Guid.Empty) return BadRequest(ApiResponse<object>.OnFail("Student id is required."));
+
+                var item = await _service.GetByIdForStudentAsync(examId, studentId);
                 if (item == null) return NotFound(ApiResponse<object>.OnFail("Exam slot not found."));
                 return OkSingle(item, "Exam slot retrieved successfully.");
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        [HttpGet("GetStudentExamHistory/{studentId:guid}")]
+        [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> GetByStudentId(Guid studentId)
+        {
+            try
+            {
+                if (studentId == Guid.Empty) return BadRequest(ApiResponse<object>.OnFail("Student id is required."));
+
+                var items = await _service.GetByStudentIdAsync(studentId);
+                return Ok(ApiResponse<IEnumerable<ExamslotReponseDto>>.OnSuccess(items, "Exam slots retrieved successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }

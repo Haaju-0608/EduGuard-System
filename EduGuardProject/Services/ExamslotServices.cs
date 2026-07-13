@@ -41,14 +41,51 @@ public class ExamslotServices : IExamSlotServices
         return entity == null ? null : MapToResponseDto(entity);
     }
 
-    public async Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid ExamId)
+    public async Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid ExamId, Guid studentId)
     {
-        var entity = await _repo.GetByIdAsync(ExamId);
+        var participation = await _context.ExamParticipations
+            .AsNoTracking()
+            .Include(p => p.ExamSlot)
+            .ThenInclude(e => e.Class)
+            .ThenInclude(c => c.Lecturer)
+            .FirstOrDefaultAsync(p =>
+                p.ExamSlotId == ExamId &&
+                p.StudentId == studentId);
+
+        var entity = participation?.ExamSlot;
         if (entity == null) return null;
         if (entity.Status != ExamSlotStatus.Scheduled) return null;
 
-        await EnsureStudentExamSlotAccessAsync(entity);
+        await EnsureStudentExamSlotAccessAsync(entity, studentId);
         return MapToResponseDto(entity);
+    }
+
+    public async Task<IEnumerable<ExamslotReponseDto>> GetByStudentIdAsync(Guid studentId)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role != AppRole.SchoolAdmin && user.Role != AppRole.SuperAdmin)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        var query = _context.ExamSlots
+            .AsNoTracking()
+            .Include(e => e.Class)
+            .ThenInclude(c => c.Lecturer)
+            .Where(e =>
+                e.Class.DeletedAt == null &&
+                e.ExamParticipations.Any(p => p.StudentId == studentId));
+
+        if (user.Role == AppRole.SchoolAdmin)
+        {
+            var institutionId = user.InstitutionId
+                ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.");
+            query = query.Where(e => e.Class.InstitutionId == institutionId);
+        }
+
+        var items = await query
+            .OrderBy(e => e.StartTime)
+            .ToListAsync();
+
+        return items.Select(e => MapToResponseDto(e));
     }
 
     public async Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto)
@@ -141,7 +178,7 @@ public class ExamslotServices : IExamSlotServices
         await _currentUser.EnsureInstitutionAccessAsync(institutionId);
     }
 
-    private async Task EnsureStudentExamSlotAccessAsync(ExamSlot entity)
+    private async Task EnsureStudentExamSlotAccessAsync(ExamSlot entity, Guid studentId)
     {
         var user = await _currentUser.GetRequiredUserAsync();
         if (user.Role == AppRole.SuperAdmin) return;
@@ -155,10 +192,7 @@ public class ExamslotServices : IExamSlotServices
             return;
         }
 
-        if (user.Role == AppRole.Student &&
-            await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
-                p.ExamSlotId == entity.Id &&
-                p.StudentId == user.Id))
+        if (user.Role == AppRole.Student && studentId == user.Id)
         {
             return;
         }
