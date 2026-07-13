@@ -59,7 +59,10 @@ public class ViolationLogServices : IViolationLogService
 
     public async Task<ViolationlogResponeDto> CreateAsync(CreateViolationLogDto dto)
     {
-        await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (!new[] { AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin }.Contains(user.Role))
+            throw new UnauthorizedAccessException("You do not have permission to perform this action.");
+
         var participation = await _context.ExamParticipations
             .Include(p => p.Student)
             .Include(p => p.ExamSlot)
@@ -77,7 +80,7 @@ public class ViolationLogServices : IViolationLogService
             ParticipationId = dto.ParticipationId,
             EvidencePath = dto.EvidencePath,
             AiConfidence = dto.AiConfidence,
-            ReviewedBy = dto.ReviewedBy,
+            ReviewedBy = user.Role == AppRole.Student ? null : await NormalizeReviewedByAsync(dto.ReviewedBy),
             RecordedAt = dto.RecordedAt == default ? DateTime.UtcNow : dto.RecordedAt
         };
 
@@ -121,6 +124,7 @@ public class ViolationLogServices : IViolationLogService
         if (existing == null) return false;
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         await EnsureViolationAccessAsync(existing.Participation);
+        dto.ReviewedBy = await NormalizeReviewedByAsync(dto.ReviewedBy);
 
         // update allowed fields
         existing.IsReviewed = dto.IsReviewed;
@@ -210,6 +214,18 @@ public class ViolationLogServices : IViolationLogService
         }
 
         throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private async Task<Guid?> NormalizeReviewedByAsync(Guid? reviewedBy)
+    {
+        if (!reviewedBy.HasValue || reviewedBy.Value == Guid.Empty)
+            return null;
+
+        var exists = await _context.Users.AnyAsync(u => u.Id == reviewedBy.Value && u.DeletedAt == null);
+        if (!exists)
+            throw new InvalidOperationException("Reviewed by user not found.");
+
+        return reviewedBy;
     }
 
     private static string DescribeViolation(ViolationType type) => type switch

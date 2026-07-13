@@ -33,7 +33,14 @@ public class ExamParticipationServices : IExamParticipationService
 
     public async Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(string? search, string? sort, int page, int pageSize)
     {
-        return await _repo.GetAllAsync(search, sort, page, pageSize);
+        var user = await _currentUser.GetRequiredUserAsync();
+        var institutionId = user.Role == AppRole.SchoolAdmin
+            ? user.InstitutionId ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.")
+            : (Guid?)null;
+        var lecturerId = user.Role == AppRole.Lecturer ? user.Id : (Guid?)null;
+        var studentId = user.Role == AppRole.Student ? user.Id : (Guid?)null;
+
+        return await _repo.GetAllAsync(search, sort, page, pageSize, institutionId, lecturerId, studentId);
     }
 
     public async Task<ExamParticipationResponseDto?> GetByIdAsync(Guid id)
@@ -64,11 +71,40 @@ public class ExamParticipationServices : IExamParticipationService
 
     public async Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto)
     {
-        //await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
-        //var user = await _currentUser.GetRequiredUserAsync();
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Student)
+        {
+            if (dto.StudentId == Guid.Empty)
+                dto.StudentId = user.Id;
+            if (dto.StudentId != user.Id)
+                throw new UnauthorizedAccessException("Students can only create their own exam participation.");
+        }
 
-        //if (user.Role != AppRole.SchoolAdmin && user.Role != AppRole.SuperAdmin)
-        //	throw new UnauthorizedAccessException("Only school admins and super admins can create exam participations.");
+        var examSlot = await _context.ExamSlots
+            .AsNoTracking()
+            .Include(e => e.Class)
+            .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
+            ?? throw new InvalidOperationException("Exam slot not found.");
+
+        if (user.Role == AppRole.Student)
+        {
+            var isEnrolled = await _context.ClassEnrollments.AnyAsync(e =>
+                e.ClassId == examSlot.ClassId &&
+                e.StudentId == user.Id &&
+                e.Status != EnrollmentStatus.Dropped);
+            if (!isEnrolled)
+                throw new UnauthorizedAccessException("Students can only create participation for their enrolled class.");
+        }
+        else if (user.Role == AppRole.SchoolAdmin && user.InstitutionId != examSlot.Class.InstitutionId)
+        {
+            throw new UnauthorizedAccessException("Access denied.");
+        }
+
+        var exists = await _context.ExamParticipations.AnyAsync(p =>
+            p.ExamSlotId == dto.ExamSlotId && p.StudentId == dto.StudentId);
+        if (exists)
+            throw new InvalidOperationException("Exam participation already exists.");
+
         var entity = new ExamParticipation
         {
             Id = Guid.NewGuid(),
@@ -147,6 +183,9 @@ public class ExamParticipationServices : IExamParticipationService
         {
             return entity;
         }
+
+        if (user.Role == AppRole.Student && user.Id == entity.StudentId)
+            return entity;
 
         throw new UnauthorizedAccessException("Access denied.");
     }

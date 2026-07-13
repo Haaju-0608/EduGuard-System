@@ -8,6 +8,8 @@ public interface IClassService
 {
     Task<(IEnumerable<ClassResponseDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize, string? expand);
+    Task<(IEnumerable<ClassResponseDto> Items, int TotalCount)> GetMyClassesAsync(
+        string? search, string? sort, int page, int pageSize, string? expand);
     Task<ClassResponseDto?> GetByIdAsync(Guid id, string? expand);
     Task<ClassResponseDto> CreateAsync(CreateClassDto dto);
     Task<bool> UpdateAsync(Guid id, UpdateClassDto dto);

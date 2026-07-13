@@ -39,6 +39,28 @@ public class ClassesController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Get My Classes For Student
+    // Truyền dữ liệu: query search, sort, page, pageSize, fields, expand.
+    // Điều kiện: role Student; chỉ trả các class student hiện tại đang enrollment và chưa bị dropped.
+    [HttpGet("my-classes")]
+    [SupabaseAuthorize(AppRole.Student)]
+    public async Task<IActionResult> GetMyClasses(
+        [FromQuery] string? search,
+        [FromQuery] string? sort,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? fields = null,
+        [FromQuery] string? expand = null)
+    {
+        if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
+        try
+        {
+            var (items, total) = await _service.GetMyClassesAsync(search, sort, page, pageSize, expand);
+            return OkPaged(items, page, pageSize, total, "Student classes retrieved successfully.", fields);
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
     [HttpGet("{id:guid}")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null, [FromQuery] string? expand = null)

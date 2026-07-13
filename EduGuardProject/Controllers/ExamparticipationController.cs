@@ -26,9 +26,9 @@ namespace EduGuardProject.Controllers
 
         // Get All Exam Participations
         // Truyền dữ liệu: query search, sort, page, pageSize.
-        // Điều kiện: role SuperAdmin; page và pageSize phải lớn hơn 0.
+        // Điều kiện: SuperAdmin xem tất cả; SchoolAdmin cùng institution; Lecturer đúng class; Student chỉ xem participation của chính mình; page và pageSize phải lớn hơn 0.
         [HttpGet]
-        [SupabaseAuthorize(AppRole.SuperAdmin)]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
         public async Task<IActionResult> GetAll(
             [FromQuery] string? search,
             [FromQuery] string? sort,
@@ -64,9 +64,9 @@ namespace EduGuardProject.Controllers
 
         // Create Exam Participation
         // Truyền dữ liệu: body examSlotId, studentId, billingTransId, actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
-        // Điều kiện: role SuperAdmin; examSlotId và studentId phải hợp lệ theo dữ liệu gửi lên.
+        // Điều kiện: SuperAdmin hoặc Student chính chủ; Student chỉ tạo participation cho class mình đã enrollment.
         [HttpPost]
-        [SupabaseAuthorize(AppRole.SuperAdmin)]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.Student)]
         public async Task<IActionResult> Create([FromBody] CreateExamParticipationDto dto)
         {
             try
@@ -79,9 +79,9 @@ namespace EduGuardProject.Controllers
 
         // Update Exam Participation
         // Truyền dữ liệu: route id, body actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
-        // Điều kiện: SuperAdmin hoặc SchoolAdmin cùng institution; exam participation phải tồn tại.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; exam participation phải tồn tại.
         [HttpPut("{id:guid}")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateExamParticipationDto dto)
         {
             try
@@ -95,9 +95,9 @@ namespace EduGuardProject.Controllers
 
         // Update Exam Participation Status
         // Truyền dữ liệu: route id, body status.
-        // Điều kiện: SuperAdmin hoặc SchoolAdmin cùng institution; exam participation phải tồn tại.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; exam participation phải tồn tại.
         [HttpPut("{id:guid}/status")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
         public async Task<IActionResult> UpdateExamParticipationStatus(Guid id, [FromBody] UpdateExamParticipationStatusDto dto)
         {
             try
@@ -111,9 +111,9 @@ namespace EduGuardProject.Controllers
 
         // Delete Exam Participation
         // Truyền dữ liệu: route id.
-        // Điều kiện: SuperAdmin hoặc SchoolAdmin cùng institution; exam participation phải tồn tại.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; exam participation phải tồn tại.
         [HttpDelete("{id:guid}")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
         public async Task<IActionResult> Delete(Guid id)
         {
             try
@@ -187,9 +187,9 @@ namespace EduGuardProject.Controllers
 
         // Disqualify Student From Exam
         // Truyền dữ liệu: route id là participationId, body reason.
-        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; participation phải đang Joined.
+        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution, SuperAdmin hoặc Student chính chủ; participation phải đang Joined.
         [HttpPost("{id:guid}/disqualify")]
-        [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Disqualify(Guid id, [FromBody] ExamDisqualifyRequestDto dto)
         {
             try

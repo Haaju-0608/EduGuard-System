@@ -4,6 +4,7 @@ using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using Microsoft.EntityFrameworkCore;
 
 namespace EduGuardProject.Services;
 
@@ -37,6 +38,42 @@ public class ClassService : IClassService
             throw new UnauthorizedAccessException("Students cannot list all classes.");
 
         var (items, total) = await _repo.GetAllAsync(search, sort, page, pageSize, institutionId, lecturerId);
+        var dtos = new List<ClassResponseDto>();
+        foreach (var item in items)
+            dtos.Add(await AcademicMapper.MapClassAsync(_context, item, expand));
+        return (dtos, total);
+    }
+
+    public async Task<(IEnumerable<ClassResponseDto> Items, int TotalCount)> GetMyClassesAsync(
+        string? search, string? sort, int page, int pageSize, string? expand)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role != AppRole.Student)
+            throw new UnauthorizedAccessException("Only students can view their own classes.");
+
+        var query = _context.ClassEnrollments
+            .AsNoTracking()
+            .Where(e => e.StudentId == user.Id &&
+                        e.Status != EnrollmentStatus.Dropped &&
+                        e.Class.DeletedAt == null)
+            .Select(e => e.Class);
+
+        if (!string.IsNullOrWhiteSpace(search))
+        {
+            var s = search.ToLower();
+            query = query.Where(c =>
+                c.CourseName.ToLower().Contains(s) ||
+                (c.CourseCode != null && c.CourseCode.ToLower().Contains(s)) ||
+                c.Semester.ToLower().Contains(s) ||
+                c.AcademicYear.ToLower().Contains(s));
+        }
+
+        var total = await query.CountAsync();
+        var items = await ApplySort(query, sort)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .ToListAsync();
+
         var dtos = new List<ClassResponseDto>();
         foreach (var item in items)
             dtos.Add(await AcademicMapper.MapClassAsync(_context, item, expand));
@@ -147,4 +184,16 @@ public class ClassService : IClassService
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         await EnsureCanAccessClassAsync(entity);
     }
+
+    private static IQueryable<Class> ApplySort(IQueryable<Class> query, string? sort) =>
+        (sort ?? "-createdAt").ToLower() switch
+        {
+            "coursename" => query.OrderBy(c => c.CourseName),
+            "-coursename" => query.OrderByDescending(c => c.CourseName),
+            "createdat" => query.OrderBy(c => c.CreatedAt),
+            "-createdat" => query.OrderByDescending(c => c.CreatedAt),
+            "semester" => query.OrderBy(c => c.Semester),
+            "-semester" => query.OrderByDescending(c => c.Semester),
+            _ => query.OrderByDescending(c => c.CreatedAt)
+        };
 }

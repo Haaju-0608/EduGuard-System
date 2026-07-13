@@ -146,7 +146,7 @@ public class ExamWorkflowService : IExamWorkflowService
     public async Task<object> DisqualifyAsync(Guid participationId, string reason, CancellationToken cancellationToken = default)
     {
         var participation = await GetParticipationAsync(participationId, cancellationToken);
-        await EnsureStaffAccessAsync(participation.ExamSlot.Class);
+        await EnsureStaffOrStudentOwnerAsync(participation);
         EnsureJoined(participation);
 
         var now = DateTime.UtcNow;
@@ -305,6 +305,19 @@ public class ExamWorkflowService : IExamWorkflowService
 
         if (user.Role != AppRole.Lecturer && user.Role != AppRole.SchoolAdmin)
             throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private async Task EnsureStaffOrStudentOwnerAsync(ExamParticipation participation)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Student)
+        {
+            if (user.Id == participation.StudentId)
+                return;
+            throw new UnauthorizedAccessException("Only the owner student can perform this exam action.");
+        }
+
+        await EnsureStaffAccessAsync(participation.ExamSlot.Class);
     }
 
     private Task PublishParticipationChangedAsync(
