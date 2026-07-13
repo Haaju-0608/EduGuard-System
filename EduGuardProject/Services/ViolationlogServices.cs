@@ -59,7 +59,7 @@ public class ViolationLogServices : IViolationLogService
 
     public async Task<ViolationlogResponeDto> CreateAsync(CreateViolationLogDto dto)
     {
-        await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var participation = await _context.ExamParticipations
             .Include(p => p.Student)
             .Include(p => p.ExamSlot)
@@ -119,7 +119,7 @@ public class ViolationLogServices : IViolationLogService
     {
         var existing = await GetViolationWithAccessDataAsync(id);
         if (existing == null) return false;
-        await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         await EnsureViolationAccessAsync(existing.Participation);
 
         // update allowed fields

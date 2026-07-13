@@ -58,16 +58,16 @@ public class ViolationLogController : AcademicApiControllerBase
     }
 
     // Create Violation Log
-    // Truyền dữ liệu: body participationId, severity, violationType, evidencePath, aiConfidence, reviewedBy, recordedAt; query fields.
+    // Truyền dữ liệu: body participationId, severity, violationType, evidencePath, aiConfidence, reviewedBy, recordedAt.
     // Điều kiện: Student chính chủ participation, Lecturer đúng class, SchoolAdmin cùng institution hoặc SuperAdmin; exam participation phải tồn tại.
     [HttpPost]
     [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
-    public async Task<IActionResult> Create([FromBody] CreateViolationLogDto dto, [FromQuery] string? fields = null)
+    public async Task<IActionResult> Create([FromBody] CreateViolationLogDto dto)
     {
         try
         {
             var result = await _service.CreateAsync(dto);
-            return CreatedSingle(result, "Violation log created successfully.", fields);
+            return CreatedSingle(result, "Violation log created successfully.");
         }
         catch (Exception ex) { return HandleException(ex); }
     }
