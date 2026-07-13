@@ -60,6 +60,43 @@ public class ExamslotServices : IExamSlotServices
         return MapToResponseDto(entity);
     }
 
+    public async Task<IEnumerable<ExamslotReponseDto>> GetByClassIdAsync(Guid classId)
+    {
+        var cls = await _context.Classes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == classId && c.DeletedAt == null)
+            ?? throw new InvalidOperationException("Class not found.");
+
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.SchoolAdmin)
+        {
+            await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
+        }
+        else if (user.Role == AppRole.Student)
+        {
+            var enrolled = await _context.ClassEnrollments.AsNoTracking().AnyAsync(e =>
+                e.ClassId == classId &&
+                e.StudentId == user.Id &&
+                e.Status == EnrollmentStatus.Active);
+            if (!enrolled)
+                throw new UnauthorizedAccessException("Access denied.");
+        }
+        else if (user.Role != AppRole.SuperAdmin)
+        {
+            throw new UnauthorizedAccessException("Access denied.");
+        }
+
+        var items = await _context.ExamSlots
+            .AsNoTracking()
+            .Include(e => e.Class)
+            .ThenInclude(c => c.Lecturer)
+            .Where(e => e.ClassId == classId)
+            .OrderBy(e => e.StartTime)
+            .ToListAsync();
+
+        return items.Select(e => MapToResponseDto(e));
+    }
+
     public async Task<IEnumerable<ExamslotReponseDto>> GetByStudentIdAsync(Guid studentId)
     {
         var user = await _currentUser.GetRequiredUserAsync();
@@ -115,12 +152,18 @@ public class ExamslotServices : IExamSlotServices
             throw new InvalidOperationException("Exam name is required.");
 
         var cls = await _context.Classes
-            .AsNoTracking()
             .Include(c => c.Lecturer)
             .FirstOrDefaultAsync(c => c.Id == dto.ClassId && c.DeletedAt == null)
             ?? throw new InvalidOperationException("Class not found.");
 
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
+        if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != cls.LecturerId)
+        {
+            cls.Lecturer = await GetClassLecturerAsync(lecturerId, cls.InstitutionId);
+            cls.LecturerId = lecturerId;
+            cls.UpdatedBy = user.Id;
+            cls.UpdatedAt = DateTime.UtcNow;
+        }
 
         var entity = new ExamSlot
         {
@@ -148,10 +191,10 @@ public class ExamslotServices : IExamSlotServices
         return MapToResponseDto(entity, cls.Lecturer);
     }
 
-    public async Task<bool> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto)
+    public async Task<ExamslotReponseDto?> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto)
     {
         var entity = await _repo.GetByIdAsync(ExamId);
-        if (entity == null) return false;
+        if (entity == null) return null;
 
         await EnsureExamSlotAdminAccessAsync(entity);
 
@@ -165,11 +208,19 @@ public class ExamslotServices : IExamSlotServices
         if (dto.StartTime.HasValue) entity.StartTime = dto.StartTime.Value;
         if (dto.EndTime.HasValue) entity.EndTime = dto.EndTime.Value;
 
+        if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != entity.Class.LecturerId)
+        {
+            entity.Class.Lecturer = await GetClassLecturerAsync(lecturerId, entity.Class.InstitutionId);
+            entity.Class.LecturerId = lecturerId;
+            entity.Class.UpdatedBy = _currentUser.UserId;
+            entity.Class.UpdatedAt = DateTime.UtcNow;
+        }
+
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity);
         await PublishExamSlotChangedAsync(entity, "updated");
-        return true;
+        return MapToResponseDto(entity);
     }
 
     public async Task<bool> DeleteAsync(Guid ExamId)
@@ -239,6 +290,22 @@ public class ExamslotServices : IExamSlotServices
                 entity.EndTime,
                 entity.Status
             });
+    }
+
+    private async Task<User> GetClassLecturerAsync(Guid lecturerId, Guid institutionId)
+    {
+        var lecturer = await _context.Users
+            .FirstOrDefaultAsync(u =>
+                u.Id == lecturerId &&
+                u.Role == AppRole.Lecturer &&
+                u.DeletedAt == null &&
+                u.Status == UserStatus.Active)
+            ?? throw new InvalidOperationException("Lecturer not found.");
+
+        if (lecturer.InstitutionId != institutionId)
+            throw new UnauthorizedAccessException("Lecturer does not belong to this institution.");
+
+        return lecturer;
     }
 
     private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null) => new()

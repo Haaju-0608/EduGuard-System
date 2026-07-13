@@ -33,11 +33,18 @@ public class ViolationLogServices : IViolationLogService
         _storage = storage;
     }
 
-    public Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
+    public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
         Guid? participationId = null, bool? isReviewed = null)
     {
-        return _repo.GetAllAsync(search, sort, page, pageSize, participationId, isReviewed);
+        var user = await _currentUser.GetRequiredUserAsync();
+        var institutionId = user.Role == AppRole.SchoolAdmin
+            ? user.InstitutionId ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.")
+            : (Guid?)null;
+        var lecturerId = user.Role == AppRole.Lecturer ? user.Id : (Guid?)null;
+
+        return await _repo.GetAllAsync(
+            search, sort, page, pageSize, participationId, isReviewed, institutionId, lecturerId);
     }
     public async Task<ViolationlogResponeDto?> GetByIdAsync(Guid id)
     {

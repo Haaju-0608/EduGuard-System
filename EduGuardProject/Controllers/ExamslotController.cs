@@ -76,6 +76,23 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam Slots By Class
+        // Truyền dữ liệu: route classId.
+        // Điều kiện: Student phải đang học class đó; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
+        [HttpGet("class/{classId:guid}")]
+        [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> GetByClassId(Guid classId)
+        {
+            try
+            {
+                if (classId == Guid.Empty) return BadRequest(ApiResponse<object>.OnFail("Class id is required."));
+
+                var items = await _service.GetByClassIdAsync(classId);
+                return Ok(ApiResponse<IEnumerable<ExamslotReponseDto>>.OnSuccess(items, "Exam slots retrieved successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
         // Get Exam History By StudentId
         // Truyền dữ liệu: route studentId.
         // Điều kiện: SchoolAdmin chỉ xem student cùng institution; SuperAdmin xem tất cả.
@@ -124,8 +141,8 @@ namespace EduGuardProject.Controllers
         }
 
         // Create Exam Slot
-        // Truyền dữ liệu: body classId, examName, status, expectedDurationMinutes, startTime, endTime.
-        // Điều kiện: SchoolAdmin hoặc SuperAdmin; class phải tồn tại và thuộc institution được phép truy cập.
+        // Truyền dữ liệu: body classId, lecturerId, examName, status, expectedDurationMinutes, startTime, endTime.
+        // Điều kiện: SchoolAdmin hoặc SuperAdmin; class phải tồn tại và thuộc institution được phép truy cập; lecturerId nếu truyền phải là Lecturer cùng institution.
         [HttpPost]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateExamSlotDto dto)
@@ -139,17 +156,17 @@ namespace EduGuardProject.Controllers
         }
 
         // Update Exam Slot
-        // Truyền dữ liệu: route examId, body examName, startTime, endTime, expectedDurationMinutes.
-        // Điều kiện: SchoolAdmin hoặc SuperAdmin; exam slot phải tồn tại và thuộc institution được phép truy cập.
+        // Truyền dữ liệu: route examId, body lecturerId, examName, startTime, endTime, expectedDurationMinutes.
+        // Điều kiện: SchoolAdmin hoặc SuperAdmin; exam slot phải tồn tại và thuộc institution được phép truy cập; lecturerId nếu truyền phải là Lecturer cùng institution; response trả về exam slot kèm lecturer.
         [HttpPut("{examId:guid}")]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Update(Guid examId, [FromBody] UpdateExamSlotDto dto)
         {
             try
             {
-                var success = await _service.UpdateAsync(examId, dto);
-                if (!success) return NotFound(ApiResponse<object>.OnFail("Exam slot not found."));
-                return Ok(ApiResponse<object>.OnSuccess(null!, "Exam slot updated successfully."));
+                var result = await _service.UpdateAsync(examId, dto);
+                if (result == null) return NotFound(ApiResponse<object>.OnFail("Exam slot not found."));
+                return OkSingle(result, "Exam slot updated successfully.");
             }
             catch (Exception ex) { return HandleException(ex); }
         }

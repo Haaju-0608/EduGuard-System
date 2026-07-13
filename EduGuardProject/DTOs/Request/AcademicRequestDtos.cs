@@ -207,6 +207,8 @@ public class CreateExamSlotDto
     [Required]
     public Guid ClassId { get; set; }
 
+    public Guid? LecturerId { get; set; }
+
     [Required]
     [MaxLength(255)]
     public string ExamName { get; set; } = string.Empty;
@@ -226,6 +228,8 @@ public class UpdateExamSlotDto
 {
     [MaxLength(255)]
     public string? ExamName { get; set; }
+
+    public Guid? LecturerId { get; set; }
 
     public int ExpectedDurationMinutes { get; set; }
     public DateTime? StartTime { get; set; }

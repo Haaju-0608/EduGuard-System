@@ -99,13 +99,15 @@ public interface IExamSlotServices
 
     Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid id, Guid studentId);
 
+    Task<IEnumerable<ExamslotReponseDto>> GetByClassIdAsync(Guid classId);
+
     Task<IEnumerable<ExamslotReponseDto>> GetByStudentIdAsync(Guid studentId);
 
     Task<IEnumerable<ExamslotReponseDto>> GetMyExamHistoryAsync();
 
     Task<ExamslotReponseDto> CreateAsync(CreateExamSlotDto dto);
 
-    Task<bool> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto);
+    Task<ExamslotReponseDto?> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto);
 
     Task<bool> DeleteAsync(Guid ExamId);
 }

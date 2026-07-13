@@ -8,7 +8,8 @@ namespace EduGuardProject.Repositories.IRepositories
     {
         Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
        string? search, string? sort, int page, int pageSize,
-       Guid? participationId = null, bool? isReviewed = null);
+       Guid? participationId = null, bool? isReviewed = null,
+       Guid? institutionId = null, Guid? lecturerId = null);
 
         Task<ViolationLog?> GetByIdAsync(Guid id);
 
