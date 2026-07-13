@@ -144,7 +144,7 @@ public class StorageController : AcademicApiControllerBase
     [HttpPost("evidence")]
     [RequestSizeLimit(VideoRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = VideoRequestLimit)]
-    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
     public async Task<IActionResult> UploadEvidence(
         [FromForm] EvidenceStorageUploadRequest request,
         CancellationToken cancellationToken = default)
