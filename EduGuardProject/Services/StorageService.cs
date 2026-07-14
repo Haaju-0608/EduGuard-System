@@ -1290,9 +1290,9 @@ public class StorageService : IStorageService
             new HashSet<string>(["video/mp4", "video/webm"], StringComparer.OrdinalIgnoreCase));
 
         public static StoragePolicy ImagesAndVideos { get; } = new(
-            VideoLimit,
-            new HashSet<string>([".mp4", ".webm", ".jpg", ".jpeg", ".png", ".webp"], StringComparer.OrdinalIgnoreCase),
-            new HashSet<string>(["video/mp4", "video/webm", "image/jpeg", "image/png", "image/webp"], StringComparer.OrdinalIgnoreCase));
+          VideoLimit,
+          new HashSet<string>([".mp4", ".webm", ".jpg", ".jpeg", ".png", ".webp"], StringComparer.OrdinalIgnoreCase),
+          new HashSet<string>(["video/mp4", "video/webm", "image/jpeg", "image/png", "image/webp"], StringComparer.OrdinalIgnoreCase));
     }
 
     private sealed record StorageAccess(Guid? InstitutionId);

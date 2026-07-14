@@ -126,6 +126,7 @@ builder.Services.AddScoped<IReportService, ReportService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<EmailTemplateService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
+builder.Services.AddHttpClient<IAiServiceClient, AiServiceClient>();
 
 // Authentication
 builder.Services.AddAuthentication(options =>

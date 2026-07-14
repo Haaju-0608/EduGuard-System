@@ -1,16 +1,19 @@
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Hubs;
 using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
+using Supabase.Interfaces;
 
 namespace EduGuardProject.Services;
 
 public class AttendanceRecordService : IAttendanceRecordService
 {
+    private readonly IWebHostEnvironment _webHostEnvironment;
     private readonly IAttendanceRecordRepository _repo;
     private readonly IAttendanceSessionRepository _sessionRepo;
     private readonly IClassRepository _classRepo;
@@ -19,8 +22,11 @@ public class AttendanceRecordService : IAttendanceRecordService
     private readonly IRealtimeEventDispatcher _realtime;
     private readonly IStorageService _storage;
     private readonly AppDbContext _context;
+    private readonly IAiServiceClient _aiClient;
 
+    // ✅ SỬA LỖI CÚ PHÁP CONSTRUCTOR
     public AttendanceRecordService(
+        IWebHostEnvironment webHostEnvironment,
         IAttendanceRecordRepository repo,
         IAttendanceSessionRepository sessionRepo,
         IClassRepository classRepo,
@@ -28,8 +34,10 @@ public class AttendanceRecordService : IAttendanceRecordService
         INotificationDispatcher notifications,
         IRealtimeEventDispatcher realtime,
         IStorageService storage,
-        AppDbContext context)
+        AppDbContext context,
+        IAiServiceClient aiClient)
     {
+        _webHostEnvironment = webHostEnvironment;
         _repo = repo;
         _sessionRepo = sessionRepo;
         _classRepo = classRepo;
@@ -38,6 +46,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         _realtime = realtime;
         _storage = storage;
         _context = context;
+        _aiClient = aiClient;
     }
 
     public async Task<(IEnumerable<AttendanceRecordResponseDto> Items, int TotalCount)> GetAllAsync(
@@ -80,7 +89,6 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await EnsureStudentEnrolledAsync(session.ClassId, dto.StudentId);
 
-        var user = await _currentUser.GetRequiredUserAsync();
         var entity = new AttendanceRecord
         {
             Id = Guid.NewGuid(),
@@ -99,8 +107,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         return await AcademicMapper.MapRecordAsync(_context, entity, null);
     }
 
-    public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkManualAsync(
-        Guid sessionId, BulkManualAttendanceDto dto)
+    public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkManualAsync(Guid sessionId, BulkManualAttendanceDto dto)
     {
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var session = await _sessionRepo.GetByIdAsync(sessionId)
@@ -110,45 +117,56 @@ public class AttendanceRecordService : IAttendanceRecordService
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
 
+        var studentIds = dto.PresentStudentIds.Distinct().ToList();
+
+        var activeEnrollments = await _context.ClassEnrollments
+            .AsNoTracking()
+            .Where(e => e.ClassId == session.ClassId && studentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
+            .Select(e => e.StudentId)
+            .ToListAsync();
+
+        var existingRecords = await _context.AttendanceRecords
+            .Where(r => r.SessionId == sessionId && studentIds.Contains(r.StudentId))
+            .ToDictionaryAsync(r => r.StudentId);
+
         var now = DateTime.UtcNow;
-        var records = new List<AttendanceRecord>();
+        var recordsToInsert = new List<AttendanceRecord>();
         var results = new List<AttendanceRecordResponseDto>();
 
-        foreach (var studentId in dto.PresentStudentIds.Distinct())
+        foreach (var studentId in activeEnrollments)
         {
-            await EnsureStudentEnrolledAsync(session.ClassId, studentId);
-
-            var existing = await _repo.GetBySessionAndStudentAsync(sessionId, studentId);
-            if (existing != null)
+            if (existingRecords.TryGetValue(studentId, out var existing))
             {
                 existing.Status = dto.Status;
                 existing.Method = dto.Method;
                 existing.CheckinAt = now;
-                await _repo.UpdateAsync(existing);
-                await DispatchAttendanceProgressAsync(existing, "updated");
+                _context.AttendanceRecords.Update(existing);
                 results.Add(await AcademicMapper.MapRecordAsync(_context, existing, null));
-                continue;
             }
-
-            var record = new AttendanceRecord
+            else
             {
-                Id = Guid.NewGuid(),
-                SessionId = sessionId,
-                StudentId = studentId,
-                Status = dto.Status,
-                Method = dto.Method,
-                CheckinAt = now
-            };
-            records.Add(record);
+                var record = new AttendanceRecord
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    StudentId = studentId,
+                    Status = dto.Status,
+                    Method = dto.Method,
+                    CheckinAt = now
+                };
+                recordsToInsert.Add(record);
+            }
         }
 
-        if (records.Count > 0)
-            await _repo.AddRangeAsync(records);
+        if (recordsToInsert.Count > 0)
+            await _context.AttendanceRecords.AddRangeAsync(recordsToInsert);
 
-        foreach (var record in records)
+        await _context.SaveChangesAsync();
+
+        foreach (var record in recordsToInsert)
         {
-            await DispatchAttendanceProgressAsync(record, "created");
             results.Add(await AcademicMapper.MapRecordAsync(_context, record, null));
+            await DispatchAttendanceProgressAsync(record, "created");
         }
 
         await UpdateSessionRecognizedCountAsync(sessionId);
@@ -304,5 +322,138 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         if (user.Role == AppRole.Lecturer && cls.LecturerId != user.Id)
             throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkByAiVideoAsync(Guid sessionId, Stream videoStream, string fileName)
+    {
+        await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        var session = await _sessionRepo.GetByIdAsync(sessionId)
+            ?? throw new InvalidOperationException("Attendance session not found.");
+
+        if (session.Status != SessionStatus.InProgress)
+            throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
+
+        string savedVideoPath = null!;
+        string fullPath = null!;
+        try
+        {
+            var uploadsFolder = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "attendance-videos");
+            if (!Directory.Exists(uploadsFolder))
+            {
+                Directory.CreateDirectory(uploadsFolder);
+            }
+
+            var fileExtension = Path.GetExtension(fileName);
+            var uniqueFileName = $"session_{sessionId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}{fileExtension}";
+            fullPath = Path.Combine(uploadsFolder, uniqueFileName);
+
+            using (var fileStream = new FileStream(fullPath, FileMode.Create))
+            {
+                await videoStream.CopyToAsync(fileStream);
+            }
+
+            savedVideoPath = $"/uploads/attendance-videos/{uniqueFileName}";
+        }
+        catch (Exception fileEx)
+        {
+            throw new InvalidOperationException($"Lỗi lưu file video vào hệ thống: {fileEx.Message}");
+        }
+
+        List<float[]> detectedVectors;
+        try
+        {
+            using (var pythonStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read))
+            {
+                detectedVectors = await _aiClient.ExtractVectorsFromVideoAsync(pythonStream, fileName);
+            }
+        }
+        catch (Exception aiEx)
+        {
+            if (File.Exists(fullPath)) File.Delete(fullPath);
+            throw new InvalidOperationException($"Lỗi xử lý AI từ Python: {aiEx.Message}");
+        }
+
+        session.VideoPath = savedVideoPath;
+        session.Status = SessionStatus.Completed;
+
+        var presentStudentIds = new List<Guid>();
+        double threshold = 0.40;
+
+        // Truy vấn Vector Khớp Diện Mạo từ pgvector
+        foreach (var vectorArray in detectedVectors)
+        {
+            var pgVector = new Pgvector.Vector(vectorArray);
+
+            var matchedStudentId = await _context.Database.SqlQueryRaw<Guid?>(@"
+                SELECT user_id AS ""Value"" FROM biometric_data 
+                WHERE is_active = true AND (face_vector <-> {0}) < {1}
+                ORDER BY face_vector <-> {0} 
+                LIMIT 1", pgVector, threshold)
+            .FirstOrDefaultAsync();
+
+            if (matchedStudentId.HasValue)
+            {
+                presentStudentIds.Add(matchedStudentId.Value);
+            }
+        }
+
+        var uniqueStudentIds = presentStudentIds.Distinct().ToList();
+
+        // [TỐI ƯU] Tải trước toàn bộ Enrollment hợp lệ của lớp học
+        var activeEnrollmentIds = await _context.ClassEnrollments
+            .AsNoTracking()
+            .Where(e => e.ClassId == session.ClassId && uniqueStudentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
+            .Select(e => e.StudentId)
+            .ToListAsync();
+
+        // [TỐI ƯU] Tải trước danh sách Record đã có của phiên này
+        var existingRecords = await _context.AttendanceRecords
+            .Where(r => r.SessionId == sessionId && uniqueStudentIds.Contains(r.StudentId))
+            .ToDictionaryAsync(r => r.StudentId);
+
+        var now = DateTime.UtcNow;
+        var recordsToInsert = new List<AttendanceRecord>();
+        var results = new List<AttendanceRecordResponseDto>();
+
+        // Thực hiện so khớp trực tiếp trên RAM (In-Memory) không gọi DB
+        foreach (var studentId in uniqueStudentIds)
+        {
+            if (!activeEnrollmentIds.Contains(studentId)) continue;
+
+            if (existingRecords.TryGetValue(studentId, out var existing))
+            {
+                existing.Status = AttendanceStatus.Present;
+                existing.Method = AttendanceMethod.Ai;
+                existing.CheckinAt = now;
+
+                _context.AttendanceRecords.Update(existing);
+                results.Add(await AcademicMapper.MapRecordAsync(_context, existing, null));
+            }
+            else
+            {
+                var record = new AttendanceRecord
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    StudentId = studentId,
+                    Status = AttendanceStatus.Present,
+                    Method = AttendanceMethod.Ai,
+                    CheckinAt = now
+                };
+                recordsToInsert.Add(record);
+            }
+        }
+
+        if (recordsToInsert.Count > 0)
+            await _context.AttendanceRecords.AddRangeAsync(recordsToInsert);
+
+        await _context.SaveChangesAsync();
+
+        foreach (var record in recordsToInsert)
+            results.Add(await AcademicMapper.MapRecordAsync(_context, record, null));
+
+        await UpdateSessionRecognizedCountAsync(sessionId);
+
+        return results;
     }
 }

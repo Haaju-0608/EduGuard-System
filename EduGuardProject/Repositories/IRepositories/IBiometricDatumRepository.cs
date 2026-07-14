@@ -11,4 +11,6 @@ public interface IBiometricDatumRepository
     Task AddAsync(BiometricDatum entity);
     Task UpdateAsync(BiometricDatum entity);
     Task SoftDeleteAsync(BiometricDatum entity);
+
+    Task<BiometricDatum?> FindClosestMatchAsync(Pgvector.Vector currentFaceVector, double threshold);
 }

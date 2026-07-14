@@ -1,4 +1,4 @@
-using EduGuardProject.Models;
+﻿using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
 
@@ -43,6 +43,10 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
         return (items, totalCount);
     }
 
+    //public Task<AttendanceSession?> GetByIdAsync(Guid id) =>
+    //    _context.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id && s.Status != SessionStatus.Cancelled);
+
+    //SỬA: Cho phép lấy thông tin phiên bằng Id kể cả khi nó đã bị hủy (phục vụ log/đối soát)
     public Task<AttendanceSession?> GetByIdAsync(Guid id) =>
         _context.AttendanceSessions.FirstOrDefaultAsync(s =>
             s.Id == id &&

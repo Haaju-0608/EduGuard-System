@@ -221,7 +221,11 @@ public static class AcademicMapper
                 .Where(b => b.BioRequestId == entity.Id && b.FaceImageUrl != null)
                 .OrderByDescending(b => b.UpdatedAt)
                 .Select(b => b.FaceImageUrl)
-                .FirstOrDefaultAsync()
+                .FirstOrDefaultAsync(),
+
+            FrontImageUrl = entity.FrontImagePath,
+            LeftImageUrl = entity.LeftImagePath,
+            RightImageUrl = entity.RightImagePath
         };
 
         if (string.IsNullOrWhiteSpace(expand)) return dto;

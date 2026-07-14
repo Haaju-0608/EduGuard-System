@@ -146,7 +146,7 @@ public class ExamWorkflowService : IExamWorkflowService
     public async Task<object> DisqualifyAsync(Guid participationId, string reason, CancellationToken cancellationToken = default)
     {
         var participation = await GetParticipationAsync(participationId, cancellationToken);
-        await EnsureStaffOrStudentOwnerAsync(participation);
+        await EnsureStaffAccessAsync(participation.ExamSlot.Class);
         EnsureJoined(participation);
 
         var now = DateTime.UtcNow;

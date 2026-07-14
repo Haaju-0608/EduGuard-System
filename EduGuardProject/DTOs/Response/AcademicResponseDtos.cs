@@ -1,4 +1,4 @@
-using EduGuardProject.Models;
+﻿using EduGuardProject.Models;
 
 namespace EduGuardProject.DTOs.Response;
 
@@ -106,6 +106,9 @@ public class BiometricRequestResponseDto
     public Guid? ApprovedBy { get; set; }
     public string Reason { get; set; } = null!;
     public BiometricReqStatus Status { get; set; }
+    public string FrontImageUrl { get; set; } = null!; // URL để hiển thị ảnh lên Web Admin
+    public string LeftImageUrl { get; set; } = null!;
+    public string RightImageUrl { get; set; } = null!;
     public DateTime? ReviewedAt { get; set; }
     public DateTime CreatedAt { get; set; }
     public string? FaceImageUrl { get; set; }

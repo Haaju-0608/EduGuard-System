@@ -165,6 +165,8 @@ public class ExamslotServices : IExamSlotServices
             cls.UpdatedAt = DateTime.UtcNow;
         }
 
+        await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
+
         var entity = new ExamSlot
         {
             Id = Guid.NewGuid(),
@@ -195,6 +197,11 @@ public class ExamslotServices : IExamSlotServices
     {
         var entity = await _repo.GetByIdAsync(ExamId);
         if (entity == null) return null;
+
+        await EnsureExamSlotAdminAccessAsync(entity);
+
+        if (!string.IsNullOrWhiteSpace(dto.ExamName))
+            entity.ExamName = dto.ExamName.Trim();
 
         await EnsureExamSlotAdminAccessAsync(entity);
 

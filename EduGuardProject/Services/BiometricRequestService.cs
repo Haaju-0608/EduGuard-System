@@ -1,4 +1,4 @@
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Helpers;
 using EduGuardProject.Models;
@@ -17,6 +17,7 @@ public class BiometricRequestService : IBiometricRequestService
     private readonly IStorageService _storage;
     private readonly AppDbContext _context;
     private readonly ILogger<BiometricRequestService> _logger;
+    private readonly IAiServiceClient _aiClient;
 
     public BiometricRequestService(
         IBiometricRequestRepository repo,
@@ -25,7 +26,8 @@ public class BiometricRequestService : IBiometricRequestService
         IRealtimeEventDispatcher realtime,
         IStorageService storage,
         AppDbContext context,
-        ILogger<BiometricRequestService> logger)
+        ILogger<BiometricRequestService> logger,
+        IAiServiceClient aiClient)
     {
         _repo = repo;
         _currentUser = currentUser;
@@ -56,22 +58,76 @@ public class BiometricRequestService : IBiometricRequestService
     public async Task<BiometricRequestResponseDto?> GetByIdAsync(Guid id, string? expand)
     {
         var entity = await _repo.GetByIdAsync(id);
-        if (entity == null || entity.Status == BiometricReqStatus.Rejected) return null;
+        //if (entity == null || entity.Status == BiometricReqStatus.Rejected) return null;
+        //await EnsureRequestAccessAsync(entity);
+        //return await AcademicMapper.MapBiometricRequestAsync(_context, entity, expand);
+        // SỬA: Cho phép xem đơn bị Rejected để check lịch sử, chỉ chặn khi không tìm thấy thực tế
+        if (entity == null) return null;
+
         await EnsureRequestAccessAsync(entity);
         return await AcademicMapper.MapBiometricRequestAsync(_context, entity, expand);
     }
 
+    //public async Task<BiometricRequestResponseDto> CreateAsync(CreateBiometricRequestDto dto)
+    //{
+    //    await _currentUser.EnsureRoleAsync(AppRole.Student);
+    //    var user = await _currentUser.GetRequiredUserAsync();
+
+    //    var entity = new BiometricRequest
+    //    {
+    //        Id = Guid.NewGuid(),
+    //        StudentId = user.Id,
+    //        Reason = dto.Reason,
+    //        Status = BiometricReqStatus.Pending,
+    //        CreatedAt = DateTime.UtcNow
+    //    };
+
+    //    await _repo.AddAsync(entity);
+    //    return await AcademicMapper.MapBiometricRequestAsync(_context, entity, null);
+    //}
+
+    // SỬA: Controller sau khi upload file lên Supabase Storage thành công sẽ ném 3 đường dẫn Path vào đây với giờ chưa có storage nên tui lưu ở wwwroot nhá
     public async Task<BiometricRequestResponseDto> CreateAsync(CreateBiometricRequestDto dto)
     {
+        // 1. Kiểm tra phân quyền Sinh viên
         await _currentUser.EnsureRoleAsync(AppRole.Student);
         var user = await _currentUser.GetRequiredUserAsync();
 
+        // 2. Kiểm tra và tạo thư mục lưu ảnh cục bộ nếu chưa có
+        var uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "biometrics");
+        if (!Directory.Exists(uploadFolder))
+        {
+            Directory.CreateDirectory(uploadFolder);
+        }
+
+        // 3. Định danh tên file độc nhất bằng Guid để tránh ghi đè
+        var frontFileName = $"{Guid.NewGuid()}_{dto.FrontFile.FileName}";
+        var leftFileName = $"{Guid.NewGuid()}_{dto.LeftFile.FileName}";
+        var rightFileName = $"{Guid.NewGuid()}_{dto.RightFile.FileName}";
+
+        // Đường dẫn tương đối lưu vào DB
+        string frontPath = Path.Combine("uploads", "biometrics", frontFileName);
+        string leftPath = Path.Combine("uploads", "biometrics", leftFileName);
+        string rightPath = Path.Combine("uploads", "biometrics", rightFileName);
+
+        // 4. Tiến hành ghi trực tiếp file vật lý xuống ổ đĩa cục bộ server
+        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", frontPath), FileMode.Create))
+            await dto.FrontFile.CopyToAsync(fs);
+        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", leftPath), FileMode.Create))
+            await dto.LeftFile.CopyToAsync(fs);
+        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", rightPath), FileMode.Create))
+            await dto.RightFile.CopyToAsync(fs);
+
+        // 5. Khởi tạo thực thể Request gửi lên trường với trạng thái PENDING (Hoàn toàn không có Vector)
         var entity = new BiometricRequest
         {
             Id = Guid.NewGuid(),
             StudentId = user.Id,
             Reason = dto.Reason,
             Status = BiometricReqStatus.Pending,
+            FrontImagePath = frontPath,
+            LeftImagePath = leftPath,
+            RightImagePath = rightPath,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -84,7 +140,7 @@ public class BiometricRequestService : IBiometricRequestService
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var entity = await _repo.GetByIdAsync(id);
-        if (entity == null) return false;
+        if (entity == null || entity.Status != BiometricReqStatus.Pending) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);
