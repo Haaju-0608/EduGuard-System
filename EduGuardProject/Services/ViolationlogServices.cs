@@ -47,6 +47,89 @@ public class ViolationLogServices : IViolationLogService
         return await _repo.GetAllAsync(
             search, sort, page, pageSize, participationId, isReviewed, institutionId, lecturerId, studentId);
     }
+
+    public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetByExamSlotAsync(
+        Guid examSlotId, string? search, string? sort, int page, int pageSize)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        var examSlot = await _context.ExamSlots
+            .AsNoTracking()
+            .Include(e => e.Class)
+            .FirstOrDefaultAsync(e => e.Id == examSlotId)
+            ?? throw new InvalidOperationException("Exam slot not found.");
+
+        if (user.Role == AppRole.SchoolAdmin && user.InstitutionId != examSlot.Class.InstitutionId)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        if (user.Role == AppRole.Lecturer &&
+            (user.InstitutionId != examSlot.Class.InstitutionId || user.Id != examSlot.Class.LecturerId))
+        {
+            throw new UnauthorizedAccessException("Access denied.");
+        }
+
+        if (user.Role != AppRole.SuperAdmin && user.Role != AppRole.SchoolAdmin && user.Role != AppRole.Lecturer)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        return await _repo.GetAllAsync(
+            search, sort, page, pageSize,
+            examSlotId: examSlotId);
+    }
+
+    public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetByExamSlotAndStudentAsync(
+        Guid examSlotId, Guid studentId, string? search, string? sort, int page, int pageSize)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        var examSlot = await _context.ExamSlots
+            .AsNoTracking()
+            .Include(e => e.Class)
+            .FirstOrDefaultAsync(e => e.Id == examSlotId)
+            ?? throw new InvalidOperationException("Exam slot not found.");
+
+        if (user.Role == AppRole.Student)
+        {
+            if (studentId != user.Id)
+                throw new UnauthorizedAccessException("Students can only view their own violation logs.");
+        }
+        else if (user.Role == AppRole.SchoolAdmin)
+        {
+            if (user.InstitutionId != examSlot.Class.InstitutionId)
+                throw new UnauthorizedAccessException("Access denied.");
+        }
+        else if (user.Role == AppRole.Lecturer)
+        {
+            if (user.InstitutionId != examSlot.Class.InstitutionId || user.Id != examSlot.Class.LecturerId)
+                throw new UnauthorizedAccessException("Access denied.");
+        }
+        else if (user.Role != AppRole.SuperAdmin)
+        {
+            throw new UnauthorizedAccessException("Access denied.");
+        }
+
+        return await _repo.GetAllAsync(
+            search, sort, page, pageSize,
+            studentId: studentId,
+            examSlotId: examSlotId);
+    }
+
+    public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetByStudentIdAsync(
+        Guid studentId, string? search, string? sort, int page, int pageSize)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Student && studentId != user.Id)
+            throw new UnauthorizedAccessException("Students can only view their own violation logs.");
+
+        var institutionId = user.Role == AppRole.SchoolAdmin
+            ? user.InstitutionId ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.")
+            : (Guid?)null;
+        var lecturerId = user.Role == AppRole.Lecturer ? user.Id : (Guid?)null;
+
+        return await _repo.GetAllAsync(
+            search, sort, page, pageSize,
+            institutionId: institutionId,
+            lecturerId: lecturerId,
+            studentId: studentId);
+    }
+
     public async Task<ViolationlogResponeDto?> GetByIdAsync(Guid id)
     {
         var violation = await GetViolationWithAccessDataAsync(id);

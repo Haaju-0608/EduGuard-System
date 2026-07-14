@@ -42,6 +42,78 @@ public class ViolationLogController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Get Violation Logs By Exam Slot
+    // Truyền dữ liệu: route examSlotId; query search, sort, page, pageSize, fields.
+    // Điều kiện: Lecturer đúng class của exam slot; SchoolAdmin cùng institution; SuperAdmin xem tất cả student trong exam slot.
+    [HttpGet("exam-slot/{examSlotId:guid}")]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    public async Task<IActionResult> GetByExamSlot(
+        Guid examSlotId,
+        [FromQuery] string? search,
+        [FromQuery] string? sort,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? fields = null)
+    {
+        if (examSlotId == Guid.Empty) return BadRequest(ApiResponse<object>.OnFail("Exam slot id is required."));
+        if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
+        try
+        {
+            var (items, total) = await _service.GetByExamSlotAsync(examSlotId, search, sort, page, pageSize);
+            return OkPaged(items, page, pageSize, total, "Violation logs retrieved successfully.", fields);
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
+    // Get Violation Logs By Exam Slot And Student
+    // Truyền dữ liệu: route examSlotId, route studentId; query search, sort, page, pageSize, fields.
+    // Điều kiện: Student chỉ xem chính mình; Lecturer đúng class của exam slot; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
+    [HttpGet("exam-slot/{examSlotId:guid}/student/{studentId:guid}")]
+    [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    public async Task<IActionResult> GetByExamSlotAndStudent(
+        Guid examSlotId,
+        Guid studentId,
+        [FromQuery] string? search,
+        [FromQuery] string? sort,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? fields = null)
+    {
+        if (examSlotId == Guid.Empty) return BadRequest(ApiResponse<object>.OnFail("Exam slot id is required."));
+        if (studentId == Guid.Empty) return BadRequest(ApiResponse<object>.OnFail("Student id is required."));
+        if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
+        try
+        {
+            var (items, total) = await _service.GetByExamSlotAndStudentAsync(
+                examSlotId, studentId, search, sort, page, pageSize);
+            return OkPaged(items, page, pageSize, total, "Violation logs retrieved successfully.", fields);
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
+    // Get Violation Logs By Student
+    // Truyền dữ liệu: route studentId; query search, sort, page, pageSize, fields.
+    // Điều kiện: Student chỉ xem chính mình; Lecturer chỉ xem log thuộc class mình dạy; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
+    [HttpGet("student/{studentId:guid}")]
+    [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    public async Task<IActionResult> GetByStudentId(
+        Guid studentId,
+        [FromQuery] string? search,
+        [FromQuery] string? sort,
+        [FromQuery] int page = 1,
+        [FromQuery] int pageSize = 10,
+        [FromQuery] string? fields = null)
+    {
+        if (studentId == Guid.Empty) return BadRequest(ApiResponse<object>.OnFail("Student id is required."));
+        if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
+        try
+        {
+            var (items, total) = await _service.GetByStudentIdAsync(studentId, search, sort, page, pageSize);
+            return OkPaged(items, page, pageSize, total, "Violation logs retrieved successfully.", fields);
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
     // Get Violation Log By Id
     // Truyền dữ liệu: route id, query fields.
     // Điều kiện: user đã đăng nhập; SuperAdmin xem tất cả, SchoolAdmin cùng institution, Lecturer đúng class của exam, Student chỉ xem log của bản thân.

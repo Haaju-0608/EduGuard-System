@@ -9,7 +9,7 @@ namespace EduGuardProject.Repositories.IRepositories
         Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
        string? search, string? sort, int page, int pageSize,
        Guid? participationId = null, bool? isReviewed = null,
-       Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null);
+       Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null, Guid? examSlotId = null);
 
         Task<ViolationLog?> GetByIdAsync(Guid id);
 

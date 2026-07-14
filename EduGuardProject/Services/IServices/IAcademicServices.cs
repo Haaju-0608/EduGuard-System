@@ -118,6 +118,12 @@ public interface IViolationLogService
     Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
         Guid? participationId = null, bool? isReviewed = null);
+    Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetByExamSlotAsync(
+        Guid examSlotId, string? search, string? sort, int page, int pageSize);
+    Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetByExamSlotAndStudentAsync(
+        Guid examSlotId, Guid studentId, string? search, string? sort, int page, int pageSize);
+    Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetByStudentIdAsync(
+        Guid studentId, string? search, string? sort, int page, int pageSize);
 
     Task<ViolationlogResponeDto?> GetByIdAsync(Guid id);
 
