@@ -1,5 +1,6 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Hubs;
 using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
@@ -17,15 +18,22 @@ public class AttendanceRecordService : IAttendanceRecordService
     private readonly IAttendanceSessionRepository _sessionRepo;
     private readonly IClassRepository _classRepo;
     private readonly ICurrentUserService _currentUser;
+    private readonly INotificationDispatcher _notifications;
+    private readonly IRealtimeEventDispatcher _realtime;
+    private readonly IStorageService _storage;
     private readonly AppDbContext _context;
     private readonly IAiServiceClient _aiClient;
 
+    // ✅ SỬA LỖI CÚ PHÁP CONSTRUCTOR
     public AttendanceRecordService(
         IWebHostEnvironment webHostEnvironment,
         IAttendanceRecordRepository repo,
         IAttendanceSessionRepository sessionRepo,
         IClassRepository classRepo,
         ICurrentUserService currentUser,
+        INotificationDispatcher notifications,
+        IRealtimeEventDispatcher realtime,
+        IStorageService storage,
         AppDbContext context,
         IAiServiceClient aiClient)
     {
@@ -34,6 +42,9 @@ public class AttendanceRecordService : IAttendanceRecordService
         _sessionRepo = sessionRepo;
         _classRepo = classRepo;
         _currentUser = currentUser;
+        _notifications = notifications;
+        _realtime = realtime;
+        _storage = storage;
         _context = context;
         _aiClient = aiClient;
     }
@@ -78,7 +89,6 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await EnsureStudentEnrolledAsync(session.ClassId, dto.StudentId);
 
-        var user = await _currentUser.GetRequiredUserAsync();
         var entity = new AttendanceRecord
         {
             Id = Guid.NewGuid(),
@@ -93,11 +103,11 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await _repo.AddAsync(entity);
         await UpdateSessionRecognizedCountAsync(dto.SessionId);
+        await DispatchAttendanceProgressAsync(entity, "created");
         return await AcademicMapper.MapRecordAsync(_context, entity, null);
     }
 
-    public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkManualAsync(
-        Guid sessionId, BulkManualAttendanceDto dto)
+    public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkManualAsync(Guid sessionId, BulkManualAttendanceDto dto)
     {
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var session = await _sessionRepo.GetByIdAsync(sessionId)
@@ -107,49 +117,57 @@ public class AttendanceRecordService : IAttendanceRecordService
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
 
+        var studentIds = dto.PresentStudentIds.Distinct().ToList();
+
+        var activeEnrollments = await _context.ClassEnrollments
+            .AsNoTracking()
+            .Where(e => e.ClassId == session.ClassId && studentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
+            .Select(e => e.StudentId)
+            .ToListAsync();
+
+        var existingRecords = await _context.AttendanceRecords
+            .Where(r => r.SessionId == sessionId && studentIds.Contains(r.StudentId))
+            .ToDictionaryAsync(r => r.StudentId);
+
         var now = DateTime.UtcNow;
-        var records = new List<AttendanceRecord>();
+        var recordsToInsert = new List<AttendanceRecord>();
         var results = new List<AttendanceRecordResponseDto>();
 
-        foreach (var studentId in dto.PresentStudentIds.Distinct())
+        foreach (var studentId in activeEnrollments)
         {
-            await EnsureStudentEnrolledAsync(session.ClassId, studentId);
-
-            var existing = await _repo.GetBySessionAndStudentAsync(sessionId, studentId);
-            if (existing != null)
+            if (existingRecords.TryGetValue(studentId, out var existing))
             {
                 existing.Status = dto.Status;
                 existing.Method = dto.Method;
                 existing.CheckinAt = now;
-                //await _repo.UpdateAsync(existing);
-                _context.AttendanceRecords.Update(existing); // Xếp hàng chờ lưu
+                _context.AttendanceRecords.Update(existing);
                 results.Add(await AcademicMapper.MapRecordAsync(_context, existing, null));
-                continue;
             }
-
-            var record = new AttendanceRecord
+            else
             {
-                Id = Guid.NewGuid(),
-                SessionId = sessionId,
-                StudentId = studentId,
-                Status = dto.Status,
-                Method = dto.Method,
-                CheckinAt = now
-            };
-            records.Add(record);
+                var record = new AttendanceRecord
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    StudentId = studentId,
+                    Status = dto.Status,
+                    Method = dto.Method,
+                    CheckinAt = now
+                };
+                recordsToInsert.Add(record);
+            }
         }
 
-        //if (records.Count > 0)
-        //    await _repo.AddRangeAsync(records);
+        if (recordsToInsert.Count > 0)
+            await _context.AttendanceRecords.AddRangeAsync(recordsToInsert);
 
-        if (records.Count > 0)
-            await _context.AttendanceRecords.AddRangeAsync(records);
-
-        // Lưu tất cả cập nhật mới và cũ trong đúng 1 Transaction duy nhất
         await _context.SaveChangesAsync();
 
-        foreach (var record in records)
+        foreach (var record in recordsToInsert)
+        {
             results.Add(await AcademicMapper.MapRecordAsync(_context, record, null));
+            await DispatchAttendanceProgressAsync(record, "created");
+        }
 
         await UpdateSessionRecognizedCountAsync(sessionId);
         return results;
@@ -175,6 +193,7 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await _repo.UpdateAsync(entity);
         await UpdateSessionRecognizedCountAsync(entity.SessionId);
+        await DispatchAttendanceProgressAsync(entity, "updated");
         return true;
     }
 
@@ -188,8 +207,12 @@ public class AttendanceRecordService : IAttendanceRecordService
         if (session != null) await EnsureSessionAccessAsync(session);
 
         var user = await _currentUser.GetRequiredUserAsync();
+        var snapshotPath = entity.SnapshotPath;
         await _repo.SoftDeleteAsync(entity, user.Id);
+        if (!string.IsNullOrWhiteSpace(snapshotPath))
+            await _storage.DeleteAsync(StorageService.AttendanceSnapshotsBucket, snapshotPath);
         await UpdateSessionRecognizedCountAsync(entity.SessionId);
+        await DispatchAttendanceProgressAsync(entity, "deleted");
         return true;
     }
 
@@ -214,6 +237,62 @@ public class AttendanceRecordService : IAttendanceRecordService
         session.TotalRecognized = count;
         session.UpdatedAt = DateTime.UtcNow;
         await _sessionRepo.UpdateAsync(session);
+    }
+
+    private async Task DispatchAttendanceProgressAsync(AttendanceRecord entity, string action)
+    {
+        var session = await _context.AttendanceSessions
+            .AsNoTracking()
+            .FirstOrDefaultAsync(s => s.Id == entity.SessionId);
+        if (session == null) return;
+
+        var student = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == entity.StudentId);
+
+        var totalRecognized = await _context.AttendanceRecords.CountAsync(r =>
+            r.SessionId == entity.SessionId && r.Status == AttendanceStatus.Present);
+        var totalStudents = await _context.ClassEnrollments.CountAsync(e =>
+            e.ClassId == session.ClassId && e.Status == EnrollmentStatus.Active);
+
+        var payload = new
+        {
+            sessionId = entity.SessionId,
+            session.ClassId,
+            recordId = entity.Id,
+            entity.StudentId,
+            fullName = student?.FullName,
+            entity.Status,
+            entity.Method,
+            entity.ConfidenceScore,
+            entity.SnapshotPath,
+            entity.CheckinAt,
+            totalRecognized,
+            totalStudents
+        };
+
+        await _realtime.PushAttendanceSessionAsync(entity.SessionId, HubEvents.AttendanceProgressChanged, payload);
+        var cls = await _context.Classes
+            .AsNoTracking()
+            .FirstOrDefaultAsync(c => c.Id == session.ClassId && c.DeletedAt == null);
+
+        await _realtime.PublishDataChangedAsync(
+            "attendance-records",
+            action,
+            institutionId: cls?.InstitutionId,
+            lecturerId: cls?.LecturerId,
+            userId: entity.StudentId,
+            data: payload);
+
+        if (entity.Status == AttendanceStatus.Present)
+        {
+            await _notifications.SendToUserAsync(
+                entity.StudentId,
+                "Điểm danh thành công",
+                "Bạn đã được ghi nhận có mặt trong ca điểm danh.",
+                NotificationType.AttendanceSessionStarted,
+                ReferenceTypeEnum.AttendanceSession,
+                entity.SessionId);
+        }
     }
 
     private async Task EnsureRecordAccessAsync(AttendanceRecord entity)
@@ -245,9 +324,6 @@ public class AttendanceRecordService : IAttendanceRecordService
             throw new UnauthorizedAccessException("Access denied.");
     }
 
-    // =========================================================================
-    // HÀM XỬ LÝ ĐIỂM DANH TỪ VIDEO AI (ĐÃ TỐI ƯU HÓA BATCH SAVE 🚀)
-    // =========================================================================
     public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkByAiVideoAsync(Guid sessionId, Stream videoStream, string fileName)
     {
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
@@ -271,13 +347,11 @@ public class AttendanceRecordService : IAttendanceRecordService
             var uniqueFileName = $"session_{sessionId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}{fileExtension}";
             fullPath = Path.Combine(uploadsFolder, uniqueFileName);
 
-            // Copy stream gốc vào file vật lý trong wwwroot
             using (var fileStream = new FileStream(fullPath, FileMode.Create))
             {
                 await videoStream.CopyToAsync(fileStream);
             }
 
-            // Đường dẫn tương đối lưu vào DB
             savedVideoPath = $"/uploads/attendance-videos/{uniqueFileName}";
         }
         catch (Exception fileEx)
@@ -285,13 +359,9 @@ public class AttendanceRecordService : IAttendanceRecordService
             throw new InvalidOperationException($"Lỗi lưu file video vào hệ thống: {fileEx.Message}");
         }
 
-        // =========================================================================
-        // 🌟 BƯỚC 2: MỞ LUỒNG STREAM MỚI TỪ FILE ĐÃ LƯU ĐỂ GỬI SANG PYTHON AI
-        // =========================================================================
         List<float[]> detectedVectors;
         try
         {
-            // Mở luồng đọc từ file vật lý vừa ghi thành công trên ổ cứng
             using (var pythonStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read))
             {
                 detectedVectors = await _aiClient.ExtractVectorsFromVideoAsync(pythonStream, fileName);
@@ -299,29 +369,26 @@ public class AttendanceRecordService : IAttendanceRecordService
         }
         catch (Exception aiEx)
         {
-            // Nếu AI lỗi, chủ động xóa file rác vừa lưu ở wwwroot để tránh đầy ổ cứng
             if (File.Exists(fullPath)) File.Delete(fullPath);
-
             throw new InvalidOperationException($"Lỗi xử lý AI từ Python: {aiEx.Message}");
         }
 
-        // Cập nhật thông tin đường dẫn video vào thực thể session đang được EF tracking
         session.VideoPath = savedVideoPath;
         session.Status = SessionStatus.Completed;
 
         var presentStudentIds = new List<Guid>();
-        double threshold = 0.40; // Độ khắt khe nhận diện hình ảnh
+        double threshold = 0.40;
 
-        // 2. Tìm kiếm hàng loạt sinh viên khớp diện mạo bằng pgvector toán tử <->
+        // Truy vấn Vector Khớp Diện Mạo từ pgvector
         foreach (var vectorArray in detectedVectors)
         {
             var pgVector = new Pgvector.Vector(vectorArray);
 
             var matchedStudentId = await _context.Database.SqlQueryRaw<Guid?>(@"
-        SELECT user_id AS ""Value"" FROM biometric_data 
-        WHERE is_active = true AND (face_vector <-> {0}) < {1}
-        ORDER BY face_vector <-> {0} 
-        LIMIT 1", pgVector, threshold)
+                SELECT user_id AS ""Value"" FROM biometric_data 
+                WHERE is_active = true AND (face_vector <-> {0}) < {1}
+                ORDER BY face_vector <-> {0} 
+                LIMIT 1", pgVector, threshold)
             .FirstOrDefaultAsync();
 
             if (matchedStudentId.HasValue)
@@ -332,52 +399,59 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         var uniqueStudentIds = presentStudentIds.Distinct().ToList();
 
+        // [TỐI ƯU] Tải trước toàn bộ Enrollment hợp lệ của lớp học
+        var activeEnrollmentIds = await _context.ClassEnrollments
+            .AsNoTracking()
+            .Where(e => e.ClassId == session.ClassId && uniqueStudentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
+            .Select(e => e.StudentId)
+            .ToListAsync();
+
+        // [TỐI ƯU] Tải trước danh sách Record đã có của phiên này
+        var existingRecords = await _context.AttendanceRecords
+            .Where(r => r.SessionId == sessionId && uniqueStudentIds.Contains(r.StudentId))
+            .ToDictionaryAsync(r => r.StudentId);
+
         var now = DateTime.UtcNow;
-        var records = new List<AttendanceRecord>();
+        var recordsToInsert = new List<AttendanceRecord>();
         var results = new List<AttendanceRecordResponseDto>();
 
-        // 3. Quét kiểm tra điều kiện lớp học và Gom danh sách chờ lưu dữ liệu
+        // Thực hiện so khớp trực tiếp trên RAM (In-Memory) không gọi DB
         foreach (var studentId in uniqueStudentIds)
         {
-            var enrolled = await _context.ClassEnrollments.AsNoTracking()
-                .AnyAsync(e => e.ClassId == session.ClassId && e.StudentId == studentId && e.Status == EnrollmentStatus.Active);
+            if (!activeEnrollmentIds.Contains(studentId)) continue;
 
-            if (!enrolled) continue; // Đi học ké lớp khác thì bỏ qua
-
-            var existing = await _repo.GetBySessionAndStudentAsync(sessionId, studentId);
-            if (existing != null)
+            if (existingRecords.TryGetValue(studentId, out var existing))
             {
                 existing.Status = AttendanceStatus.Present;
                 existing.Method = AttendanceMethod.Ai;
                 existing.CheckinAt = now;
 
-                _context.AttendanceRecords.Update(existing); // 🌟 TỐI ƯU: Đánh dấu cập nhật vào context, CHƯA SAVE vội
+                _context.AttendanceRecords.Update(existing);
                 results.Add(await AcademicMapper.MapRecordAsync(_context, existing, null));
-                continue;
             }
-
-            var record = new AttendanceRecord
+            else
             {
-                Id = Guid.NewGuid(),
-                SessionId = sessionId,
-                StudentId = studentId,
-                Status = AttendanceStatus.Present,
-                Method = AttendanceMethod.Ai,
-                CheckinAt = now
-            };
-            records.Add(record);
+                var record = new AttendanceRecord
+                {
+                    Id = Guid.NewGuid(),
+                    SessionId = sessionId,
+                    StudentId = studentId,
+                    Status = AttendanceStatus.Present,
+                    Method = AttendanceMethod.Ai,
+                    CheckinAt = now
+                };
+                recordsToInsert.Add(record);
+            }
         }
 
-        // 🌟 TỐI ƯU CHÍ MẠNG: Bắn đúng 1 lệnh duy nhất lưu tất cả bản ghi mới/cũ xuống Database!
-        if (records.Count > 0)
-            await _context.AttendanceRecords.AddRangeAsync(records);
+        if (recordsToInsert.Count > 0)
+            await _context.AttendanceRecords.AddRangeAsync(recordsToInsert);
 
         await _context.SaveChangesAsync();
 
-        foreach (var record in records)
+        foreach (var record in recordsToInsert)
             results.Add(await AcademicMapper.MapRecordAsync(_context, record, null));
 
-        // Cập nhật lại tổng số sinh viên có mặt trong phiên
         await UpdateSessionRecognizedCountAsync(sessionId);
 
         return results;

@@ -49,7 +49,7 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
 
     //SỬA: Cho phép lấy thông tin phiên bằng Id kể cả khi nó đã bị hủy (phục vụ log/đối soát)
     public Task<AttendanceSession?> GetByIdAsync(Guid id) =>
-        _context.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id);
+        _context.AttendanceSessions.FirstOrDefaultAsync(s => s.Id == id && s.Status != SessionStatus.Cancelled);
 
     public async Task AddAsync(AttendanceSession entity)
     {

@@ -9,11 +9,17 @@ namespace EduGuardProject.Controllers
 {
     [Route("api/exam-slots")]
     [ApiController]
+    [SupabaseAuthorize]
     public class ExamslotController : AcademicApiControllerBase
     {
         private readonly IExamSlotServices _service;
+        private readonly IExamWorkflowService _workflowService;
 
-        public ExamslotController(IExamSlotServices service) => _service = service;
+        public ExamslotController(IExamSlotServices service, IExamWorkflowService workflowService)
+        {
+            _service = service;
+            _workflowService = workflowService;
+        }
 
         [HttpGet]
         public async Task<IActionResult> GetAll(
@@ -44,6 +50,18 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        [HttpGet("{examId:guid}/realtime-state")]
+        [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> GetRealtimeState(Guid examId)
+        {
+            try
+            {
+                var state = await _workflowService.GetRealtimeStateAsync(examId);
+                return Ok(ApiResponse<object>.OnSuccess(state, "Exam realtime state retrieved successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
         [HttpPost]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateExamSlotDto dto)
@@ -57,6 +75,7 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpPut("{examId:guid}")]
+        [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Update(Guid examId, [FromBody] UpdateExamSlotDto dto)
         {
             try
@@ -69,6 +88,7 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpDelete("{examId:guid}")]
+        [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Delete(Guid examId)
         {
             try

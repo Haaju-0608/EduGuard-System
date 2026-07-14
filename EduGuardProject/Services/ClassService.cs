@@ -11,12 +11,18 @@ public class ClassService : IClassService
 {
     private readonly IClassRepository _repo;
     private readonly ICurrentUserService _currentUser;
+    private readonly IRealtimeEventDispatcher _realtime;
     private readonly AppDbContext _context;
 
-    public ClassService(IClassRepository repo, ICurrentUserService currentUser, AppDbContext context)
+    public ClassService(
+        IClassRepository repo,
+        ICurrentUserService currentUser,
+        IRealtimeEventDispatcher realtime,
+        AppDbContext context)
     {
         _repo = repo;
         _currentUser = currentUser;
+        _realtime = realtime;
         _context = context;
     }
 
@@ -71,6 +77,7 @@ public class ClassService : IClassService
         };
 
         await _repo.AddAsync(entity);
+        await PublishClassChangedAsync(entity, "created");
         return await AcademicMapper.MapClassAsync(_context, entity, null);
     }
 
@@ -92,6 +99,7 @@ public class ClassService : IClassService
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity);
+        await PublishClassChangedAsync(entity, "updated");
         return true;
     }
 
@@ -101,8 +109,26 @@ public class ClassService : IClassService
         if (entity == null) return false;
         await EnsureCanManageClassAsync(entity);
         await _repo.SoftDeleteAsync(entity);
+        await PublishClassChangedAsync(entity, "deleted");
         return true;
     }
+
+    private Task PublishClassChangedAsync(Class entity, string action) =>
+        _realtime.PublishDataChangedAsync(
+            "classes",
+            action,
+            institutionId: entity.InstitutionId,
+            lecturerId: entity.LecturerId,
+            data: new
+            {
+                classId = entity.Id,
+                entity.InstitutionId,
+                entity.LecturerId,
+                entity.CourseName,
+                entity.CourseCode,
+                entity.Semester,
+                entity.AcademicYear
+            });
 
     private async Task EnsureCanAccessClassAsync(Class entity)
     {

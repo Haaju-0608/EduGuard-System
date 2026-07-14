@@ -486,4 +486,13 @@ $RECYCLE.BIN/
 # Invisible files on repository
 # **/appsettings.json
 # **/appsettings.Development.json
+EduGuardProject/.keys/
 
+/docs/eduguard-realtime-notification-storage-solution.md
+/docs/run-and-test-signalr-guide.md
+/docs
+/EduGuardProject/wwwroot/signalr-api-test.html
+/EduGuardProject/wwwroot/signalr-api-test.html
+/Img/20266184586.mp4
+/Img/2026626233827.png
+/Img

@@ -12,19 +12,29 @@ public class BiometricRequestService : IBiometricRequestService
 {
     private readonly IBiometricRequestRepository _repo;
     private readonly ICurrentUserService _currentUser;
+    private readonly INotificationDispatcher _notifications;
+    private readonly IRealtimeEventDispatcher _realtime;
+    private readonly IStorageService _storage;
     private readonly AppDbContext _context;
+    private readonly ILogger<BiometricRequestService> _logger;
     private readonly IAiServiceClient _aiClient;
 
     public BiometricRequestService(
         IBiometricRequestRepository repo,
         ICurrentUserService currentUser,
+        INotificationDispatcher notifications,
+        IRealtimeEventDispatcher realtime,
+        IStorageService storage,
         AppDbContext context,
+        ILogger<BiometricRequestService> logger,
         IAiServiceClient aiClient)
     {
         _repo = repo;
         _currentUser = currentUser;
+        _notifications = notifications;
+        _realtime = realtime;
+        _storage = storage;
         _context = context;
-        _aiClient = aiClient;
     }
 
     public async Task<(IEnumerable<BiometricRequestResponseDto> Items, int TotalCount)> GetAllAsync(
@@ -121,6 +131,7 @@ public class BiometricRequestService : IBiometricRequestService
         };
 
         await _repo.AddAsync(entity);
+        await PublishBiometricRequestChangedAsync(entity, "created");
         return await AcademicMapper.MapBiometricRequestAsync(_context, entity, null);
     }
 
@@ -131,62 +142,6 @@ public class BiometricRequestService : IBiometricRequestService
         if (entity == null || entity.Status != BiometricReqStatus.Pending) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
-
-        try
-        {
-            // 1. Tìm đường dẫn vật lý của 3 file ảnh thô trong thư mục wwwroot
-            var frontFullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", entity.FrontImagePath);
-            var leftFullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", entity.LeftImagePath);
-            var rightFullPath = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", entity.RightImagePath);
-
-            if (!File.Exists(frontFullPath) || !File.Exists(leftFullPath) || !File.Exists(rightFullPath))
-                throw new FileNotFoundException("Không tìm thấy dữ liệu ảnh eKYC vật lý trên ổ đĩa Server cục bộ.");
-
-            // 2. Mở luồng đọc file trực tiếp từ ổ đĩa
-            using var frontStream = File.OpenRead(frontFullPath);
-            using var leftStream = File.OpenRead(leftFullPath);
-            using var rightStream = File.OpenRead(rightFullPath);
-
-            // 3. Bắn đồng thời 3 luồng ảnh sang AI Python để xử lý tính toán Vector trung bình
-            float[] vectorArray = await _aiClient.ExtractVectorFrom3FacesAsync(
-                frontStream, Path.GetFileName(frontFullPath),
-                leftStream, Path.GetFileName(leftFullPath),
-                rightStream, Path.GetFileName(rightFullPath)
-            );
-            var pgVector = new Pgvector.Vector(vectorArray);
-
-            // 4. VÔ HIỆU HÓA các nhận diện khuôn mặt cũ đang hoạt động của sinh viên này
-            var oldRecords = await _context.BiometricData
-                .Where(b => b.UserId == entity.StudentId && b.IsActive)
-                .ToListAsync();
-            foreach (var r in oldRecords)
-            {
-                r.IsActive = false;
-                r.UpdatedAt = DateTime.UtcNow;
-            }
-
-            // 5. Khởi tạo bản ghi dữ liệu sinh trắc học chính thức lưu vào bảng BIOMETRIC_DATA
-            var newBioData = new BiometricDatum
-            {
-                Id = Guid.NewGuid(),
-                UserId = entity.StudentId,
-                BioRequestId = entity.Id,
-                FaceVector = pgVector,                // Vector chuẩn hóa nạp vào đây!
-                ModelVersion = "face_recognition_v1",
-                IsActive = true,                       // Kích hoạt nhận diện mới
-                FaceImageUrl = entity.FrontImagePath, // Lưu path ảnh thẳng làm ảnh đối soát
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            await _context.BiometricData.AddAsync(newBioData);
-        }
-        catch (Exception ex)
-        {
-            throw new InvalidOperationException($"Lỗi đồng bộ eKYC với Server AI trong quá trình phê duyệt: {ex.Message}");
-        }
-
-        // 6. Cập nhật trạng thái đơn yêu cầu thành APPROVED
         entity.Status = BiometricReqStatus.Approved;
         entity.ApprovedBy = user.Id;
         entity.ReviewedAt = DateTime.UtcNow;
@@ -194,7 +149,6 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
-        await _context.SaveChangesAsync();
         return true;
     }
 
@@ -205,6 +159,7 @@ public class BiometricRequestService : IBiometricRequestService
         if (entity == null) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
+        await EnsureReviewerAccessAsync(user, entity.StudentId);
         entity.Status = BiometricReqStatus.Rejected;
         entity.ApprovedBy = user.Id;
         entity.ReviewedAt = DateTime.UtcNow;
@@ -212,6 +167,15 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
+        await DeleteBiometricFilesAsync(entity.Id);
+        await _notifications.SendToUserAsync(
+            entity.StudentId,
+            "Đăng ký khuôn mặt bị từ chối",
+            entity.Reason,
+            NotificationType.BiometricRequestStatus,
+            null,
+            entity.Id);
+        await PublishBiometricRequestChangedAsync(entity, "rejected");
         return true;
     }
 
@@ -227,15 +191,94 @@ public class BiometricRequestService : IBiometricRequestService
             await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin);
 
         await _repo.SoftDeleteAsync(entity);
+        await PublishBiometricRequestChangedAsync(entity, "deleted");
         return true;
+    }
+
+    private async Task PublishBiometricRequestChangedAsync(BiometricRequest entity, string action)
+    {
+        var student = await _context.Users
+            .AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == entity.StudentId);
+
+        await _realtime.PublishDataChangedAsync(
+            "biometric-requests",
+            action,
+            institutionId: student?.InstitutionId,
+            userId: entity.StudentId,
+            data: new
+            {
+                requestId = entity.Id,
+                entity.StudentId,
+                studentName = student?.FullName,
+                entity.Status,
+                entity.ApprovedBy,
+                entity.ReviewedAt,
+                entity.CreatedAt
+            });
     }
 
     private async Task EnsureRequestAccessAsync(BiometricRequest entity)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.SuperAdmin || user.Role == AppRole.SchoolAdmin) return;
+        if (user.Role == AppRole.SuperAdmin)
+            return;
 
-        if (user.Role == AppRole.Student && entity.StudentId != user.Id)
-            throw new UnauthorizedAccessException("Access denied.");
+        if (user.Role == AppRole.SchoolAdmin)
+        {
+            await EnsureReviewerAccessAsync(user, entity.StudentId);
+            return;
+        }
+
+        if (user.Role == AppRole.Student && entity.StudentId == user.Id)
+            return;
+
+        throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private async Task EnsureReviewerAccessAsync(User reviewer, Guid studentId)
+    {
+        if (reviewer.Role == AppRole.SuperAdmin)
+            return;
+
+        var studentInstitutionId = await _context.Users
+            .AsNoTracking()
+            .Where(u => u.Id == studentId)
+            .Select(u => u.InstitutionId)
+            .FirstOrDefaultAsync();
+
+        if (reviewer.Role == AppRole.SchoolAdmin &&
+            reviewer.InstitutionId.HasValue &&
+            reviewer.InstitutionId == studentInstitutionId)
+        {
+            return;
+        }
+
+        throw new UnauthorizedAccessException("You cannot review biometric requests from another institution.");
+    }
+
+    private async Task DeleteBiometricFilesAsync(Guid biometricRequestId)
+    {
+        var paths = await _context.BiometricData
+            .AsNoTracking()
+            .Where(b => b.BioRequestId == biometricRequestId && b.FaceImageUrl != null)
+            .Select(b => b.FaceImageUrl!)
+            .ToListAsync();
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                await _storage.DeleteAsync(StorageService.BiometricFacesBucket, path);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Could not delete biometric review file {Path} for request {RequestId}.",
+                    path,
+                    biometricRequestId);
+            }
+        }
     }
 }

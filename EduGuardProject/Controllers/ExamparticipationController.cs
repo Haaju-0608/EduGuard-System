@@ -15,7 +15,13 @@ namespace EduGuardProject.Controllers
     public class ExamParticipationController : AcademicApiControllerBase
     {
         private readonly IExamParticipationService _service;
-        public ExamParticipationController(IExamParticipationService service) => _service = service;
+        private readonly IExamWorkflowService _workflowService;
+
+        public ExamParticipationController(IExamParticipationService service, IExamWorkflowService workflowService)
+        {
+            _service = service;
+            _workflowService = workflowService;
+        }
 
 
         [HttpGet]
@@ -38,6 +44,7 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpGet("{id:guid}")]
+        [SupabaseAuthorize]
         public async Task<IActionResult> GetById(Guid id)
         {
             try
@@ -61,40 +68,103 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
-        [HttpPut("{examSlotId:guid}")]
-        public async Task<IActionResult> Update(Guid examSlotId, [FromBody] UpdateExamParticipationDto dto)
+        [HttpPut("{id:guid}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        public async Task<IActionResult> Update(Guid id, [FromBody] UpdateExamParticipationDto dto)
         {
             try
             {
-                var success = await _service.UpdateAsync(examSlotId, dto);
+                var success = await _service.UpdateAsync(id, dto);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Exam participation not found."));
                 return Ok(ApiResponse<object>.OnSuccess(null!, "Exam participation updated successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }
 
-        [HttpPut("{examSlotId}/status")]
-        public async Task<IActionResult> UpdateExamParticipationStatus(Guid examSlotId, [FromBody] UpdateExamParticipationStatusDto dto)
+        [HttpPut("{id:guid}/status")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        public async Task<IActionResult> UpdateExamParticipationStatus(Guid id, [FromBody] UpdateExamParticipationStatusDto dto)
         {
             try
             {
-                var success = await _service.UpdateAsyncOnlyExamPartipationStatus(examSlotId, dto);
+                var success = await _service.UpdateAsyncOnlyExamPartipationStatus(id, dto);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Exam participation not found."));
                 return Ok(ApiResponse<object>.OnSuccess(null!, "Exam participation status updated successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }
 
-        [HttpDelete("{examSlotId:guid}")]
-        public async Task<IActionResult> Delete(Guid examSlotId)
+        [HttpDelete("{id:guid}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        public async Task<IActionResult> Delete(Guid id)
         {
             try
             {
-                var success = await _service.DeleteAsync(examSlotId);
+                var success = await _service.DeleteAsync(id);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Exam participation not found."));
                 return Ok(ApiResponse<object>.OnSuccess(null!, "Exam participation deleted successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }
+
+        [HttpPost("{id:guid}/join")]
+        [SupabaseAuthorize(AppRole.Student)]
+        public async Task<IActionResult> Join(Guid id)
+        {
+            try
+            {
+                var result = await _workflowService.JoinAsync(id);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Student joined exam successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        [HttpPost("{id:guid}/heartbeat")]
+        [SupabaseAuthorize(AppRole.Student)]
+        public async Task<IActionResult> Heartbeat(Guid id, [FromBody] ExamHeartbeatRequestDto? dto)
+        {
+            try
+            {
+                var result = await _workflowService.HeartbeatAsync(id, dto?.ClientTime);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Exam heartbeat received."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        [HttpPost("{id:guid}/submit")]
+        [SupabaseAuthorize(AppRole.Student)]
+        public async Task<IActionResult> Submit(Guid id, [FromBody] ExamSubmitRequestDto? dto)
+        {
+            try
+            {
+                var result = await _workflowService.SubmitAsync(id, dto?.RecordingVideoPath);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Exam submitted successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        [HttpPost("{id:guid}/leave")]
+        [SupabaseAuthorize(AppRole.Student)]
+        public async Task<IActionResult> Leave(Guid id, [FromBody] ExamLeaveRequestDto? dto)
+        {
+            try
+            {
+                var result = await _workflowService.LeaveAsync(id, dto?.Reason);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Student left exam successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        [HttpPost("{id:guid}/disqualify")]
+        [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> Disqualify(Guid id, [FromBody] ExamDisqualifyRequestDto dto)
+        {
+            try
+            {
+                var result = await _workflowService.DisqualifyAsync(id, dto.Reason);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Student disqualified successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
     }
-}   
+}

@@ -216,6 +216,12 @@ public static class AcademicMapper
             Status = entity.Status,
             ReviewedAt = entity.ReviewedAt,
             CreatedAt = entity.CreatedAt,
+            FaceImageUrl = await context.BiometricData
+                .AsNoTracking()
+                .Where(b => b.BioRequestId == entity.Id && b.FaceImageUrl != null)
+                .OrderByDescending(b => b.UpdatedAt)
+                .Select(b => b.FaceImageUrl)
+                .FirstOrDefaultAsync(),
 
             FrontImageUrl = entity.FrontImagePath,
             LeftImageUrl = entity.LeftImagePath,

@@ -10,6 +10,7 @@ public partial class ExamSlot
 
     public Guid CreatedBy { get; set; }
 
+    [Column("exam_name")]
     public string ExamName { get; set; } = null!;
 
     public DateTime StartTime { get; set; }

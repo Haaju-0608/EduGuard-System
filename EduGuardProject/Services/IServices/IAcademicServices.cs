@@ -73,7 +73,7 @@ public interface IBiometricDatumService
 public interface IExamParticipationService
 {
     Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(string? search, string? sort, int page, int pageSize);
-    Task<ExamParticipation?> GetByIdAsync(Guid id);
+    Task<ExamParticipationResponseDto?> GetByIdAsync(Guid id);
     Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto);
 
     Task<bool> UpdateAsync(Guid id, UpdateExamParticipationDto dto);
@@ -97,11 +97,11 @@ public interface IViolationLogService
 {
     Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
-        Guid? participationId = null);
+        Guid? participationId = null, bool? isReviewed = null);
 
-    Task<ViolationLog?> GetByIdAsync(Guid id);
+    Task<ViolationlogResponeDto?> GetByIdAsync(Guid id);
 
-    Task<ViolationLog> CreateAsync(CreateViolationLogDto dto);
+    Task<ViolationlogResponeDto> CreateAsync(CreateViolationLogDto dto);
 
     Task<bool> UpdateAsync(Guid id, UpdateViolationLogDto dto);
 

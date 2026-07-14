@@ -10,6 +10,7 @@ namespace EduGuardProject.Controllers;
 
 [Route("api/violation-logs")]
 [ApiController]
+[SupabaseAuthorize]
 public class ViolationLogController : AcademicApiControllerBase
 {
     private readonly IViolationLogService _service;
@@ -30,7 +31,8 @@ public class ViolationLogController : AcademicApiControllerBase
         if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
         try
         {
-            var (items, total) = await _service.GetAllAsync(search, sort, page, pageSize, participationId);
+            var (items, total) = await _service.GetAllAsync(
+                search, sort, page, pageSize, participationId, isReviewed);
             var response = ApiPagedResponse<ViolationlogResponeDto>.OnPagedSuccess(items, page, pageSize, total, "Violation retrieved successfully.");
             return Ok(response);
         }
@@ -50,7 +52,7 @@ public class ViolationLogController : AcademicApiControllerBase
     }
 
     [HttpPost]
-    [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateViolationLogDto dto, [FromQuery] string? fields = null)
     {
         try
@@ -62,7 +64,7 @@ public class ViolationLogController : AcademicApiControllerBase
     }
 
     [HttpPut("{id:guid}")]
-    [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateViolationLogDto dto)
     {
         try
@@ -75,7 +77,7 @@ public class ViolationLogController : AcademicApiControllerBase
     }
 
     [HttpDelete("{id:guid}")]
-    [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Delete(Guid id)
     {
         try

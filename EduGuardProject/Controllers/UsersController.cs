@@ -1,7 +1,7 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
-using EduGuardProject.Filters; 
-using EduGuardProject.Models;  
+using EduGuardProject.Filters;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Http;
 using Microsoft.AspNetCore.Mvc;
@@ -88,8 +88,8 @@ namespace EduGuardProject.Controllers
         {
             try
             {
-                // Tự động lấy UserId được trích xuất an toàn từ mã JWT Token
-                var myUserId = (Guid)HttpContext.Items["UserId"];
+                if (HttpContext.Items["UserId"] is not Guid myUserId)
+                    return Unauthorized(ApiResponse<object>.OnFail("User is not authenticated."));
 
                 var item = await _service.GetUserByIdAsync(myUserId);
                 if (item == null) return NotFound(ApiResponse<object>.OnFail("User profile not found."));
@@ -104,14 +104,14 @@ namespace EduGuardProject.Controllers
 
         [HttpPut("me")]
         [SupabaseAuthorize] // Tự sinh viên/giảng viên tự sửa hồ sơ của CHÍNH HỌ
-        public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateUserDto dto)
+        public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateMyProfileDto dto)
         {
             try
             {
-                // Tự động lấy UserId từ Token, chống tuyệt đối việc sửa nhầm sang tài khoản người khác (Lỗi IDOR)
-                var myUserId = (Guid)HttpContext.Items["UserId"];
+                if (HttpContext.Items["UserId"] is not Guid myUserId)
+                    return Unauthorized(ApiResponse<object>.OnFail("User is not authenticated."));
 
-                var success = await _service.UpdateUserAsync(myUserId, dto);
+                var success = await _service.UpdateMyProfileAsync(myUserId, dto);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("User profile not found to update."));
 
                 return Ok(ApiResponse<object>.OnSuccess(null!, "My profile updated successfully."));

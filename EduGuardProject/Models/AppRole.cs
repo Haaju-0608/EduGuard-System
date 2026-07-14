@@ -1,4 +1,5 @@
 ﻿namespace EduGuardProject.Models;
+
 using NpgsqlTypes;
 
 
@@ -60,7 +61,37 @@ public enum TransactionType
     ATTENDANCE_FEE,
 
     [PgName("PROCTORING_FEE")]
-    PROCTORING_FEE
+    PROCTORING_FEE,
+
+    [PgName("top_up")]
+    TOP_UP_LEGACY,
+
+    [PgName("attendance_fee")]
+    ATTENDANCE_FEE_LEGACY,
+
+    [PgName("proctoring_fee")]
+    PROCTORING_FEE_LEGACY
+}
+
+public static class TransactionTypeExtensions
+{
+    public static bool IsTopUp(this TransactionType type) =>
+        type is TransactionType.TOP_UP or TransactionType.TOP_UP_LEGACY;
+
+    public static bool IsAttendanceFee(this TransactionType type) =>
+        type is TransactionType.ATTENDANCE_FEE or TransactionType.ATTENDANCE_FEE_LEGACY;
+
+    public static bool IsProctoringFee(this TransactionType type) =>
+        type is TransactionType.PROCTORING_FEE or TransactionType.PROCTORING_FEE_LEGACY;
+
+    public static string ToCanonicalName(this TransactionType type) =>
+        type switch
+        {
+            TransactionType.TOP_UP or TransactionType.TOP_UP_LEGACY => nameof(TransactionType.TOP_UP),
+            TransactionType.ATTENDANCE_FEE or TransactionType.ATTENDANCE_FEE_LEGACY => nameof(TransactionType.ATTENDANCE_FEE),
+            TransactionType.PROCTORING_FEE or TransactionType.PROCTORING_FEE_LEGACY => nameof(TransactionType.PROCTORING_FEE),
+            _ => type.ToString()
+        };
 }
 
 public enum TransactionStatus
@@ -72,16 +103,43 @@ public enum TransactionStatus
     SUCCESS,
 
     [PgName("FAILED")]
-    FAILED
+    FAILED,
+
+    [PgName("pending")]
+    PENDING_LEGACY,
+
+    [PgName("success")]
+    SUCCESS_LEGACY,
+
+    [PgName("failed")]
+    FAILED_LEGACY
+}
+
+public static class TransactionStatusExtensions
+{
+    public static bool IsPending(this TransactionStatus status) =>
+        status is TransactionStatus.PENDING or TransactionStatus.PENDING_LEGACY;
+
+    public static bool IsSuccess(this TransactionStatus status) =>
+        status is TransactionStatus.SUCCESS or TransactionStatus.SUCCESS_LEGACY;
+
+    public static string ToCanonicalName(this TransactionStatus status) =>
+        status switch
+        {
+            TransactionStatus.PENDING or TransactionStatus.PENDING_LEGACY => nameof(TransactionStatus.PENDING),
+            TransactionStatus.SUCCESS or TransactionStatus.SUCCESS_LEGACY => nameof(TransactionStatus.SUCCESS),
+            TransactionStatus.FAILED or TransactionStatus.FAILED_LEGACY => nameof(TransactionStatus.FAILED),
+            _ => status.ToString()
+        };
 }
 
 //ENUM cho Pricing
 public enum PricingServiceType
 {
-    [PgName("attendance_unit")] 
+    [PgName("attendance_unit")]
     ATTENDANCE_UNIT,
 
-    [PgName("proctoring_per_hour")] 
+    [PgName("proctoring_per_hour")]
     PROCTORING_PER_HOUR
 }
 

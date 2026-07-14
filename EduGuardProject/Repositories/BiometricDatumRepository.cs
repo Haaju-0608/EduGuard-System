@@ -13,12 +13,20 @@ public class BiometricDatumRepository : IBiometricDatumRepository
 
     public async Task<(IEnumerable<BiometricDatum> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
-        Guid? userId = null, bool? isActive = null)
+        Guid? userId = null, bool? isActive = null, Guid? institutionId = null)
     {
         var query = _context.BiometricData.AsNoTracking().AsQueryable();
 
         if (userId.HasValue)
             query = query.Where(b => b.UserId == userId.Value);
+        if (institutionId.HasValue)
+        {
+            query = query.Where(b =>
+                _context.Users.Any(u =>
+                    u.Id == b.UserId &&
+                    u.InstitutionId == institutionId.Value &&
+                    u.DeletedAt == null));
+        }
         if (isActive.HasValue)
             query = query.Where(b => b.IsActive == isActive.Value);
         

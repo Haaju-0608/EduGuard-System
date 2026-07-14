@@ -411,6 +411,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.CreatedBy).HasColumnName("created_by");
             entity.Property(e => e.EndTime).HasColumnName("end_time");
             entity.Property(e => e.ExamName)
+                .IsRequired()
                 .HasMaxLength(255)
                 .HasColumnName("exam_name");
             entity.Property(e => e.ExpectedDurationMinutes).HasColumnName("expected_duration_minutes");

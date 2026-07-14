@@ -30,7 +30,9 @@ namespace EduGuardProject.Controllers
             try
             {
                 // ================= BẢO MẬT: CHỐNG XEM TRỘM VÍ TRƯỜNG KHÁC =================
-                var currentUserId = (Guid)HttpContext.Items["UserId"];
+                if (HttpContext.Items["UserId"] is not Guid currentUserId)
+                    return Unauthorized(ApiResponse<object>.OnFail("User session is invalid."));
+
                 var currentUser = await _userService.GetUserByIdAsync(currentUserId);
 
                 if (currentUser == null)
@@ -87,7 +89,9 @@ namespace EduGuardProject.Controllers
         {
             try
             {
-                var currentUserId = (Guid)HttpContext.Items["UserId"];
+                if (HttpContext.Items["UserId"] is not Guid currentUserId)
+                    return Unauthorized(ApiResponse<object>.OnFail("User session is invalid."));
+
                 var currentUser = await _userService.GetUserByIdAsync(currentUserId);
 
                 if (currentUser == null)
@@ -112,6 +116,7 @@ namespace EduGuardProject.Controllers
             }
         }
 
+        // VNPay calls this callback without application authentication.
         [HttpGet("vnpay-return")]
         public async Task<IActionResult> VnPayReturn()
         {
@@ -120,7 +125,7 @@ namespace EduGuardProject.Controllers
                 var isSuccess = await _walletService.ProcessVnPayReturnAsync(Request.Query);
                 if (isSuccess)
                 {
-                    return Ok(ApiResponse<object>.OnSuccess(null, "VNPay payment successful, wallet topped up!"));
+                    return Ok(ApiResponse<object>.OnSuccess(null!, "VNPay payment successful, wallet topped up!"));
                 }
                 return BadRequest(ApiResponse<object>.OnFail("Payment failed or invalid signature."));
             }

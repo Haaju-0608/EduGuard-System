@@ -13,7 +13,8 @@ public class ViolationLogRepository : IViolationLogRepository
     public ViolationLogRepository(AppDbContext context) => _context = context;
 
     public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
-        string? search, string? sort, int page, int pageSize,Guid? participationId = null)
+        string? search, string? sort, int page, int pageSize,
+        Guid? participationId = null, bool? isReviewed = null)
     {
         var query = _context.ViolationLogs
             .AsNoTracking()
@@ -21,6 +22,8 @@ public class ViolationLogRepository : IViolationLogRepository
 
         if (participationId.HasValue)
             query = query.Where(v => v.ParticipationId == participationId.Value);
+        if (isReviewed.HasValue)
+            query = query.Where(v => v.IsReviewed == isReviewed.Value);
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -44,6 +47,8 @@ public class ViolationLogRepository : IViolationLogRepository
     {
         Id = e.Id,
         ParticipationId = e.ParticipationId,
+        Severity = e.severity,
+        ViolationType = e.violationType,
         AiConfidence = e.AiConfidence,
         EvidencePath = e.EvidencePath,
         IsReviewed =   e.IsReviewed,

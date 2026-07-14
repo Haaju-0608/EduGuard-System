@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
+[SupabaseAuthorize]
 [Route("api/attendance-records")]
 [ApiController]
 public class AttendanceRecordsController : AcademicApiControllerBase

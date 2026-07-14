@@ -26,25 +26,25 @@ public class VnPayLibrary
     public string GetResponseData(string key)
         => _responseData.TryGetValue(key, out var v) ? v : string.Empty;
 
-    // ==================== TẠO URL THANH TOÁN CHUẨN VNPAY 2.1.0 ====================
+    // Build a VNPay 2.1.0 payment URL with a signed query string.
     public string CreateRequestUrl(string baseUrl, string vnpHashSecret)
     {
         var query = new StringBuilder();
-        var signData = new StringBuilder();
+        var data = new StringBuilder();
 
         foreach (var kv in _requestData)
         {
             if (string.IsNullOrEmpty(kv.Value))
                 continue;
 
-            var encodedKey = Uri.EscapeDataString(kv.Key);
-            var encodedValue = Uri.EscapeDataString(kv.Value);
-
             if (query.Length > 0)
             {
                 query.Append("&");
-                signData.Append("&");
+                data.Append("&");
             }
+
+            var encodedKey = Uri.EscapeDataString(kv.Key);
+            var encodedValue = Uri.EscapeDataString(kv.Value);
 
             // Query string
             query.Append(encodedKey);
@@ -52,12 +52,13 @@ public class VnPayLibrary
             query.Append(encodedValue);
 
             // Data dùng để ký
-            signData.Append(kv.Key);
-            signData.Append("=");
-            signData.Append(encodedValue);
+            data.Append(kv.Key);
+            data.Append("=");
+            data.Append(encodedValue);
         }
 
-        string secureHash = HmacSha512(vnpHashSecret, signData.ToString());
+        string signData = data.ToString();
+        string secureHash = HmacSha512(vnpHashSecret, signData);
 
         query.Append("&vnp_SecureHash=");
         query.Append(secureHash);

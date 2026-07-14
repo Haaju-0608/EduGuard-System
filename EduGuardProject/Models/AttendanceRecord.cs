@@ -19,7 +19,7 @@ public partial class AttendanceRecord
     /// <summary>
     /// Bucket: attendance-snapshots
     /// </summary>
-    [MaxLength(500)]
+    [MaxLength(2000)]
     public string? SnapshotPath { get; set; }
 
     public DateTime? CheckinAt { get; set; }

@@ -30,7 +30,7 @@ public partial class BiometricDatum
     /// <summary>
     /// Bucket: biometric-faces
     /// </summary>
-    [MaxLength(500)]
+    [MaxLength(2000)]
     public string? FaceImageUrl { get; set; }
 
     public virtual BiometricRequest? BioRequest { get; set; }

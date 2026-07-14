@@ -111,6 +111,7 @@ public class BiometricRequestResponseDto
     public string RightImageUrl { get; set; } = null!;
     public DateTime? ReviewedAt { get; set; }
     public DateTime CreatedAt { get; set; }
+    public string? FaceImageUrl { get; set; }
 
     public UserSummaryDto? Student { get; set; }
     public UserSummaryDto? Approver { get; set; }
@@ -147,6 +148,7 @@ public class ExamParticipationResponseDto
 {
     public Guid Id { get; set; }
     public Guid ExamSlotId { get; set; }
+    public string? ExamName { get; set; }
     public Guid? BillingTransId { get; set; }
     public Guid StudentId { get; set; }
 
@@ -154,6 +156,7 @@ public class ExamParticipationResponseDto
 
     public DateTime? ActualEnd { get; set; }
     public ParticipationStatus Status { get; set; }
+    public string? DisqualifiedReason { get; set; }
     public string? RecordingVideoPath { get; set; }
 
     public string? IdentitySnapshotPath { get; set; }
@@ -168,6 +171,10 @@ public class ViolationlogResponeDto
 
     public string? EvidencePath { get; set; }
 
+    public ViolationSeverity Severity { get; set; }
+
+    public ViolationType ViolationType { get; set; }
+
     public double? AiConfidence { get; set; }
 
     public bool IsReviewed { get; set; }
@@ -175,7 +182,4 @@ public class ViolationlogResponeDto
     public Guid? ReviewedBy { get; set; }
 
     public DateTime RecordedAt { get; set; }
-
-    public virtual ExamParticipation Participation { get; set; } = null!;
-
 }

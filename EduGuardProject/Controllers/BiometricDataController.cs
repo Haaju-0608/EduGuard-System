@@ -7,6 +7,7 @@ using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers;
 
+[SupabaseAuthorize]
 [Route("api/biometric-data")]
 [ApiController]
 public class BiometricDataController : AcademicApiControllerBase
