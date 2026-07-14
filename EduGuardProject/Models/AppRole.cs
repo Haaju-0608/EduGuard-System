@@ -309,6 +309,7 @@ public enum ViolationSeverity
 
     [PgName("SEVERE")]
     Severe
+
 }
 
 public enum ViolationType
@@ -323,5 +324,11 @@ public enum ViolationType
     MultipleFaces,
 
     [PgName("ABSENCE")]
-    Absence
+    Absence,
+
+    [PgName("HEAD_TURN")]
+    HeadTurn,
+
+    [PgName("FACE_OBSTRUCTED")]
+    FaceObstructed
 }

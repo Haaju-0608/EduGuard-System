@@ -276,14 +276,14 @@ public class StorageService : IStorageService
             .FirstOrDefaultAsync(v => v.Id == violationId, cancellationToken)
             ?? throw new InvalidOperationException("Violation log was not found.");
 
-        EnsureClassStaffAccess(actor, violation.Participation.ExamSlot.Class);
+        EnsureViolationAccess(actor, violation);
         var institutionId = violation.Participation.ExamSlot.Class.InstitutionId;
 
         return await UploadAndPersistAsync(
             file,
             new StorageUploadPlan(
                 ExamEvidenceBucket,
-                ExamFolders(violation.Participation),
+                EvidenceFolders(violation.Participation),
                 violation.Id,
                 violation.EvidencePath,
                 actor,
@@ -903,6 +903,13 @@ public class StorageService : IStorageService
             participation.ExamSlot.Class.Institution.Name,
             participation.ExamSlot.ExamName,
             participation.Student.FullName
+        ];
+
+    private static string[] EvidenceFolders(ExamParticipation participation) =>
+        [
+            participation.ExamSlot.Class.Institution.Name,
+            participation.ExamSlot.ExamName,
+            $"{participation.Student.FullName}_{participation.Student.StudentCode}"
         ];
 
     private static string[] UserFolders(User user) =>

@@ -140,11 +140,11 @@ public class StorageController : AcademicApiControllerBase
 
     // Upload Violation Evidence
     // Truyền dữ liệu: form-data file, violationId.
-    // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; violation log phải tồn tại.
+    // Điều kiện: Student chính chủ violation, Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; violation log phải tồn tại.
     [HttpPost("evidence")]
     [RequestSizeLimit(VideoRequestLimit)]
     [RequestFormLimits(MultipartBodyLengthLimit = VideoRequestLimit)]
-    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
     public async Task<IActionResult> UploadEvidence(
         [FromForm] EvidenceStorageUploadRequest request,
         CancellationToken cancellationToken = default)
