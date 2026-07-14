@@ -1,0 +1,6 @@
+@EduGuardProject_HostAddress = http://localhost:5272
+
+GET {{EduGuardProject_HostAddress}}/weatherforecast/
+Accept: application/json
+
+###
