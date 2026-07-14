@@ -70,7 +70,7 @@ public class CreateAttendanceSessionDto
     [Required]
     public DateTime StartTime { get; set; }
 
-    //public string? VideoPath { get; set; }
+    public string? VideoPath { get; set; }
     // Vì video sẽ được upload riêng ở endpoint /ai-video sau khi phiên đã tạo xong.
 }
 
