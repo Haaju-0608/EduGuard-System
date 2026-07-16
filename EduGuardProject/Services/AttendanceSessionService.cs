@@ -41,10 +41,22 @@ public class AttendanceSessionService : IAttendanceSessionService
         string? search, string? sort, int page, int pageSize, string? expand, Guid? classId = null)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.Student)
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.Student)
             throw new UnauthorizedAccessException("Students cannot list attendance sessions.");
 
-        var (items, total) = await _repo.GetAllAsync(search, sort, page, pageSize, classId);
+        Guid? institutionId = role == AppRole.SuperAdmin ? null : user.InstitutionId;
+        Guid? lecturerId = role == AppRole.Lecturer ? user.Id : null;
+
+        if (role == AppRole.Lecturer)
+        {
+            var hasClasses = await _context.Classes.AsNoTracking()
+                .AnyAsync(c => c.LecturerId == user.Id && c.DeletedAt == null);
+            if (!hasClasses)
+                return ([], 0);
+        }
+
+        var (items, total) = await _repo.GetAllAsync(search, sort, page, pageSize, classId, institutionId, lecturerId);
         var dtos = new List<AttendanceSessionResponseDto>();
         foreach (var item in items)
         {
@@ -188,15 +200,16 @@ public class AttendanceSessionService : IAttendanceSessionService
     private async Task EnsureSessionAccessAsync(AttendanceSession entity)
     {
         var cls = await _classRepo.GetByIdAsync(entity.ClassId);
-        if (cls == null) throw new InvalidOperationException("Class not found.");
+        if (cls == null) return;
 
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.SuperAdmin) return;
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.SuperAdmin) return;
 
         if (user.InstitutionId != cls.InstitutionId)
             throw new UnauthorizedAccessException("Access denied.");
 
-        if (user.Role == AppRole.Lecturer && cls.LecturerId != user.Id)
+        if (role == AppRole.Lecturer && cls.LecturerId != user.Id)
             throw new UnauthorizedAccessException("Access denied.");
     }
 }

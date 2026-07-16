@@ -52,7 +52,7 @@ public class SupabaseAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
             return;
         }
 
-        if (_allowedRoles.Length > 0 && !_allowedRoles.Contains(userProfile.Role))
+        if (_allowedRoles.Length > 0 && !userProfile.Role.IsInRoles(_allowedRoles))
         {
             context.Result = new ObjectResult(
                 ApiResponse<object>.OnFail("Forbidden: You do not have permission to access this resource."))

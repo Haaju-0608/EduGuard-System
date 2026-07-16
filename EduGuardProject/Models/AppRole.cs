@@ -16,7 +16,35 @@ public enum AppRole
     SchoolAdmin,
 
     [PgName("SUPER_ADMIN")]
-    SuperAdmin
+    SuperAdmin,
+
+    [PgName("student")]
+    Student_LEGACY,
+
+    [PgName("lecturer")]
+    Lecturer_LEGACY,
+
+    [PgName("school_admin")]
+    SchoolAdmin_LEGACY,
+
+    [PgName("super_admin")]
+    SuperAdmin_LEGACY
+}
+
+public static class AppRoleExtensions
+{
+    public static AppRole ToCanonical(this AppRole role) =>
+        role switch
+        {
+            AppRole.Student_LEGACY => AppRole.Student,
+            AppRole.Lecturer_LEGACY => AppRole.Lecturer,
+            AppRole.SchoolAdmin_LEGACY => AppRole.SchoolAdmin,
+            AppRole.SuperAdmin_LEGACY => AppRole.SuperAdmin,
+            _ => role
+        };
+
+    public static bool IsInRoles(this AppRole role, params AppRole[] allowedRoles) =>
+        allowedRoles.Any(allowed => role.ToCanonical() == allowed.ToCanonical());
 }
 
 public enum UserStatus

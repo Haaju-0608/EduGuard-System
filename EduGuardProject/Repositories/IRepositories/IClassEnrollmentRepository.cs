@@ -6,7 +6,8 @@ public interface IClassEnrollmentRepository
 {
     Task<(IEnumerable<ClassEnrollment> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
-        Guid? classId = null, Guid? studentId = null, EnrollmentStatus? status = null);
+        Guid? classId = null, Guid? studentId = null, EnrollmentStatus? status = null,
+        Guid? institutionId = null, IReadOnlyCollection<Guid>? classIds = null);
     Task<ClassEnrollment?> GetByKeyAsync(Guid classId, Guid studentId);
     Task AddAsync(ClassEnrollment entity);
     Task UpdateAsync(ClassEnrollment entity);
