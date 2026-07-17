@@ -12,11 +12,13 @@ public class ClassEnrollmentRepository : IClassEnrollmentRepository
 
     public async Task<(IEnumerable<ClassEnrollment> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
-        Guid? classId = null, Guid? studentId = null, EnrollmentStatus? status = null)
+        Guid? classId = null, Guid? studentId = null, EnrollmentStatus? status = null,
+        Guid? institutionId = null, IReadOnlyCollection<Guid>? classIds = null)
     {
         var query = _context.ClassEnrollments
             .AsNoTracking()
-            .Where(e => e.Status != EnrollmentStatus.Dropped);
+            .Where(e => e.Status != EnrollmentStatus.Dropped)
+            .Where(e => _context.Classes.Any(c => c.Id == e.ClassId && c.DeletedAt == null));
 
         if (classId.HasValue)
             query = query.Where(e => e.ClassId == classId.Value);
@@ -24,6 +26,10 @@ public class ClassEnrollmentRepository : IClassEnrollmentRepository
             query = query.Where(e => e.StudentId == studentId.Value);
         if (status.HasValue)
             query = query.Where(e => e.Status == status.Value);
+        if (institutionId.HasValue)
+            query = query.Where(e => _context.Classes.Any(c => c.Id == e.ClassId && c.InstitutionId == institutionId.Value));
+        if (classIds is { Count: > 0 })
+            query = query.Where(e => classIds.Contains(e.ClassId));
 
         if (!string.IsNullOrWhiteSpace(search))
         {

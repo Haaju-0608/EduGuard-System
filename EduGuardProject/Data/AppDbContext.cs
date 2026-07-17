@@ -259,6 +259,9 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("status")
                 .HasColumnType("biometric_req_status");
             entity.Property(e => e.StudentId).HasColumnName("student_id");
+            entity.Property(e => e.FrontImagePath).HasColumnName("front_image_path");
+            entity.Property(e => e.LeftImagePath).HasColumnName("left_image_path");
+            entity.Property(e => e.RightImagePath).HasColumnName("right_image_path");
 
             entity.HasOne(d => d.ApprovedByNavigation).WithMany(p => p.BiometricRequestApprovedByNavigations)
                 .HasForeignKey(d => d.ApprovedBy)

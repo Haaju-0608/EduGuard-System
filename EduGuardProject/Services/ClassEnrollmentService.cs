@@ -35,24 +35,31 @@ public class ClassEnrollmentService : IClassEnrollmentService
         Guid? classId = null, Guid? studentId = null)
     {
         var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        Guid? institutionId = null;
+        IReadOnlyCollection<Guid>? lecturerClassIds = null;
 
-        if (user.Role == AppRole.Student)
+        if (role == AppRole.Student)
             studentId = user.Id;
-        else if (user.Role == AppRole.Lecturer && classId == null)
+        else if (role == AppRole.Lecturer)
         {
-            var lecturerClassIds = await _context.Classes.AsNoTracking()
+            lecturerClassIds = await _context.Classes.AsNoTracking()
                 .Where(c => c.LecturerId == user.Id && c.DeletedAt == null)
                 .Select(c => c.Id)
                 .ToListAsync();
             if (!lecturerClassIds.Any())
                 return ([], 0);
         }
+        else if (role == AppRole.SchoolAdmin)
+            institutionId = user.InstitutionId;
 
-        var (items, total) = await _repo.GetAllAsync(search, sort, page, pageSize, classId, studentId);
+        var (items, total) = await _repo.GetAllAsync(
+            search, sort, page, pageSize, classId, studentId,
+            institutionId: institutionId, classIds: lecturerClassIds);
         var dtos = new List<ClassEnrollmentResponseDto>();
         foreach (var item in items)
         {
-            if (user.Role != AppRole.SuperAdmin)
+            if (role != AppRole.SuperAdmin)
                 await EnsureEnrollmentAccessAsync(item);
             dtos.Add(await AcademicMapper.MapEnrollmentAsync(_context, item, expand));
         }
@@ -161,18 +168,19 @@ public class ClassEnrollmentService : IClassEnrollmentService
     private async Task EnsureEnrollmentAccessAsync(ClassEnrollment entity)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.SuperAdmin) return;
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.SuperAdmin) return;
 
-        if (user.Role == AppRole.Student && entity.StudentId != user.Id)
+        if (role == AppRole.Student && entity.StudentId != user.Id)
             throw new UnauthorizedAccessException("Access denied.");
 
         var cls = await _classRepo.GetByIdAsync(entity.ClassId);
-        if (cls == null) throw new InvalidOperationException("Class not found.");
+        if (cls == null) return;
 
         if (user.InstitutionId != cls.InstitutionId)
             throw new UnauthorizedAccessException("Access denied.");
 
-        if (user.Role == AppRole.Lecturer && cls.LecturerId != user.Id)
+        if (role == AppRole.Lecturer && cls.LecturerId != user.Id)
             throw new UnauthorizedAccessException("Access denied.");
     }
 }

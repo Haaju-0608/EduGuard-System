@@ -63,7 +63,7 @@ public class CurrentUserService : ICurrentUserService
     public async Task EnsureRoleAsync(params AppRole[] allowedRoles)
     {
         var user = await GetRequiredUserAsync();
-        if (!allowedRoles.Contains(user.Role))
+        if (!user.Role.IsInRoles(allowedRoles))
             throw new UnauthorizedAccessException("You do not have permission to perform this action.");
     }
 
