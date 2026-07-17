@@ -74,7 +74,8 @@ public interface IBiometricDatumService
 
 public interface IExamParticipationService
 {
-    Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(string? search, string? sort, int page, int pageSize);
+    Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(
+        string? search, string? sort, int page, int pageSize, Guid? examSlotId = null);
     Task<ExamParticipationResponseDto?> GetByIdAsync(Guid id);
     Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto);
 

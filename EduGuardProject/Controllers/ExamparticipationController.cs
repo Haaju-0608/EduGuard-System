@@ -46,6 +46,27 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam Participations By Exam Slot
+        // Roles: SuperAdmin all; SchoolAdmin same institution; Lecturer own class; Student own participation. Returns: paged ExamParticipationResponseDto list for one examSlotId.
+        [HttpGet("exam-slots/{examSlotId:guid}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
+        public async Task<IActionResult> GetByExamSlot(
+            Guid examSlotId,
+            [FromQuery] string? search,
+            [FromQuery] string? sort,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
+            try
+            {
+                var (items, total) = await _service.GetAllExamparticipationsAsync(search, sort, page, pageSize, examSlotId);
+                var response = ApiPagedResponse<ExamParticipationResponseDto>.OnPagedSuccess(items, page, pageSize, total, "Exam participations retrieved successfully.");
+                return Ok(response);
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
         // Get Exam Participation By Id
         // Truyền dữ liệu: route id.
         // Điều kiện: user đã đăng nhập; SuperAdmin xem tất cả, SchoolAdmin/Lecturer cùng institution/class, Student chỉ xem participation của chính mình.

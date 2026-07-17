@@ -13,7 +13,7 @@ public class ExamParticipationRepository : IExamParticipationRepository
 
     public async Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
-        Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null)
+        Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null, Guid? examSlotId = null)
     {
         var query = _context.ExamParticipations
             .AsNoTracking()
@@ -21,6 +21,8 @@ public class ExamParticipationRepository : IExamParticipationRepository
             .ThenInclude(e => e.Class)
             .AsQueryable();
 
+        if (examSlotId.HasValue)
+            query = query.Where(p => p.ExamSlotId == examSlotId.Value);
         if (institutionId.HasValue)
             query = query.Where(p => p.ExamSlot.Class.InstitutionId == institutionId.Value);
         if (lecturerId.HasValue)

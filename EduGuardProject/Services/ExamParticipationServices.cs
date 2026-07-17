@@ -31,7 +31,8 @@ public class ExamParticipationServices : IExamParticipationService
         _storage = storage;
     }
 
-    public async Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(string? search, string? sort, int page, int pageSize)
+    public async Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(
+        string? search, string? sort, int page, int pageSize, Guid? examSlotId = null)
     {
         var user = await _currentUser.GetRequiredUserAsync();
         var institutionId = user.Role == AppRole.SchoolAdmin
@@ -40,7 +41,7 @@ public class ExamParticipationServices : IExamParticipationService
         var lecturerId = user.Role == AppRole.Lecturer ? user.Id : (Guid?)null;
         var studentId = user.Role == AppRole.Student ? user.Id : (Guid?)null;
 
-        return await _repo.GetAllAsync(search, sort, page, pageSize, institutionId, lecturerId, studentId);
+        return await _repo.GetAllAsync(search, sort, page, pageSize, institutionId, lecturerId, studentId, examSlotId);
     }
 
     public async Task<ExamParticipationResponseDto?> GetByIdAsync(Guid id)
