@@ -91,8 +91,22 @@ public interface IStudentExamRecordService
         Guid? examSlotId = null, Guid? studentId = null, StudentExamRecordStatus? status = null);
     Task<StudentExamRecordResponseDto?> GetByIdAsync(Guid id);
     Task<StudentExamRecordResponseDto> CreateAsync(CreateStudentExamRecordDto dto);
+    Task<StudentExamRecordResponseDto> SubmitAsync(SubmitStudentExamRecordDto dto);
     Task<bool> UpdateAsync(Guid id, UpdateStudentExamRecordDto dto);
     Task<bool> DeleteAsync(Guid id);
+}
+
+public interface IExamQuestionService
+{
+    Task<(IEnumerable<ExamQuestionResponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize, Guid? examSlotId = null);
+    Task<ExamQuestionResponseDto?> GetByIdAsync(Guid id);
+    Task<ExamQuestionResponseDto> CreateAsync(CreateExamQuestionDto dto);
+    Task<ExamQuestionResponseDto?> UpdateAsync(Guid id, UpdateExamQuestionDto dto);
+    Task<bool> DeleteAsync(Guid id);
+    Task<QuestionOptionResponseDto> CreateOptionAsync(Guid questionId, CreateQuestionOptionDto dto);
+    Task<QuestionOptionResponseDto?> UpdateOptionAsync(Guid optionId, UpdateQuestionOptionDto dto);
+    Task<bool> DeleteOptionAsync(Guid optionId);
 }
 
 public interface IExamSlotServices

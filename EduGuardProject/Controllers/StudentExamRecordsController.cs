@@ -16,6 +16,7 @@ public class StudentExamRecordsController : AcademicApiControllerBase
 
     public StudentExamRecordsController(IStudentExamRecordService service) => _service = service;
 
+    // Roles: all authenticated roles; Student only sees their own records. Returns: paged StudentExamRecordResponseDto list.
     [HttpGet]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
@@ -36,6 +37,7 @@ public class StudentExamRecordsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Roles: all authenticated roles with scoped access. Returns: one StudentExamRecordResponseDto.
     [HttpGet("{id:guid}")]
     public async Task<IActionResult> GetById(Guid id, [FromQuery] string? fields = null)
     {
@@ -48,7 +50,9 @@ public class StudentExamRecordsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Roles: Lecturer, SchoolAdmin, SuperAdmin. Returns: created StudentExamRecordResponseDto.
     [HttpPost]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Create([FromBody] CreateStudentExamRecordDto dto, [FromQuery] string? fields = null)
     {
         try
@@ -59,7 +63,22 @@ public class StudentExamRecordsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Roles: Student. Returns: StudentExamRecordResponseDto with score/status; examRecord does not expose correct answers.
+    [HttpPost("submit")]
+    [SupabaseAuthorize(AppRole.Student)]
+    public async Task<IActionResult> Submit([FromBody] SubmitStudentExamRecordDto dto, [FromQuery] string? fields = null)
+    {
+        try
+        {
+            var result = await _service.SubmitAsync(dto);
+            return OkSingle(result, "Student exam record submitted successfully.", fields);
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
+    // Roles: Lecturer, SchoolAdmin, SuperAdmin. Returns: success message only.
     [HttpPut("{id:guid}")]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateStudentExamRecordDto dto)
     {
         try
@@ -71,7 +90,9 @@ public class StudentExamRecordsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Roles: Lecturer, SchoolAdmin, SuperAdmin. Returns: success message only.
     [HttpDelete("{id:guid}")]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Delete(Guid id)
     {
         try

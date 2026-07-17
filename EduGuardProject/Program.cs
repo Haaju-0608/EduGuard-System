@@ -94,6 +94,7 @@ builder.Services.AddScoped<IBiometricRequestRepository, BiometricRequestReposito
 builder.Services.AddScoped<IBiometricDatumRepository, BiometricDatumRepository>();
 builder.Services.AddScoped<IExamParticipationRepository, ExamParticipationRepository>();
 builder.Services.AddScoped<IExamslotRepository, ExamSlotRepository>();
+builder.Services.AddScoped<IExamQuestionRepository, ExamQuestionRepository>();
 builder.Services.AddScoped<IStudentExamRecordRepository, StudentExamRecordRepository>();
 builder.Services.AddScoped<IViolationLogRepository, ViolationLogRepository>();
 
@@ -115,6 +116,7 @@ builder.Services.AddScoped<IBiometricRequestService, BiometricRequestService>();
 builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
 builder.Services.AddScoped<IExamParticipationService, ExamParticipationServices>();
 builder.Services.AddScoped<IExamSlotServices, ExamslotServices>();
+builder.Services.AddScoped<IExamQuestionService, ExamQuestionService>();
 builder.Services.AddScoped<IStudentExamRecordService, StudentExamRecordService>();
 builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
 builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();

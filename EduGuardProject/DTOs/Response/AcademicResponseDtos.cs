@@ -174,7 +174,34 @@ public class StudentExamRecordResponseDto
     public DateTime CreatedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     public string? ExamRecord { get; set; }
+    public decimal? FinalScore { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public int? DurationSeconds { get; set; }
     public StudentExamRecordStatus Status { get; set; }
+}
+
+public class ExamQuestionResponseDto
+{
+    public Guid Id { get; set; }
+    public Guid ExamSlotId { get; set; }
+    public string? ExamName { get; set; }
+    public string QuestionType { get; set; } = null!;
+    public string QuestionContent { get; set; } = null!;
+    public string? AudioUrl { get; set; }
+    public string? ImageUrl { get; set; }
+    public decimal Points { get; set; }
+    public int DisplayOrder { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<QuestionOptionResponseDto> Options { get; set; } = [];
+}
+
+public class QuestionOptionResponseDto
+{
+    public Guid Id { get; set; }
+    public Guid QuestionId { get; set; }
+    public string OptionLabel { get; set; } = null!;
+    public string OptionContent { get; set; } = null!;
+    public bool? IsCorrect { get; set; }
 }
 
 public class ViolationlogResponeDto

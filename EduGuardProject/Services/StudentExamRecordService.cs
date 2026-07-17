@@ -4,6 +4,7 @@ using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
+using System.Text.Json;
 
 namespace EduGuardProject.Services;
 
@@ -51,8 +52,8 @@ public class StudentExamRecordService : IStudentExamRecordService
     public async Task<StudentExamRecordResponseDto> CreateAsync(CreateStudentExamRecordDto dto)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.Student && dto.StudentId != user.Id)
-            throw new UnauthorizedAccessException("Students can only create their own exam records.");
+        if (user.Role == AppRole.Student)
+            throw new UnauthorizedAccessException("Students must submit exam records through the submit endpoint.");
 
         var examSlot = await _context.ExamSlots
             .Include(e => e.Class)
@@ -76,7 +77,10 @@ public class StudentExamRecordService : IStudentExamRecordService
             StudentId = dto.StudentId,
             CreatedAt = DateTime.UtcNow,
             EndedAt = dto.EndedAt,
-            ExamRecord = dto.ExamRecord,
+            ExamRecord = NormalizeExamRecord(dto.ExamRecord),
+            FinalScore = dto.FinalScore,
+            SubmittedAt = dto.SubmittedAt,
+            DurationSeconds = dto.DurationSeconds,
             Status = dto.Status
         };
 
@@ -86,14 +90,97 @@ public class StudentExamRecordService : IStudentExamRecordService
         return MapToResponseDto(entity);
     }
 
+    public async Task<StudentExamRecordResponseDto> SubmitAsync(SubmitStudentExamRecordDto dto)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role != AppRole.Student)
+            throw new UnauthorizedAccessException("Only students can submit exam records.");
+
+        if (dto.DurationSeconds is < 0)
+            throw new InvalidOperationException("Duration seconds must be greater than or equal to 0.");
+
+        if (dto.Answers == null)
+            throw new InvalidOperationException("Answers are required.");
+
+        var examSlot = await _context.ExamSlots
+            .Include(e => e.Class)
+            .Include(e => e.ExamQuestions)
+                .ThenInclude(q => q.QuestionOptions)
+            .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
+            ?? throw new InvalidOperationException("Exam slot not found.");
+
+        if (user.InstitutionId != examSlot.Class.InstitutionId)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        var student = await _context.Users
+            .FirstOrDefaultAsync(u => u.Id == user.Id && u.Role == AppRole.Student && u.DeletedAt == null)
+            ?? throw new InvalidOperationException("Student not found.");
+
+        var participation = await _context.ExamParticipations
+            .FirstOrDefaultAsync(p => p.ExamSlotId == dto.ExamSlotId && p.StudentId == user.Id)
+            ?? throw new InvalidOperationException("Exam participation not found.");
+
+        var entity = await _context.StudentExamRecords
+            .Include(r => r.ExamSlot)
+                .ThenInclude(e => e.Class)
+            .Include(r => r.Student)
+            .FirstOrDefaultAsync(r =>
+                r.ExamSlotId == dto.ExamSlotId &&
+                r.StudentId == user.Id &&
+                r.Status != StudentExamRecordStatus.Deleted);
+
+        if (participation.Status == ParticipationStatus.Submitted && entity != null)
+            return MapToResponseDto(entity);
+
+        if (participation.Status is not ParticipationStatus.Joined and not ParticipationStatus.Submitted)
+            throw new InvalidOperationException("This action is only allowed while the participation is JOINED or SUBMITTED.");
+
+        var (examRecord, finalScore, requiresManualMarking) = BuildSubmissionRecord(examSlot, user.Id, dto);
+        var now = DateTime.UtcNow;
+
+        entity ??= new StudentExamRecord
+        {
+            Id = Guid.NewGuid(),
+            ExamSlotId = dto.ExamSlotId,
+            StudentId = user.Id,
+            CreatedAt = now
+        };
+
+        entity.EndedAt = now;
+        entity.ExamRecord = examRecord;
+        entity.FinalScore = finalScore;
+        entity.SubmittedAt = now;
+        entity.DurationSeconds = dto.DurationSeconds;
+        entity.Status = requiresManualMarking ? StudentExamRecordStatus.Completed : StudentExamRecordStatus.Marked;
+        entity.ExamSlot = examSlot;
+        entity.Student = student;
+
+        participation.Status = ParticipationStatus.Submitted;
+        participation.ActualEnd = now;
+
+        if (_context.Entry(entity).State == EntityState.Detached)
+            await _repo.AddAsync(entity);
+        else
+            await _repo.UpdateAsync(entity);
+
+        return MapToResponseDto(entity);
+    }
+
     public async Task<bool> UpdateAsync(Guid id, UpdateStudentExamRecordDto dto)
     {
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null) return false;
 
-        await EnsureAccessAsync(entity);
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Student)
+            throw new UnauthorizedAccessException("Students cannot update exam records directly.");
+        await EnsureClassAccessAsync(entity.ExamSlot.Class, user);
+
         entity.EndedAt = dto.EndedAt;
-        entity.ExamRecord = dto.ExamRecord;
+        entity.ExamRecord = NormalizeExamRecord(dto.ExamRecord);
+        entity.FinalScore = dto.FinalScore;
+        entity.SubmittedAt = dto.SubmittedAt;
+        entity.DurationSeconds = dto.DurationSeconds;
         entity.Status = dto.Status;
 
         await _repo.UpdateAsync(entity);
@@ -105,7 +192,11 @@ public class StudentExamRecordService : IStudentExamRecordService
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null) return false;
 
-        await EnsureAccessAsync(entity);
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Student)
+            throw new UnauthorizedAccessException("Students cannot delete exam records directly.");
+        await EnsureClassAccessAsync(entity.ExamSlot.Class, user);
+
         entity.Status = StudentExamRecordStatus.Deleted;
         await _repo.UpdateAsync(entity);
         return true;
@@ -147,7 +238,131 @@ public class StudentExamRecordService : IStudentExamRecordService
         StudentName = entity.Student?.FullName,
         CreatedAt = entity.CreatedAt,
         EndedAt = entity.EndedAt,
-        ExamRecord = entity.ExamRecord,
+        ExamRecord = RestoreLegacyExamRecord(entity.ExamRecord),
+        FinalScore = entity.FinalScore,
+        SubmittedAt = entity.SubmittedAt,
+        DurationSeconds = entity.DurationSeconds,
         Status = entity.Status
     };
+
+    private static string? NormalizeExamRecord(string? examRecord)
+    {
+        if (string.IsNullOrWhiteSpace(examRecord))
+            return null;
+
+        var trimmed = examRecord.Trim();
+        try
+        {
+            using var _ = JsonDocument.Parse(trimmed);
+            return trimmed;
+        }
+        catch (JsonException)
+        {
+            return JsonSerializer.Serialize(new { legacyText = examRecord });
+        }
+    }
+
+    private static string? RestoreLegacyExamRecord(string? examRecord)
+    {
+        if (string.IsNullOrWhiteSpace(examRecord))
+            return examRecord;
+
+        try
+        {
+            using var doc = JsonDocument.Parse(examRecord);
+            if (doc.RootElement.ValueKind != JsonValueKind.Object)
+                return examRecord;
+
+            var properties = doc.RootElement.EnumerateObject().ToList();
+            return properties.Count == 1 && properties[0].Name == "legacyText"
+                ? properties[0].Value.GetString()
+                : examRecord;
+        }
+        catch (JsonException)
+        {
+            return examRecord;
+        }
+    }
+
+    private static (string ExamRecord, decimal FinalScore, bool RequiresManualMarking) BuildSubmissionRecord(
+        ExamSlot examSlot,
+        Guid studentId,
+        SubmitStudentExamRecordDto dto)
+    {
+        if (examSlot.ExamQuestions.Count > 0 && dto.Answers.Count == 0)
+            throw new InvalidOperationException("Answers are required.");
+
+        var questions = examSlot.ExamQuestions.ToDictionary(q => q.Id);
+        var seenQuestionIds = new HashSet<Guid>();
+        var answers = new List<object>();
+        var finalScore = 0m;
+        var requiresManualMarking = false;
+
+        foreach (var answer in dto.Answers)
+        {
+            if (answer.QuestionId == Guid.Empty)
+                throw new InvalidOperationException("Question id is required.");
+
+            if (!seenQuestionIds.Add(answer.QuestionId))
+                throw new InvalidOperationException("Duplicate answers are not allowed.");
+
+            if (!questions.TryGetValue(answer.QuestionId, out var question))
+                throw new InvalidOperationException("Question does not belong to this exam slot.");
+
+            var options = question.QuestionOptions.ToList();
+            var isManual = IsManualQuestion(question, options);
+            var selectedOption = isManual ? null : FindSelectedOption(options, answer);
+
+            if (!isManual && selectedOption == null)
+                throw new InvalidOperationException("Answer option not found.");
+
+            var awardedPoints = !isManual && selectedOption!.IsCorrect ? question.Points : 0m;
+            finalScore += awardedPoints;
+            requiresManualMarking |= isManual;
+
+            answers.Add(new
+            {
+                questionId = question.Id,
+                questionType = question.QuestionType,
+                optionId = selectedOption?.Id ?? answer.OptionId,
+                selectedOption = selectedOption?.OptionLabel ?? answer.SelectedOption,
+                answerText = answer.AnswerText,
+                awardedPoints,
+                maxPoints = question.Points,
+                needsManualMarking = isManual
+            });
+        }
+
+        var examRecord = JsonSerializer.Serialize(new
+        {
+            examSlotId = examSlot.Id,
+            studentId,
+            submittedAt = DateTime.UtcNow,
+            durationSeconds = dto.DurationSeconds,
+            finalScore,
+            maxScore = examSlot.ExamQuestions.Sum(q => q.Points),
+            requiresManualMarking,
+            answers
+        });
+
+        return (examRecord, finalScore, requiresManualMarking);
+    }
+
+    private static bool IsManualQuestion(ExamQuestion question, IReadOnlyCollection<QuestionOption> options) =>
+        options.Count == 0 || string.Equals(question.QuestionType, "Essay", StringComparison.OrdinalIgnoreCase);
+
+    private static QuestionOption? FindSelectedOption(IEnumerable<QuestionOption> options, SubmitStudentAnswerDto answer)
+    {
+        if (answer.OptionId.HasValue && answer.OptionId.Value != Guid.Empty)
+            return options.FirstOrDefault(o => o.Id == answer.OptionId.Value);
+
+        if (!string.IsNullOrWhiteSpace(answer.SelectedOption))
+        {
+            var selectedOption = answer.SelectedOption.Trim();
+            return options.FirstOrDefault(o =>
+                string.Equals(o.OptionLabel, selectedOption, StringComparison.OrdinalIgnoreCase));
+        }
+
+        return null;
+    }
 }

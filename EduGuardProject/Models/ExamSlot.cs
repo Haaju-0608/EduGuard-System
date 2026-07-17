@@ -35,5 +35,7 @@ public partial class ExamSlot
 
     public virtual ICollection<ExamParticipation> ExamParticipations { get; set; } = new List<ExamParticipation>();
 
+    public virtual ICollection<ExamQuestion> ExamQuestions { get; set; } = new List<ExamQuestion>();
+
     public virtual ICollection<StudentExamRecord> StudentExamRecords { get; set; } = new List<StudentExamRecord>();
 }

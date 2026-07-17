@@ -32,7 +32,6 @@ public class StudentExamRecordRepository : IStudentExamRecordRepository
         {
             var s = search.ToLower();
             query = query.Where(r =>
-                (r.ExamRecord != null && r.ExamRecord.ToLower().Contains(s)) ||
                 r.ExamSlot.ExamName.ToLower().Contains(s) ||
                 r.Student.FullName.ToLower().Contains(s) ||
                 (r.Student.StudentCode != null && r.Student.StudentCode.ToLower().Contains(s)));

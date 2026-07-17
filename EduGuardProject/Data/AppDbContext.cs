@@ -29,6 +29,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<ExamParticipation> ExamParticipations { get; set; }
 
+    public virtual DbSet<ExamQuestion> ExamQuestions { get; set; }
+
     public virtual DbSet<ExamSlot> ExamSlots { get; set; }
 
     public virtual DbSet<Institution> Institutions { get; set; }
@@ -46,6 +48,8 @@ public partial class AppDbContext : DbContext
     public virtual DbSet<StudentExamRecord> StudentExamRecords { get; set; }
 
     public virtual DbSet<ViolationLog> ViolationLogs { get; set; }
+
+    public virtual DbSet<QuestionOption> QuestionOptions { get; set; }
 
     public virtual DbSet<Wallet> Wallets { get; set; }
 
@@ -396,6 +400,42 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("exam_participations_student_id_fkey");
         });
 
+        modelBuilder.Entity<ExamQuestion>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("exam_questions_pkey");
+
+            entity.ToTable("exam_questions");
+
+            entity.HasIndex(e => e.ExamSlotId, "idx_exam_questions_exam_slot");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.AudioUrl)
+                .HasMaxLength(500)
+                .HasColumnName("audio_url");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+            entity.Property(e => e.DisplayOrder).HasColumnName("display_order");
+            entity.Property(e => e.ExamSlotId).HasColumnName("exam_slot_id");
+            entity.Property(e => e.ImageUrl)
+                .HasMaxLength(500)
+                .HasColumnName("image_url");
+            entity.Property(e => e.Points)
+                .HasPrecision(6, 2)
+                .HasDefaultValueSql("1")
+                .HasColumnName("points");
+            entity.Property(e => e.QuestionContent).HasColumnName("question_content");
+            entity.Property(e => e.QuestionType)
+                .HasMaxLength(30)
+                .HasColumnName("question_type");
+
+            entity.HasOne(d => d.ExamSlot).WithMany(p => p.ExamQuestions)
+                .HasForeignKey(d => d.ExamSlotId)
+                .HasConstraintName("exam_questions_exam_slot_id_fkey");
+        });
+
         modelBuilder.Entity<ExamSlot>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("exam_slots_pkey");
@@ -507,6 +547,31 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("notifications_user_id_fkey");
         });
 
+        modelBuilder.Entity<QuestionOption>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("question_options_pkey");
+
+            entity.ToTable("question_options");
+
+            entity.HasIndex(e => e.QuestionId, "idx_question_options_question");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.IsCorrect)
+                .HasDefaultValue(false)
+                .HasColumnName("is_correct");
+            entity.Property(e => e.OptionContent).HasColumnName("option_content");
+            entity.Property(e => e.OptionLabel)
+                .HasMaxLength(10)
+                .HasColumnName("option_label");
+            entity.Property(e => e.QuestionId).HasColumnName("question_id");
+
+            entity.HasOne(d => d.Question).WithMany(p => p.QuestionOptions)
+                .HasForeignKey(d => d.QuestionId)
+                .HasConstraintName("question_options_question_id_fkey");
+        });
+
         modelBuilder.Entity<StudentExamRecord>(entity =>
         {
             entity.HasKey(e => e.Id).HasName("student_exam_records_pkey");
@@ -529,8 +594,13 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("created_at");
             entity.Property(e => e.EndedAt).HasColumnName("ended_at");
             entity.Property(e => e.ExamRecord)
-                .HasColumnType("text")
+                .HasColumnType("jsonb")
                 .HasColumnName("exam_record");
+            entity.Property(e => e.FinalScore)
+                .HasPrecision(5, 2)
+                .HasColumnName("final_score");
+            entity.Property(e => e.SubmittedAt).HasColumnName("submitted_at");
+            entity.Property(e => e.DurationSeconds).HasColumnName("duration_seconds");
             entity.Property(e => e.Status)
                 .HasColumnName("status")
                 .HasColumnType("student_exam_record_status")
