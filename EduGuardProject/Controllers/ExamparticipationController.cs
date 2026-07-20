@@ -83,6 +83,23 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam Participation Status
+        // Truyền dữ liệu: route id là participationId.
+        // Điều kiện: Student chỉ xem participation của chính mình; Lecturer đúng class; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
+        // Note: dùng cho FE khi load trang thi, F5, hoặc reconnect để biết exam còn active hay đã bị terminate, không phụ thuộc hoàn toàn vào SignalR.
+        [HttpGet("{id:guid}/status")]
+        [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> GetStatus(Guid id)
+        {
+            try
+            {
+                var status = await _service.GetParticipationStatusAsync(id);
+                if (status == null) return NotFound(ApiResponse<object>.OnFail("Participation not found."));
+                return OkSingle(status, "Exam participation status retrieved successfully.");
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
         // Create Exam Participation
         // Truyền dữ liệu: body examSlotId, studentId, billingTransId, actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
         // Điều kiện: SuperAdmin hoặc Student chính chủ; Student chỉ tạo participation cho class mình đã enrollment.

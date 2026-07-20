@@ -166,6 +166,54 @@ public class ExamParticipationServices : IExamParticipationService
         return true;
     }
 
+    public async Task<ExamParticipationStatusResponseDto?> GetParticipationStatusAsync(Guid participationId)
+    {
+        var entity = await _context.ExamParticipations
+            .AsNoTracking()
+            .Include(p => p.ExamSlot)
+            .ThenInclude(e => e.Class)
+            .FirstOrDefaultAsync(p => p.Id == participationId);
+        if (entity == null)
+            return null;
+
+        var user = await _currentUser.GetRequiredUserAsync();
+        var hasAccess =
+            user.Role == AppRole.SuperAdmin ||
+            (user.Role == AppRole.SchoolAdmin &&
+             user.InstitutionId == entity.ExamSlot.Class.InstitutionId) ||
+            (user.Role == AppRole.Lecturer &&
+             user.InstitutionId == entity.ExamSlot.Class.InstitutionId &&
+             user.Id == entity.ExamSlot.Class.LecturerId) ||
+            (user.Role == AppRole.Student && user.Id == entity.StudentId);
+
+        if (!hasAccess)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        var browserViolationCount = await _context.ViolationLogs.CountAsync(v =>
+            v.ParticipationId == participationId &&
+            (v.violationType == ViolationType.TabSwitch ||
+             v.violationType == ViolationType.WindowBlur ||
+             v.violationType == ViolationType.ExitFullscreen));
+
+        var isTerminated = entity.Status == ParticipationStatus.Disqualified;
+
+        return new ExamParticipationStatusResponseDto
+        {
+            ParticipationId = entity.Id,
+            Status = MapStatusName(entity.Status),
+            IsTerminated = isTerminated,
+            TerminationReason = isTerminated ? entity.DisqualifiedReason : null,
+            BrowserViolationCount = browserViolationCount
+        };
+    }
+
+    private static string MapStatusName(ParticipationStatus status) => status switch
+    {
+        ParticipationStatus.Joined => "Active",
+        ParticipationStatus.Disqualified => "Terminated",
+        _ => status.ToString()
+    };
+
     private async Task<ExamParticipation?> GetManageableParticipationAsync(Guid participationId)
     {
         var entity = await _context.ExamParticipations

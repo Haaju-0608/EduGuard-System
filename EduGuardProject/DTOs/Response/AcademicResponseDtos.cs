@@ -231,3 +231,12 @@ public class BrowserViolationResponseDto
     public int CurrentViolationCount { get; set; }
     public bool ExamTerminated { get; set; }
 }
+
+public class ExamParticipationStatusResponseDto
+{
+    public Guid ParticipationId { get; set; }
+    public string Status { get; set; } = null!;
+    public bool IsTerminated { get; set; }
+    public string? TerminationReason { get; set; }
+    public int BrowserViolationCount { get; set; }
+}

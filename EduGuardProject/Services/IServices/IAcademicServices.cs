@@ -83,6 +83,8 @@ public interface IExamParticipationService
     Task<bool> UpdateAsyncOnlyExamPartipationStatus(Guid examSlotId, UpdateExamParticipationStatusDto dto);
 
     Task<bool> DeleteAsync(Guid id);
+
+    Task<ExamParticipationStatusResponseDto?> GetParticipationStatusAsync(Guid participationId);
 }
 
 public interface IStudentExamRecordService
