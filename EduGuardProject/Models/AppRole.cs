@@ -361,12 +361,12 @@ public enum ViolationType
     FaceObstructed,
 
     //Browser violation types
-    [PgName("TAB_SWITCH")]
+    [PgName("TabSwitch")]
     TabSwitch,
 
-    [PgName("WINDOW_BLUR")]
+    [PgName("WindowBlur")]
     WindowBlur,
 
-    [PgName("EXIT_FULLSCREEN")]
+    [PgName("ExitFullscreen")]
     ExitFullscreen
 }
