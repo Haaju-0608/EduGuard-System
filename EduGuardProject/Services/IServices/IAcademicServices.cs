@@ -150,3 +150,8 @@ public interface IViolationLogService
 
     Task<bool> DeleteAsync(Guid id);
 }
+
+public interface IBrowserViolationService
+{
+    Task<BrowserViolationResponseDto> RecordAsync(BrowserViolationRequestDto dto);
+}

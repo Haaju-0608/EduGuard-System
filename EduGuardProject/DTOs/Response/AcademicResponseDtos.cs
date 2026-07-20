@@ -224,3 +224,10 @@ public class ViolationlogResponeDto
 
     public DateTime RecordedAt { get; set; }
 }
+
+public class BrowserViolationResponseDto
+{
+    public bool Success { get; set; } = true;
+    public int CurrentViolationCount { get; set; }
+    public bool ExamTerminated { get; set; }
+}

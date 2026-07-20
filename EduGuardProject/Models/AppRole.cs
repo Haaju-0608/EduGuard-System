@@ -358,5 +358,15 @@ public enum ViolationType
     HeadTurn,
 
     [PgName("FACE_OBSTRUCTED")]
-    FaceObstructed
+    FaceObstructed,
+
+    //Browser violation types
+    [PgName("TAB_SWITCH")]
+    TabSwitch,
+
+    [PgName("WINDOW_BLUR")]
+    WindowBlur,
+
+    [PgName("EXIT_FULLSCREEN")]
+    ExitFullscreen
 }

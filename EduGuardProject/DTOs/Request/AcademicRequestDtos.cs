@@ -367,3 +367,12 @@ public class UpdateViolationLogDto
     public bool IsReviewed { get; set; }
     public Guid? ReviewedBy { get; set; }
 }
+
+public class BrowserViolationRequestDto
+{
+    [Required]
+    public Guid ParticipationId { get; set; }
+
+    [Required]
+    public ViolationType ViolationType { get; set; }
+}

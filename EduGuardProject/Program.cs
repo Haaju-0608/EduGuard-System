@@ -119,6 +119,7 @@ builder.Services.AddScoped<IExamSlotServices, ExamslotServices>();
 builder.Services.AddScoped<IExamQuestionService, ExamQuestionService>();
 builder.Services.AddScoped<IStudentExamRecordService, StudentExamRecordService>();
 builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
+builder.Services.AddScoped<IBrowserViolationService, BrowserViolationService>();
 builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 builder.Services.AddScoped<IRealtimeEventDispatcher, RealtimeEventDispatcher>();
 builder.Services.AddScoped<IExamWorkflowService, ExamWorkflowService>();
