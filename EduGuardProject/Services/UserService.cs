@@ -34,9 +34,10 @@ namespace EduGuardProject.Services
             _context = context;
         }
 
-        public async Task<(IEnumerable<UserResponseDto> Items, int TotalCount)> GetUsersAsync(string? search, string? sort, int page, int pageSize)
+        public async Task<(IEnumerable<UserResponseDto> Items, int TotalCount)> GetUsersAsync(
+    Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize)
         {
-            var (entities, totalCount) = await _repo.GetAllAsync(search, sort, page, pageSize);
+            var (entities, totalCount) = await _repo.GetAllAsync(institutionId, excludeRole, search, sort, page, pageSize);
             var dtos = entities.Select(MapToResponseDto);
             return (dtos, totalCount);
         }

@@ -20,12 +20,18 @@ namespace EduGuardProject.Controllers
         // ================= BAN QUẢN TRỊ & GIẢNG VIÊN (QUẢN LÝ CHUNG) =================
 
         [HttpGet]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)] // Mở quyền cho Giảng viên xem danh sách học sinh
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> GetAll([FromQuery] string? search, [FromQuery] string? sort, [FromQuery] int page = 1, [FromQuery] int pageSize = 10)
         {
             try
             {
-                var (items, totalCount) = await _service.GetUsersAsync(search, sort, page, pageSize);
+                var role = (AppRole)HttpContext.Items["Role"]!;
+                var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+
+                Guid? scopedInstitutionId = role == AppRole.SuperAdmin ? null : institutionId;
+                AppRole? excludeRole = role == AppRole.Lecturer ? AppRole.SchoolAdmin : null;
+
+                var (items, totalCount) = await _service.GetUsersAsync(scopedInstitutionId, excludeRole, search, sort, page, pageSize);
                 return Ok(ApiPagedResponse<UserResponseDto>.OnPagedSuccess(items, page, pageSize, totalCount, "Users retrieved successfully."));
             }
             catch (Exception ex)
@@ -35,21 +41,36 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpGet("{id:guid}")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)] // Giảng viên được xem thông tin chi tiết của học sinh
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> GetById(Guid id)
         {
+            var role = (AppRole)HttpContext.Items["Role"]!;
+            var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+
             var item = await _service.GetUserByIdAsync(id);
             if (item == null) return NotFound(ApiResponse<object>.OnFail("User not found."));
+
+            if (role != AppRole.SuperAdmin && item.InstitutionId != institutionId)
+                return NotFound(ApiResponse<object>.OnFail("User not found."));
+
+            if (role == AppRole.Lecturer && item.Role.ToCanonical() == AppRole.SchoolAdmin)
+                return NotFound(ApiResponse<object>.OnFail("User not found."));
 
             return Ok(ApiResponse<UserResponseDto>.OnSuccess(item, "User details retrieved successfully."));
         }
 
         [HttpPost]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)] // Chỉ Admin mới được quyền tạo User mới
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateUserDto dto)
         {
             try
             {
+                var role = (AppRole)HttpContext.Items["Role"]!;
+                var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+
+                if (role != AppRole.SuperAdmin && dto.InstitutionId != institutionId)
+                    return BadRequest(ApiResponse<object>.OnFail("You can only create users within your own institution."));
+
                 var result = await _service.CreateUserAsync(dto);
                 return StatusCode(201, ApiResponse<UserResponseDto>.OnSuccess(result, "User created successfully."));
             }
@@ -60,9 +81,21 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpPut("{id:guid}")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)] // Chỉ Admin mới được chỉnh sửa thông tin của User khác (đổi role, khóa tài khoản...)
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
         {
+            var role = (AppRole)HttpContext.Items["Role"]!;
+            var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+
+            var existing = await _service.GetUserByIdAsync(id);
+            if (existing == null) return NotFound(ApiResponse<object>.OnFail("User not found to update."));
+
+            if (role != AppRole.SuperAdmin && existing.InstitutionId != institutionId)
+                return NotFound(ApiResponse<object>.OnFail("User not found to update."));
+
+            if (role != AppRole.SuperAdmin && dto.InstitutionId != institutionId)
+                return BadRequest(ApiResponse<object>.OnFail("You cannot move a user to another institution."));
+
             var success = await _service.UpdateUserAsync(id, dto);
             if (!success) return NotFound(ApiResponse<object>.OnFail("User not found to update."));
 
@@ -70,9 +103,18 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpDelete("{id:guid}")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)] // Quyền tối cao: Chỉ Admin mới được xóa User
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Delete(Guid id)
         {
+            var role = (AppRole)HttpContext.Items["Role"]!;
+            var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+
+            var existing = await _service.GetUserByIdAsync(id);
+            if (existing == null) return NotFound(ApiResponse<object>.OnFail("User not found to delete."));
+
+            if (role != AppRole.SuperAdmin && existing.InstitutionId != institutionId)
+                return NotFound(ApiResponse<object>.OnFail("User not found to delete."));
+
             var success = await _service.DeleteUserAsync(id);
             if (!success) return NotFound(ApiResponse<object>.OnFail("User not found to delete."));
 

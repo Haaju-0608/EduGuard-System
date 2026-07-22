@@ -1,15 +1,21 @@
 ﻿using EduGuardProject.Services.IServices;
+using System.Text.Json.Serialization;
+using System.Net.Http.Json;
 
 namespace EduGuardProject.Services
 {
     public class AiServiceClient : IAiServiceClient
     {
         private readonly HttpClient _httpClient;
-        private readonly string _pythonApiUrl = "http://127.0.0.1:8000"; 
+        private readonly string _pythonApiUrl;
 
-        public AiServiceClient(HttpClient httpClient) => _httpClient = httpClient;
+        public AiServiceClient(HttpClient httpClient, IConfiguration configuration)
+        {
+            _httpClient = httpClient;
+            _pythonApiUrl = configuration["AiServer:BaseUrl"] ?? "https://eduguard-ai-33re.onrender.com";
+        }
 
-        public async Task<float[]> ExtractVectorFrom3FacesAsync(
+        public async Task<FaceVectorResponse> ExtractVectorFrom3FacesAsync(
             Stream frontStream, string frontName,
             Stream leftStream, string leftName,
             Stream rightStream, string rightName)
@@ -20,7 +26,6 @@ namespace EduGuardProject.Services
             var leftContent = new StreamContent(leftStream);
             var rightContent = new StreamContent(rightStream);
 
-            // 🌟 KHỚP CHUẨN: Tên key phải trùng với tham số bên FastAPI Python đã viết ở Bước 2
             content.Add(frontContent, "front_file", frontName);
             content.Add(leftContent, "left_file", leftName);
             content.Add(rightContent, "right_file", rightName);
@@ -29,24 +34,49 @@ namespace EduGuardProject.Services
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<FaceVectorResponse>();
-            return result?.Vector ?? throw new Exception("Không thể trích xuất vector từ bộ 3 ảnh eKYC.");
+            return result ?? throw new Exception("Không thể trích xuất vector từ bộ 3 ảnh eKYC.");
         }
 
-        public async Task<List<float[]>> ExtractVectorsFromVideoAsync(Stream videoStream, string fileName)
+        // 🌟 SỬA ĐỔI: Trả về Task<VideoVectorsResponse> nguyên khối thay vì chỉ trả về List<float[]>
+        public async Task<VideoVectorsResponse> ExtractVectorsFromVideoAsync(Stream videoStream, string fileName)
         {
             using var content = new MultipartFormDataContent();
             using var streamContent = new StreamContent(videoStream);
-            content.Add(streamContent, "video_file", fileName); // Khớp key video_file với Python
+            content.Add(streamContent, "video_file", fileName);
 
             var response = await _httpClient.PostAsync($"{_pythonApiUrl}/attendance/verify-attendance-video", content);
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<VideoVectorsResponse>();
-            return result?.Vectors ?? new List<float[]>();
+            return result ?? new VideoVectorsResponse();
         }
     }
 
-    public class FaceVectorResponse { public float[] Vector { get; set; } = null!; }
-    public class VideoVectorsResponse { public List<float[]> Vectors { get; set; } = null!; }
+    // DTOs hứng dữ liệu từ FastAPI
+    public class FaceVectorResponse
+    {
+        [JsonPropertyName("message")]
+        public string Message { get; set; } = string.Empty;
 
+        [JsonPropertyName("avatar_url")]
+        public string AvatarUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("vector")]
+        public float[] Vector { get; set; } = Array.Empty<float>();
+    }
+
+    public class VideoVectorsResponse
+    {
+        [JsonPropertyName("faces_count")]
+        public int FacesCount { get; set; }
+
+        [JsonPropertyName("video_url")]
+        public string VideoUrl { get; set; } = string.Empty;
+
+        [JsonPropertyName("vectors")]
+        public List<float[]> Vectors { get; set; } = new();
+
+        [JsonPropertyName("message")]
+        public string Message { get; set; } = string.Empty;
+    }
 }

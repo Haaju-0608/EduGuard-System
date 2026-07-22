@@ -7,7 +7,6 @@ using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using Supabase.Interfaces;
 
 namespace EduGuardProject.Services;
 
@@ -24,7 +23,6 @@ public class AttendanceRecordService : IAttendanceRecordService
     private readonly AppDbContext _context;
     private readonly IAiServiceClient _aiClient;
 
-    // ✅ SỬA LỖI CÚ PHÁP CONSTRUCTOR
     public AttendanceRecordService(
         IWebHostEnvironment webHostEnvironment,
         IAttendanceRecordRepository repo,
@@ -324,6 +322,7 @@ public class AttendanceRecordService : IAttendanceRecordService
             throw new UnauthorizedAccessException("Access denied.");
     }
 
+    // 🌟 SỬA ĐỔI: Không ghi ổ đĩa local nữa, đẩy trực tiếp Stream sang FastAPI & Supabase
     public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkByAiVideoAsync(Guid sessionId, Stream videoStream, string fileName)
     {
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
@@ -333,54 +332,26 @@ public class AttendanceRecordService : IAttendanceRecordService
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
 
-        string savedVideoPath = null!;
-        string fullPath = null!;
+        // 1. Gọi trực tiếp FastAPI để upload video lên Supabase Storage và bóc tách Vector khuôn mặt
+        VideoVectorsResponse aiResult;
         try
         {
-            var uploadsFolder = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "attendance-videos");
-            if (!Directory.Exists(uploadsFolder))
-            {
-                Directory.CreateDirectory(uploadsFolder);
-            }
-
-            var fileExtension = Path.GetExtension(fileName);
-            var uniqueFileName = $"session_{sessionId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}{fileExtension}";
-            fullPath = Path.Combine(uploadsFolder, uniqueFileName);
-
-            using (var fileStream = new FileStream(fullPath, FileMode.Create))
-            {
-                await videoStream.CopyToAsync(fileStream);
-            }
-
-            savedVideoPath = $"/uploads/attendance-videos/{uniqueFileName}";
-        }
-        catch (Exception fileEx)
-        {
-            throw new InvalidOperationException($"Lỗi lưu file video vào hệ thống: {fileEx.Message}");
-        }
-
-        List<float[]> detectedVectors;
-        try
-        {
-            using (var pythonStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read))
-            {
-                detectedVectors = await _aiClient.ExtractVectorsFromVideoAsync(pythonStream, fileName);
-            }
+            aiResult = await _aiClient.ExtractVectorsFromVideoAsync(videoStream, fileName);
         }
         catch (Exception aiEx)
         {
-            if (File.Exists(fullPath)) File.Delete(fullPath);
             throw new InvalidOperationException($"Lỗi xử lý AI từ Python: {aiEx.Message}");
         }
 
-        session.VideoPath = savedVideoPath;
+        // 2. Cập nhật đường dẫn Video từ Cloud Supabase do FastAPI trả về
+        session.VideoPath = aiResult.VideoUrl;
         session.Status = SessionStatus.Completed;
 
         var presentStudentIds = new List<Guid>();
         double threshold = 0.40;
 
-        // Truy vấn Vector Khớp Diện Mạo từ pgvector
-        foreach (var vectorArray in detectedVectors)
+        // 3. Truy vấn Vector Khớp Diện Mạo từ pgvector
+        foreach (var vectorArray in aiResult.Vectors)
         {
             var pgVector = new Pgvector.Vector(vectorArray);
 
@@ -399,14 +370,14 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         var uniqueStudentIds = presentStudentIds.Distinct().ToList();
 
-        // [TỐI ƯU] Tải trước toàn bộ Enrollment hợp lệ của lớp học
+        // 4. [TỐI ƯU] Tải trước toàn bộ Enrollment hợp lệ của lớp học
         var activeEnrollmentIds = await _context.ClassEnrollments
             .AsNoTracking()
             .Where(e => e.ClassId == session.ClassId && uniqueStudentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
             .Select(e => e.StudentId)
             .ToListAsync();
 
-        // [TỐI ƯU] Tải trước danh sách Record đã có của phiên này
+        // 5. [TỐI ƯU] Tải trước danh sách Record đã có của phiên này
         var existingRecords = await _context.AttendanceRecords
             .Where(r => r.SessionId == sessionId && uniqueStudentIds.Contains(r.StudentId))
             .ToDictionaryAsync(r => r.StudentId);
@@ -415,7 +386,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         var recordsToInsert = new List<AttendanceRecord>();
         var results = new List<AttendanceRecordResponseDto>();
 
-        // Thực hiện so khớp trực tiếp trên RAM (In-Memory) không gọi DB
+        // 6. Thực hiện so khớp trực tiếp trên RAM (In-Memory)
         foreach (var studentId in uniqueStudentIds)
         {
             if (!activeEnrollmentIds.Contains(studentId)) continue;

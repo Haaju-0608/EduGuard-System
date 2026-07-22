@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
@@ -63,5 +63,8 @@ public class SupabaseAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
         }
 
         context.HttpContext.Items["UserId"] = userId;
+
+        context.HttpContext.Items["Role"] = userProfile.Role.ToCanonical();       
+        context.HttpContext.Items["InstitutionId"] = userProfile.InstitutionId;
     }
 }

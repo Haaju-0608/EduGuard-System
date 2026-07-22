@@ -36,6 +36,7 @@ public class BiometricRequestService : IBiometricRequestService
         _storage = storage;
         _context = context;
         _logger = logger;
+        _aiClient = aiClient;
     }
 
     public async Task<(IEnumerable<BiometricRequestResponseDto> Items, int TotalCount)> GetAllAsync(
@@ -58,76 +59,42 @@ public class BiometricRequestService : IBiometricRequestService
     public async Task<BiometricRequestResponseDto?> GetByIdAsync(Guid id, string? expand)
     {
         var entity = await _repo.GetByIdAsync(id);
-        //if (entity == null || entity.Status == BiometricReqStatus.Rejected) return null;
-        //await EnsureRequestAccessAsync(entity);
-        //return await AcademicMapper.MapBiometricRequestAsync(_context, entity, expand);
-        // SỬA: Cho phép xem đơn bị Rejected để check lịch sử, chỉ chặn khi không tìm thấy thực tế
         if (entity == null) return null;
 
         await EnsureRequestAccessAsync(entity);
         return await AcademicMapper.MapBiometricRequestAsync(_context, entity, expand);
     }
 
-    //public async Task<BiometricRequestResponseDto> CreateAsync(CreateBiometricRequestDto dto)
-    //{
-    //    await _currentUser.EnsureRoleAsync(AppRole.Student);
-    //    var user = await _currentUser.GetRequiredUserAsync();
-
-    //    var entity = new BiometricRequest
-    //    {
-    //        Id = Guid.NewGuid(),
-    //        StudentId = user.Id,
-    //        Reason = dto.Reason,
-    //        Status = BiometricReqStatus.Pending,
-    //        CreatedAt = DateTime.UtcNow
-    //    };
-
-    //    await _repo.AddAsync(entity);
-    //    return await AcademicMapper.MapBiometricRequestAsync(_context, entity, null);
-    //}
-
-    // SỬA: Controller sau khi upload file lên Supabase Storage thành công sẽ ném 3 đường dẫn Path vào đây với giờ chưa có storage nên tui lưu ở wwwroot nhá
+    //  SỬA ĐỔI: Không lưu file vào wwwroot nữa, đẩy trực tiếp Stream sang FastAPI & Supabase
     public async Task<BiometricRequestResponseDto> CreateAsync(CreateBiometricRequestDto dto)
     {
         // 1. Kiểm tra phân quyền Sinh viên
         await _currentUser.EnsureRoleAsync(AppRole.Student);
         var user = await _currentUser.GetRequiredUserAsync();
 
-        // 2. Kiểm tra và tạo thư mục lưu ảnh cục bộ nếu chưa có
-        var uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "biometrics");
-        if (!Directory.Exists(uploadFolder))
-        {
-            Directory.CreateDirectory(uploadFolder);
-        }
+        // 2. Mở Stream 3 file ảnh từ Request
+        using var frontStream = dto.FrontFile.OpenReadStream();
+        using var leftStream = dto.LeftFile.OpenReadStream();
+        using var rightStream = dto.RightFile.OpenReadStream();
 
-        // 3. Định danh tên file độc nhất bằng Guid để tránh ghi đè
-        var frontFileName = $"{Guid.NewGuid()}_{dto.FrontFile.FileName}";
-        var leftFileName = $"{Guid.NewGuid()}_{dto.LeftFile.FileName}";
-        var rightFileName = $"{Guid.NewGuid()}_{dto.RightFile.FileName}";
+        // 3. Gọi FastAPI Python trên Render để AI xử lý trích xuất Vector & Upload Supabase
+        var aiResponse = await _aiClient.ExtractVectorFrom3FacesAsync(
+            frontStream, dto.FrontFile.FileName,
+            leftStream, dto.LeftFile.FileName,
+            rightStream, dto.RightFile.FileName
+        );
 
-        // Đường dẫn tương đối lưu vào DB
-        string frontPath = Path.Combine("uploads", "biometrics", frontFileName);
-        string leftPath = Path.Combine("uploads", "biometrics", leftFileName);
-        string rightPath = Path.Combine("uploads", "biometrics", rightFileName);
-
-        // 4. Tiến hành ghi trực tiếp file vật lý xuống ổ đĩa cục bộ server
-        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", frontPath), FileMode.Create))
-            await dto.FrontFile.CopyToAsync(fs);
-        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", leftPath), FileMode.Create))
-            await dto.LeftFile.CopyToAsync(fs);
-        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", rightPath), FileMode.Create))
-            await dto.RightFile.CopyToAsync(fs);
-
-        // 5. Khởi tạo thực thể Request gửi lên trường với trạng thái PENDING (Hoàn toàn không có Vector)
+        // 4. Khởi tạo thực thể Request lưu link Supabase URL thu được từ AI Service
         var entity = new BiometricRequest
         {
             Id = Guid.NewGuid(),
             StudentId = user.Id,
             Reason = dto.Reason,
             Status = BiometricReqStatus.Pending,
-            FrontImagePath = frontPath,
-            LeftImagePath = leftPath,
-            RightImagePath = rightPath,
+            // Lưu trực tiếp URL Supabase được trả về từ Python AI Service
+            FrontImagePath = aiResponse.AvatarUrl,
+            LeftImagePath = aiResponse.AvatarUrl,  
+            RightImagePath = aiResponse.AvatarUrl,
             CreatedAt = DateTime.UtcNow
         };
 
