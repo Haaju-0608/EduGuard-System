@@ -50,6 +50,21 @@ namespace EduGuardProject.Services
             var result = await response.Content.ReadFromJsonAsync<VideoVectorsResponse>();
             return result ?? new VideoVectorsResponse();
         }
+
+        public async Task<float[]> ExtractAverageVectorFromUrlsAsync(List<string> imageUrls)
+        {
+            var payload = new { urls = imageUrls };
+            var response = await _httpClient.PostAsJsonAsync($"{_pythonApiUrl}/attendance/extract-average-vector-from-urls", payload);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Lỗi trích xuất vector trung bình ({(int)response.StatusCode}): {errorBody}");
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<AverageVectorResponse>();
+            return result?.Vector ?? throw new Exception("Không nhận được vector từ AI service.");
+        }
     }
 
     // DTOs hứng dữ liệu từ FastAPI
@@ -57,10 +72,14 @@ namespace EduGuardProject.Services
     {
         [JsonPropertyName("message")]
         public string Message { get; set; } = string.Empty;
-
         [JsonPropertyName("avatar_url")]
         public string AvatarUrl { get; set; } = string.Empty;
-
+        [JsonPropertyName("front_url")]
+        public string FrontUrl { get; set; } = string.Empty;
+        [JsonPropertyName("left_url")]
+        public string LeftUrl { get; set; } = string.Empty;
+        [JsonPropertyName("right_url")]
+        public string RightUrl { get; set; } = string.Empty;
         [JsonPropertyName("vector")]
         public float[] Vector { get; set; } = Array.Empty<float>();
     }
@@ -78,5 +97,13 @@ namespace EduGuardProject.Services
 
         [JsonPropertyName("message")]
         public string Message { get; set; } = string.Empty;
+    }
+
+    public class AverageVectorResponse
+    {
+        [JsonPropertyName("message")]
+        public string Message { get; set; } = string.Empty;
+        [JsonPropertyName("vector")]
+        public float[] Vector { get; set; } = Array.Empty<float>();
     }
 }

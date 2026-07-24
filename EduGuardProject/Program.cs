@@ -130,6 +130,7 @@ builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<EmailTemplateService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddHttpClient<IAiServiceClient, AiServiceClient>();
+builder.Services.AddHostedService<SubscriptionExpiryBackgroundService>();
 
 // Authentication
 builder.Services.AddAuthentication(options =>

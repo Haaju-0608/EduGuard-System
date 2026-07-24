@@ -60,11 +60,11 @@ public enum UserStatus
 //ENUM cho Institution
 public enum BillingModel
 {
-    [PgName("PAY_AS_YOU_GO")]
-    PayAsYouGo,
+    [PgName("MONTHLY")]
+    Monthly,
 
-    [PgName("SUBSCRIPTION")]
-    Subscription
+    [PgName("YEARLY")]
+    Yearly
 }
 
 public enum InstitutionStatus

@@ -92,9 +92,9 @@ public class BiometricRequestService : IBiometricRequestService
             Reason = dto.Reason,
             Status = BiometricReqStatus.Pending,
             // Lưu trực tiếp URL Supabase được trả về từ Python AI Service
-            FrontImagePath = aiResponse.AvatarUrl,
-            LeftImagePath = aiResponse.AvatarUrl,  
-            RightImagePath = aiResponse.AvatarUrl,
+            FrontImagePath = aiResponse.FrontUrl,
+            LeftImagePath = aiResponse.LeftUrl,  
+            RightImagePath = aiResponse.RightUrl,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -109,6 +109,26 @@ public class BiometricRequestService : IBiometricRequestService
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null || entity.Status != BiometricReqStatus.Pending) return false;
 
+        if (string.IsNullOrWhiteSpace(entity.FrontImagePath) ||
+            string.IsNullOrWhiteSpace(entity.LeftImagePath) ||
+            string.IsNullOrWhiteSpace(entity.RightImagePath))
+        {
+            throw new InvalidOperationException("Thiếu ảnh để trích xuất vector (cần đủ 3 ảnh thẳng/trái/phải).");
+        }
+
+        float[] averageVector;
+        try
+        {
+            averageVector = await _aiClient.ExtractAverageVectorFromUrlsAsync(new List<string>
+        {
+            entity.FrontImagePath, entity.LeftImagePath, entity.RightImagePath
+        });
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Lỗi trích xuất vector khi duyệt: {ex.Message}");
+        }
+
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);
         entity.Status = BiometricReqStatus.Approved;
@@ -117,8 +137,32 @@ public class BiometricRequestService : IBiometricRequestService
         if (!string.IsNullOrWhiteSpace(dto?.Reason))
             entity.Reason = dto.Reason;
 
+        var oldActiveRecords = await _context.BiometricData
+            .Where(b => b.UserId == entity.StudentId && b.IsActive)
+            .ToListAsync();
+        foreach (var old in oldActiveRecords)
+        {
+            old.IsActive = false;
+            old.UpdatedAt = DateTime.UtcNow;
+        }
+
+        var biometricDatum = new BiometricDatum
+        {
+            Id = Guid.NewGuid(),
+            UserId = entity.StudentId,
+            BioRequestId = entity.Id,
+            ModelVersion = "face_recognition_v1",
+            FaceVector = new Pgvector.Vector(averageVector),
+            FaceImageUrl = entity.FrontImagePath,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        await _context.BiometricData.AddAsync(biometricDatum);
+
         await _repo.UpdateAsync(entity);
-        await DeleteBiometricFilesAsync(entity.Id);
+        await _context.SaveChangesAsync();
+
         await _notifications.SendToUserAsync(
             entity.StudentId,
             "Khuôn mặt đã được phê duyệt",
@@ -145,7 +189,9 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
-        await DeleteBiometricFilesAsync(entity.Id);
+
+        await DeleteRequestImagesAsync(entity);
+
         await _notifications.SendToUserAsync(
             entity.StudentId,
             "Đăng ký khuôn mặt bị từ chối",
@@ -155,6 +201,26 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Id);
         await PublishBiometricRequestChangedAsync(entity, "rejected");
         return true;
+    }
+
+    // THÊM MỚI: helper xoá 3 ảnh gắn trực tiếp với BiometricRequest
+    private async Task DeleteRequestImagesAsync(BiometricRequest entity)
+    {
+        var paths = new[] { entity.FrontImagePath, entity.LeftImagePath, entity.RightImagePath }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct();
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                await _storage.DeleteAsync(StorageService.BiometricFacesBucket, path!);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Không xoá được ảnh {Path} của request {RequestId}.", path, entity.Id);
+            }
+        }
     }
 
     public async Task<bool> DeleteAsync(Guid id)

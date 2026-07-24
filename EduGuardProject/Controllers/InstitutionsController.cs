@@ -88,5 +88,21 @@ namespace EduGuardProject.Controllers
 
             return Ok(ApiResponse<object>.OnSuccess(null!, "Institution deleted successfully."));
         }
+
+        [HttpPost("{id:guid}/renew-subscription")]
+        [SupabaseAuthorize(AppRole.SchoolAdmin)]
+        public async Task<IActionResult> RenewSubscription(Guid id)
+        {
+            try
+            {
+                var success = await _service.RenewSubscriptionAsync(id);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Gia hạn subscription thành công."));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
+            }
+        }
     }
 }

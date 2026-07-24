@@ -8,4 +8,7 @@ public interface IAiServiceClient
         Stream rightStream, string rightName);
 
     Task<VideoVectorsResponse> ExtractVectorsFromVideoAsync(Stream videoStream, string fileName);
+
+    Task<float[]> ExtractAverageVectorFromUrlsAsync(List<string> imageUrls);
+
 }

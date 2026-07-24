@@ -10,5 +10,8 @@ namespace EduGuardProject.Services.IServices
         Task<InstitutionResponseDto> CreateInstitutionAsync(CreateInstitutionDto dto);
         Task<bool> UpdateInstitutionAsync(Guid id, UpdateInstitutionDto dto);
         Task<bool> DeleteInstitutionAsync(Guid id);
+
+        Task<bool> RenewSubscriptionAsync(Guid institutionId);
+
     }
 }
