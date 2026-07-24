@@ -95,6 +95,7 @@ public interface IStudentExamRecordService
     Task<StudentExamRecordResponseDto?> GetByIdAsync(Guid id);
     Task<StudentExamRecordResponseDto> CreateAsync(CreateStudentExamRecordDto dto);
     Task<StudentExamRecordResponseDto> SubmitAsync(SubmitStudentExamRecordDto dto);
+    Task<StudentExamRecordResponseDto?> GradeManualAsync(Guid id, GradeStudentExamRecordDto dto);
     Task<bool> UpdateAsync(Guid id, UpdateStudentExamRecordDto dto);
     Task<bool> DeleteAsync(Guid id);
 }

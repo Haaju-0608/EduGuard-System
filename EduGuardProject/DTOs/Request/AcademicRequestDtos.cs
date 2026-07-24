@@ -222,6 +222,20 @@ public class UpdateStudentExamRecordDto
     public StudentExamRecordStatus Status { get; set; }
 }
 
+public class GradeStudentExamRecordDto
+{
+    [Required]
+    public List<GradeStudentAnswerDto> Grades { get; set; } = [];
+}
+
+public class GradeStudentAnswerDto
+{
+    [Required]
+    public Guid QuestionId { get; set; }
+
+    public decimal AwardedPoints { get; set; }
+}
+
 public class SubmitStudentExamRecordDto
 {
     [Required]

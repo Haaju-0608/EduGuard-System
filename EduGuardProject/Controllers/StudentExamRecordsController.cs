@@ -76,6 +76,20 @@ public class StudentExamRecordsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Roles: Lecturer, SchoolAdmin, SuperAdmin. Returns: updated StudentExamRecordResponseDto after manual grading.
+    [HttpPut("{id:guid}/manual-grade")]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    public async Task<IActionResult> GradeManual(Guid id, [FromBody] GradeStudentExamRecordDto dto, [FromQuery] string? fields = null)
+    {
+        try
+        {
+            var result = await _service.GradeManualAsync(id, dto);
+            if (result == null) return NotFound(ApiResponse<object>.OnFail("Student exam record not found."));
+            return OkSingle(result, "Student exam record graded successfully.", fields);
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
     // Roles: Lecturer, SchoolAdmin, SuperAdmin. Returns: success message only.
     [HttpPut("{id:guid}")]
     [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]

@@ -5,6 +5,7 @@ using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
 using System.Text.Json;
+using System.Text.Json.Nodes;
 
 namespace EduGuardProject.Services;
 
@@ -187,6 +188,68 @@ public class StudentExamRecordService : IStudentExamRecordService
         return true;
     }
 
+    public async Task<StudentExamRecordResponseDto?> GradeManualAsync(Guid id, GradeStudentExamRecordDto dto)
+    {
+        if (dto.Grades == null || dto.Grades.Count == 0)
+            throw new InvalidOperationException("Grades are required.");
+
+        var entity = await _repo.GetByIdAsync(id);
+        if (entity == null) return null;
+
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Student)
+            throw new UnauthorizedAccessException("Students cannot grade exam records.");
+        await EnsureClassAccessAsync(entity.ExamSlot.Class, user);
+
+        if (entity.Status == StudentExamRecordStatus.Deleted)
+            throw new InvalidOperationException("Deleted exam records cannot be graded.");
+
+        var root = ParseExamRecord(entity.ExamRecord);
+        if (root["answers"] is not JsonArray answers)
+            throw new InvalidOperationException("Exam record answers are missing.");
+
+        var grades = BuildGradeLookup(dto.Grades);
+        var updatedQuestionIds = new HashSet<Guid>();
+        var finalScore = 0m;
+        var stillNeedsManualMarking = false;
+
+        foreach (var item in answers)
+        {
+            if (item is not JsonObject answer)
+                throw new InvalidOperationException("Exam record answer is invalid.");
+
+            var questionId = ReadGuid(answer, "questionId");
+            if (grades.TryGetValue(questionId, out var awardedPoints))
+            {
+                if (!IsManualAnswer(answer))
+                    throw new InvalidOperationException("Only manual answers can be graded manually.");
+
+                var maxPoints = ReadDecimal(answer, "maxPoints");
+                if (awardedPoints > maxPoints)
+                    throw new InvalidOperationException("Awarded points cannot exceed max points.");
+
+                answer["awardedPoints"] = JsonValue.Create(awardedPoints);
+                answer["needsManualMarking"] = JsonValue.Create(false);
+                updatedQuestionIds.Add(questionId);
+            }
+
+            stillNeedsManualMarking |= ReadBool(answer, "needsManualMarking");
+            finalScore += ReadOptionalDecimal(answer, "awardedPoints") ?? 0m;
+        }
+
+        if (updatedQuestionIds.Count != grades.Count)
+            throw new InvalidOperationException("Grade question does not exist in this exam record.");
+
+        root["finalScore"] = JsonValue.Create(finalScore);
+        root["requiresManualMarking"] = JsonValue.Create(stillNeedsManualMarking);
+        entity.ExamRecord = root.ToJsonString();
+        entity.FinalScore = finalScore;
+        entity.Status = stillNeedsManualMarking ? StudentExamRecordStatus.Completed : StudentExamRecordStatus.Marked;
+
+        await _repo.UpdateAsync(entity);
+        return MapToResponseDto(entity);
+    }
+
     public async Task<bool> DeleteAsync(Guid id)
     {
         var entity = await _repo.GetByIdAsync(id);
@@ -283,6 +346,60 @@ public class StudentExamRecordService : IStudentExamRecordService
             return examRecord;
         }
     }
+
+    private static JsonObject ParseExamRecord(string? examRecord)
+    {
+        if (string.IsNullOrWhiteSpace(examRecord))
+            throw new InvalidOperationException("Exam record is empty.");
+
+        try
+        {
+            return JsonNode.Parse(examRecord) as JsonObject
+                ?? throw new InvalidOperationException("Exam record is invalid.");
+        }
+        catch (JsonException)
+        {
+            throw new InvalidOperationException("Exam record is invalid.");
+        }
+    }
+
+    private static Dictionary<Guid, decimal> BuildGradeLookup(IEnumerable<GradeStudentAnswerDto> grades)
+    {
+        var lookup = new Dictionary<Guid, decimal>();
+        foreach (var grade in grades)
+        {
+            if (grade.QuestionId == Guid.Empty)
+                throw new InvalidOperationException("Question id is required.");
+            if (grade.AwardedPoints < 0)
+                throw new InvalidOperationException("Awarded points must be greater than or equal to 0.");
+            if (!lookup.TryAdd(grade.QuestionId, grade.AwardedPoints))
+                throw new InvalidOperationException("Duplicate grades are not allowed.");
+        }
+
+        return lookup;
+    }
+
+    private static Guid ReadGuid(JsonObject json, string property)
+    {
+        var value = json[property]?.GetValue<string>();
+        return Guid.TryParse(value, out var id)
+            ? id
+            : throw new InvalidOperationException($"Exam record {property} is invalid.");
+    }
+
+    private static decimal ReadDecimal(JsonObject json, string property) =>
+        ReadOptionalDecimal(json, property)
+            ?? throw new InvalidOperationException($"Exam record {property} is missing.");
+
+    private static decimal? ReadOptionalDecimal(JsonObject json, string property) =>
+        json[property]?.GetValue<decimal>();
+
+    private static bool ReadBool(JsonObject json, string property) =>
+        json[property]?.GetValue<bool>() == true;
+
+    private static bool IsManualAnswer(JsonObject answer) =>
+        ReadBool(answer, "needsManualMarking") ||
+        string.Equals(answer["questionType"]?.GetValue<string>(), "Essay", StringComparison.OrdinalIgnoreCase);
 
     private static (string ExamRecord, decimal FinalScore, bool RequiresManualMarking) BuildSubmissionRecord(
         ExamSlot examSlot,
