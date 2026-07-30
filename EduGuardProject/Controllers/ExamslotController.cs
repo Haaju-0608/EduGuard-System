@@ -80,7 +80,7 @@ namespace EduGuardProject.Controllers
         // Truyền dữ liệu: route classId.
         // Điều kiện: Student phải đang học class đó; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
         [HttpGet("class/{classId:guid}")]
-        [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> GetByClassId(Guid classId)
         {
             try

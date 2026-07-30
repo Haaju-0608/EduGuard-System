@@ -157,6 +157,7 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("id");
             entity.Property(e => e.BillingTransId).HasColumnName("billing_trans_id");
             entity.Property(e => e.ClassId).HasColumnName("class_id");
+            entity.Property(e => e.ExamSlotId).HasColumnName("exam_slot_id");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("created_at");
@@ -189,6 +190,11 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("attendance_sessions_created_by_fkey");
+
+            entity.HasOne(d => d.ExamSlot).WithMany()
+        .HasForeignKey(d => d.ExamSlotId)
+        .OnDelete(DeleteBehavior.SetNull)
+        .HasConstraintName("attendance_sessions_exam_slot_id_fkey");
         });
 
         modelBuilder.Entity<BiometricDatum>(entity =>

@@ -119,6 +119,7 @@ public static class AcademicMapper
         {
             Id = entity.Id,
             ClassId = entity.ClassId,
+            ExamSlotId = entity.ExamSlotId,
             CreatedBy = entity.CreatedBy,
             BillingTransId = entity.BillingTransId,
             VideoPath = entity.VideoPath,

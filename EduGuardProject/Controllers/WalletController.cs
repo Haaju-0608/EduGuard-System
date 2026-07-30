@@ -122,12 +122,12 @@ namespace EduGuardProject.Controllers
         {
             try
             {
-                var isSuccess = await _walletService.ProcessVnPayReturnAsync(Request.Query);
-                if (isSuccess)
+                var result = await _walletService.ProcessVnPayReturnAsync(Request.Query);
+                if (result.Success)
                 {
-                    return Ok(ApiResponse<object>.OnSuccess(null!, "VNPay payment successful, wallet topped up!"));
+                    return Ok(ApiResponse<VnPayReturnResultDto>.OnSuccess(result, result.Message));
                 }
-                return BadRequest(ApiResponse<object>.OnFail("Payment failed or invalid signature."));
+                return BadRequest(ApiResponse<VnPayReturnResultDto>.OnFail(result.Message));
             }
             catch (Exception ex)
             {

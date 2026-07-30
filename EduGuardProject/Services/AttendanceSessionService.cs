@@ -86,10 +86,22 @@ public class AttendanceSessionService : IAttendanceSessionService
 
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
 
+        // ← THÊM: validate examSlotId nếu có truyền lên
+        if (dto.ExamSlotId.HasValue)
+        {
+            var examSlot = await _context.ExamSlots.AsNoTracking()
+                .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId.Value);
+            if (examSlot == null)
+                throw new InvalidOperationException("Exam slot not found.");
+            if (examSlot.ClassId != dto.ClassId)
+                throw new InvalidOperationException("Exam slot does not belong to the specified class.");
+        }
+
         var entity = new AttendanceSession
         {
             Id = Guid.NewGuid(),
             ClassId = dto.ClassId,
+            ExamSlotId = dto.ExamSlotId,
             CreatedBy = user.Id,
             VideoPath = dto.VideoPath,
             StartTime = ToUtcTimestamp(dto.StartTime),

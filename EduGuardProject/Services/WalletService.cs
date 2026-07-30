@@ -169,7 +169,7 @@ namespace EduGuardProject.Services
             return paymentUrl;
         }
 
-        public async Task<bool> ProcessVnPayReturnAsync(IQueryCollection query)
+        public async Task<VnPayReturnResultDto> ProcessVnPayReturnAsync(IQueryCollection query)
         {
             var vnpay = new VnPayLibrary();
 
@@ -184,24 +184,27 @@ namespace EduGuardProject.Services
 
             bool isValidSignature = vnpay.ValidateSignature(vnp_SecureHash, secretKey);
             if (!isValidSignature)
-                return false;
+                return new VnPayReturnResultDto { Success = false, Message = "Chữ ký không hợp lệ." };
 
             string responseCode = query["vnp_ResponseCode"];
             string txnRef = query["vnp_TxnRef"];
             string vnpAmountRaw = query["vnp_Amount"];
 
-            // 1. Tìm lại transaction đã lưu lúc tạo URL
             var transaction = await _context.Transactions
                 .FirstOrDefaultAsync(t => t.VnpayRef == txnRef);
 
             if (transaction == null)
-                return false; // không khớp txnRef nào trong DB -> nghi ngờ giả mạo, không cộng
+                return new VnPayReturnResultDto { Success = false, Message = "Không tìm thấy giao dịch." };
 
-            // 2. Idempotency guard — VNPay có thể gọi return/IPN nhiều lần cho cùng 1 giao dịch
             if (transaction.Status == TransactionStatus.SUCCESS)
-                return true; // đã xử lý rồi, khỏi cộng lại lần 2
+                return new VnPayReturnResultDto
+                {
+                    Success = true,
+                    Message = "Giao dịch đã được xử lý trước đó.",
+                    Amount = transaction.Amount,
+                    TxnRef = txnRef
+                };
 
-            // 3. Verify số tiền VNPay trả về khớp với số tiền đã lưu (chống sửa amount ở client)
             if (long.TryParse(vnpAmountRaw, out long vnpAmountCents))
             {
                 var expectedCents = (long)(transaction.Amount * 100);
@@ -210,7 +213,7 @@ namespace EduGuardProject.Services
                     transaction.Status = TransactionStatus.FAILED;
                     transaction.ProcessedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
-                    return false;
+                    return new VnPayReturnResultDto { Success = false, Message = "Số tiền không khớp.", TxnRef = txnRef };
                 }
             }
 
@@ -219,13 +222,12 @@ namespace EduGuardProject.Services
                 transaction.Status = TransactionStatus.FAILED;
                 transaction.ProcessedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                return false;
+                return new VnPayReturnResultDto { Success = false, Message = "Thanh toán không thành công.", TxnRef = txnRef };
             }
 
-            // 4. Thành công thật sự -> cộng tiền vào ví
             var wallet = await _context.Wallets.FirstOrDefaultAsync(w => w.Id == transaction.WalletId);
             if (wallet == null)
-                return false;
+                return new VnPayReturnResultDto { Success = false, Message = "Không tìm thấy ví.", TxnRef = txnRef };
 
             wallet.Balance += transaction.Amount;
             wallet.UpdatedAt = DateTime.UtcNow;
@@ -234,7 +236,14 @@ namespace EduGuardProject.Services
             transaction.ProcessedAt = DateTime.UtcNow;
 
             await _context.SaveChangesAsync();
-            return true;
+
+            return new VnPayReturnResultDto
+            {
+                Success = true,
+                Message = "Nạp tiền thành công.",
+                Amount = transaction.Amount,
+                TxnRef = txnRef
+            };
         }
     }
 }

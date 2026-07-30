@@ -81,6 +81,11 @@ public class ExamslotServices : IExamSlotServices
             if (!enrolled)
                 throw new UnauthorizedAccessException("Access denied.");
         }
+        else if (user.Role == AppRole.Lecturer)   // ← THÊM MỚI: Lecturer chỉ thấy exam slot của lớp mình dạy
+        {
+            if (cls.LecturerId != user.Id)
+                throw new UnauthorizedAccessException("You can only view exam slots for your own classes.");
+        }
         else if (user.Role != AppRole.SuperAdmin)
         {
             throw new UnauthorizedAccessException("Access denied.");

@@ -13,6 +13,7 @@ namespace EduGuardProject.Services.IServices
 
         //VNPAY:
         Task<string> ProcessTopUpAsync(TopUpRequestDto dto, HttpContext httpContext);
-        Task<bool> ProcessVnPayReturnAsync(IQueryCollection collections);
+        Task<VnPayReturnResultDto> ProcessVnPayReturnAsync(IQueryCollection collections); 
+
     }
 }

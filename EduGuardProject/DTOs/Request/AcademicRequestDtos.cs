@@ -67,6 +67,8 @@ public class CreateAttendanceSessionDto
     [Required]
     public Guid ClassId { get; set; }
 
+    public Guid? ExamSlotId { get; set; }
+
     [Required]
     public DateTime StartTime { get; set; }
 

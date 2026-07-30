@@ -10,6 +10,8 @@ public partial class AttendanceSession
     [Required]
     public Guid ClassId { get; set; }
 
+    public Guid? ExamSlotId { get; set; }
+
     [Required]
     public Guid CreatedBy { get; set; }
 
@@ -43,4 +45,6 @@ public partial class AttendanceSession
     public virtual Class Class { get; set; } = null!;
 
     public virtual User CreatedByNavigation { get; set; } = null!;
+
+    public virtual ExamSlot? ExamSlot { get; set; }
 }

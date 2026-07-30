@@ -59,6 +59,7 @@ public class AttendanceSessionResponseDto
 {
     public Guid Id { get; set; }
     public Guid ClassId { get; set; }
+    public Guid? ExamSlotId { get; set; }
     public Guid CreatedBy { get; set; }
     public Guid? BillingTransId { get; set; }
     public string? VideoPath { get; set; }
@@ -95,6 +96,7 @@ public class AttendanceSessionSummaryDto
 {
     public Guid Id { get; set; }
     public Guid ClassId { get; set; }
+    public Guid? ExamSlotId { get; set; }
     public SessionStatus Status { get; set; }
     public DateTime StartTime { get; set; }
 }
