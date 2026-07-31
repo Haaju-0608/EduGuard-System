@@ -123,15 +123,18 @@ namespace EduGuardProject.Controllers
             try
             {
                 var result = await _walletService.ProcessVnPayReturnAsync(Request.Query);
-                if (result.Success)
-                {
-                    return Ok(ApiResponse<VnPayReturnResultDto>.OnSuccess(result, result.Message));
-                }
-                return BadRequest(ApiResponse<VnPayReturnResultDto>.OnFail(result.Message));
+                var feUrl = $"https://edu-guard-system-fe.vercel.app/school/wallet-result" +
+                            $"?success={result.Success}" +
+                            $"&message={Uri.EscapeDataString(result.Message)}" +
+                            $"&amount={result.Amount}" +
+                            $"&txnRef={result.TxnRef}";
+                return Redirect(feUrl);
             }
             catch (Exception ex)
             {
-                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
+                var feUrl = $"https://edu-guard-system-fe.vercel.app/school/wallet-result" +
+                            $"?success=false&message={Uri.EscapeDataString($"System error: {ex.Message}")}";
+                return Redirect(feUrl);
             }
         }
     }
