@@ -1,19 +1,19 @@
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
-using Microsoft.Extensions.Caching.Memory;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace EduGuardProject.Services.BackgroundJobs;
 
 public class ExamReminderBackgroundService : BackgroundService
 {
     private readonly IServiceScopeFactory _scopeFactory;
-    private readonly IMemoryCache _cache;
+    private readonly IDistributedCache _cache;
     private readonly ILogger<ExamReminderBackgroundService> _logger;
 
     public ExamReminderBackgroundService(
         IServiceScopeFactory scopeFactory,
-        IMemoryCache cache,
+        IDistributedCache cache,
         ILogger<ExamReminderBackgroundService> logger)
     {
         _scopeFactory = scopeFactory;
@@ -53,7 +53,7 @@ public class ExamReminderBackgroundService : BackgroundService
         foreach (var exam in exams)
         {
             var cacheKey = $"exam-reminder:{exam.Id}";
-            if (_cache.TryGetValue(cacheKey, out _))
+            if (await _cache.GetStringAsync(cacheKey, cancellationToken) != null)
                 continue;
 
             await notifications.SendToClassStudentsAsync(
@@ -65,7 +65,11 @@ public class ExamReminderBackgroundService : BackgroundService
                 exam.Id,
                 cancellationToken);
 
-            _cache.Set(cacheKey, true, TimeSpan.FromHours(3));
+            await _cache.SetStringAsync(
+                cacheKey,
+                "1",
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromHours(3) },
+                cancellationToken);
         }
     }
 
