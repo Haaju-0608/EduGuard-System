@@ -4,6 +4,7 @@ using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
 
 namespace EduGuardProject.Services
@@ -16,6 +17,7 @@ namespace EduGuardProject.Services
         private readonly IRealtimeEventDispatcher _realtime;
         private readonly IStorageService _storage;
         private readonly AppDbContext _context;
+        private readonly IDistributedCache _cache;
 
         //  3. Tiêm IConfiguration vào để lấy Key tự động
         public UserService(
@@ -24,7 +26,8 @@ namespace EduGuardProject.Services
             IConfiguration config,
             IRealtimeEventDispatcher realtime,
             IStorageService storage,
-            AppDbContext context)
+            AppDbContext context,
+            IDistributedCache cache)
         {
             _repo = repo;
             _supabaseClient = supabaseClient;
@@ -32,6 +35,7 @@ namespace EduGuardProject.Services
             _realtime = realtime;
             _storage = storage;
             _context = context;
+            _cache = cache;
         }
 
         public async Task<(IEnumerable<UserResponseDto> Items, int TotalCount)> GetUsersAsync(
@@ -126,6 +130,7 @@ namespace EduGuardProject.Services
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _repo.UpdateAsync(entity);
+            await _cache.RemoveAsync(CurrentUserService.ProfileCacheKey(entity.Id));
             await PublishUserChangedAsync(entity, "updated");
             return true;
         }
@@ -140,6 +145,7 @@ namespace EduGuardProject.Services
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _repo.UpdateAsync(entity);
+            await _cache.RemoveAsync(CurrentUserService.ProfileCacheKey(entity.Id));
             await PublishUserChangedAsync(entity, "profile-updated");
             return true;
         }
@@ -151,6 +157,7 @@ namespace EduGuardProject.Services
 
             await DeleteStudentStorageAsync(entity);
             await _repo.DeleteAsync(entity);
+            await _cache.RemoveAsync(CurrentUserService.ProfileCacheKey(entity.Id));
 
             var serviceKey = _config["Supabase:ServiceRoleKey"]
                 ?? throw new InvalidOperationException("Supabase:ServiceRoleKey is not configured.");
