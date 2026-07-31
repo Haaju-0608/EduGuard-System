@@ -98,7 +98,10 @@ public enum TransactionType
     ATTENDANCE_FEE_LEGACY,
 
     [PgName("proctoring_fee")]
-    PROCTORING_FEE_LEGACY
+    PROCTORING_FEE_LEGACY,
+
+    [PgName("SUBSCRIPTION_FEE")]   
+    SUBSCRIPTION_FEE,
 }
 
 public static class TransactionTypeExtensions
@@ -168,7 +171,13 @@ public enum PricingServiceType
     ATTENDANCE_UNIT,
 
     [PgName("proctoring_per_hour")]
-    PROCTORING_PER_HOUR
+    PROCTORING_PER_HOUR,
+
+    [PgName("subscription_monthly")]   
+    SUBSCRIPTION_MONTHLY,
+
+    [PgName("subscription_yearly")]    
+    SUBSCRIPTION_YEARLY
 }
 
 //ENUM cho notification

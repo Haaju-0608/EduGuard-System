@@ -99,6 +99,14 @@ namespace EduGuardProject.Controllers
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found."));
                 return Ok(ApiResponse<object>.OnSuccess(null!, "Gia hạn subscription thành công."));
             }
+            catch (InvalidOperationException ex)  
+            {
+                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.OnFail(ex.Message));
+            }
             catch (Exception ex)
             {
                 return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));

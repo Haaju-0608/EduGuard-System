@@ -3,6 +3,7 @@ using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using Microsoft.EntityFrameworkCore;
 
 namespace EduGuardProject.Services
 {
@@ -10,13 +11,17 @@ namespace EduGuardProject.Services
     {
         private readonly IInstitutionRepository _repo;
         private readonly IRealtimeEventDispatcher _realtime;
-        private readonly ICurrentUserService _currentUser;   
+        private readonly ICurrentUserService _currentUser;
+        private readonly IPricingConfigService _pricingConfigService;   
+        private readonly AppDbContext _context;
 
-        public InstitutionService(IInstitutionRepository repo, IRealtimeEventDispatcher realtime, ICurrentUserService currentUser)
+        public InstitutionService(IInstitutionRepository repo, IRealtimeEventDispatcher realtime, ICurrentUserService currentUser, IPricingConfigService pricingConfigService, AppDbContext context)
         {
             _repo = repo;
             _realtime = realtime;
             _currentUser = currentUser;
+            _context = context;
+            _pricingConfigService = pricingConfigService;
         }
 
         public async Task<(IEnumerable<InstitutionResponseDto> Items, int TotalCount)> GetInstitutionsAsync(string? search, string? sort, int page, int pageSize)
@@ -70,9 +75,49 @@ namespace EduGuardProject.Services
                 throw new UnauthorizedAccessException("You do not have permission to do this");
             }
 
+            // 1. Xác định loại giá theo billing model của trường
+            var serviceType = entity.BillingModel == BillingModel.Monthly
+                ? PricingServiceType.SUBSCRIPTION_MONTHLY
+                : PricingServiceType.SUBSCRIPTION_YEARLY;
+
+            var priceConfig = await _pricingConfigService.GetCurrentActiveConfigAsync(serviceType);
+            if (priceConfig == null)
+                throw new InvalidOperationException(
+                    "Chưa cấu hình giá gia hạn subscription. Vui lòng liên hệ quản trị hệ thống.");
+
+            var renewalFee = priceConfig.UnitPrice;
+
+            // 2. Tìm ví, kiểm tra số dư
+            var wallet = await _context.Wallets
+                .FirstOrDefaultAsync(w => w.InstitutionId == institutionId);
+            if (wallet == null)
+                throw new InvalidOperationException("Không tìm thấy ví của trường học này.");
+
+            if (wallet.Balance < renewalFee)
+                throw new InvalidOperationException(
+                    $"Số dư không đủ để gia hạn. Cần {renewalFee:N0}đ, hiện có {wallet.Balance:N0}đ. Vui lòng nạp thêm tiền.");
+
+            // 3. Trừ tiền + ghi transaction
+            wallet.Balance -= renewalFee;
+            wallet.UpdatedAt = DateTime.UtcNow;
+
+            var transaction = new Transaction
+            {
+                Id = Guid.NewGuid(),
+                WalletId = wallet.Id,
+                PricingConfigId = priceConfig.Id,
+                Amount = renewalFee,
+                Type = TransactionType.SUBSCRIPTION_FEE,
+                Status = TransactionStatus.SUCCESS,
+                Description = $"Gia hạn subscription ({entity.BillingModel})",
+                ProcessedAt = DateTime.UtcNow,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            _context.Transactions.Add(transaction);
+
+            // 4. Dời ngày hết hạn (logic cũ giữ nguyên)
             var now = DateTime.UtcNow;
-            // Nếu vẫn còn hạn, cộng thêm từ ngày hết hạn cũ (không mất phần thời gian còn lại)
-            // Nếu đã hết hạn rồi, tính từ thời điểm hiện tại
             var baseDate = (entity.SubscriptionExpiresAt.HasValue && entity.SubscriptionExpiresAt.Value > now)
                 ? entity.SubscriptionExpiresAt.Value
                 : now;
@@ -81,17 +126,21 @@ namespace EduGuardProject.Services
                 ? baseDate.AddMonths(1)
                 : baseDate.AddYears(1);
 
-            // Nếu trước đó bị khoá do hết hạn, tự mở khoá lại
             if (entity.Status == InstitutionStatus.Suspended)
                 entity.Status = InstitutionStatus.Active;
 
             entity.UpdatedAt = now;
             await _repo.UpdateAsync(entity);
+
+            // 5. Lưu tất cả (wallet + transaction) trong 1 lần — EF tự đảm bảo transaction DB
+            await _context.SaveChangesAsync();
+
             await PublishInstitutionChangedAsync(entity, "renewed");
             return true;
         }
 
-        public async Task<bool> UpdateInstitutionAsync(Guid id, UpdateInstitutionDto dto)
+
+public async Task<bool> UpdateInstitutionAsync(Guid id, UpdateInstitutionDto dto)
         {
             var entity = await _repo.GetByIdAsync(id);
             if (entity == null) return false;
