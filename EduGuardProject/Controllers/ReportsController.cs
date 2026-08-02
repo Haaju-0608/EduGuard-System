@@ -1,6 +1,7 @@
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Filters;
 using EduGuardProject.Models;
+using EduGuardProject.Services;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Mvc;
 
@@ -12,10 +13,50 @@ namespace EduGuardProject.Controllers;
 public class ReportsController : AcademicApiControllerBase
 {
     private readonly IReportService _reports;
+    private readonly ReportExportService _exporter;
 
-    public ReportsController(IReportService reports)
+    public ReportsController(IReportService reports, ReportExportService exporter)
     {
         _reports = reports;
+        _exporter = exporter;
+    }
+
+    [HttpGet("export")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    public async Task<IActionResult> Export(
+        [FromQuery] string reportType,
+        [FromQuery] string format,
+        [FromQuery] Guid? institutionId,
+        [FromQuery] Guid? classId,
+        [FromQuery] Guid? examSlotId,
+        [FromQuery] Guid? walletId,
+        [FromQuery] DateTime? from,
+        [FromQuery] DateTime? to,
+        [FromQuery] string groupBy = "day",
+        CancellationToken cancellationToken = default)
+    {
+        try
+        {
+            if (string.IsNullOrWhiteSpace(reportType))
+                throw new ArgumentException("reportType is required.");
+            if (string.IsNullOrWhiteSpace(format))
+                throw new ArgumentException("format is required.");
+            if (from > to)
+                throw new ArgumentException("from must be earlier than or equal to to.");
+
+            var report = reportType.ToLowerInvariant() switch
+            {
+                "attendance" => await _reports.GetAttendanceReportAsync(institutionId, classId, from, to, cancellationToken),
+                "violations" => await _reports.GetViolationReportAsync(institutionId, examSlotId, from, to, cancellationToken),
+                "wallet" => await _reports.GetWalletReportAsync(institutionId, walletId, from, to, cancellationToken),
+                "revenue" => await _reports.GetRevenueReportAsync(from, to, groupBy, cancellationToken),
+                _ => throw new ArgumentException("reportType must be attendance, violations, wallet, or revenue.")
+            };
+
+            var file = _exporter.Export(reportType, format, report);
+            return File(file.Content, file.ContentType, file.FileName);
+        }
+        catch (Exception ex) { return HandleException(ex); }
     }
 
     [HttpGet("attendance")]

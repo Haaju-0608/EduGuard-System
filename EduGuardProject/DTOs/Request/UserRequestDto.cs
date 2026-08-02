@@ -2,6 +2,12 @@
 
 namespace EduGuardProject.DTOs.Request
 {
+    public class BulkImportUsersRequestDto
+    {
+        [System.ComponentModel.DataAnnotations.Required]
+        public IFormFile File { get; set; } = null!;
+    }
+
     public class UpdateUserDto
     {
         public Guid? InstitutionId { get; set; }

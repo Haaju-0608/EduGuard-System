@@ -146,6 +146,7 @@ builder.Services.AddScoped<IExamWorkflowService, ExamWorkflowService>();
 builder.Services.AddSingleton<IExamPresenceTracker, ExamPresenceTracker>();
 builder.Services.AddScoped<IDashboardStatsService, DashboardStatsService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<ReportExportService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<EmailTemplateService>();
 builder.Services.AddScoped<IEmailService, EmailService>();

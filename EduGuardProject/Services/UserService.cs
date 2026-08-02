@@ -3,9 +3,12 @@ using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Configuration;
+using Microsoft.VisualBasic.FileIO;
+using System.Net.Mail;
 
 namespace EduGuardProject.Services
 {
@@ -114,6 +117,199 @@ namespace EduGuardProject.Services
 
             await PublishUserChangedAsync(entity, "created");
             return MapToResponseDto(entity);
+        }
+
+        public async Task<BulkImportUsersResponseDto> BulkImportUsersAsync(
+            IFormFile file,
+            Guid? forcedInstitutionId = null,
+            CancellationToken cancellationToken = default)
+        {
+            if (file == null || file.Length == 0)
+                throw new ArgumentException("Import file is required.");
+            if (file.Length > 5 * 1024 * 1024)
+                throw new ArgumentException("Import file must not exceed 5 MB.");
+
+            var extension = Path.GetExtension(file.FileName).ToLowerInvariant();
+            if (extension is not ".xlsx" and not ".csv")
+                throw new ArgumentException("Only .xlsx and .csv files are supported.");
+
+            await using var stream = file.OpenReadStream();
+            var rows = extension == ".xlsx" ? ReadExcel(stream) : ReadCsv(stream);
+            if (rows.Count == 0)
+                throw new ArgumentException("The import file does not contain any data rows.");
+            if (rows.Count > 500)
+                throw new ArgumentException("A single import is limited to 500 data rows.");
+
+            var existingEmailList = await _context.Users.AsNoTracking()
+                .Select(u => u.Email)
+                .ToListAsync(cancellationToken);
+            var existingEmails = existingEmailList.ToHashSet(StringComparer.OrdinalIgnoreCase);
+            var requestedInstitutionIds = forcedInstitutionId.HasValue
+                ? new[] { forcedInstitutionId.Value }
+                : rows.Select(r => Guid.TryParse(r.InstitutionId, out var id) ? id : Guid.Empty)
+                    .Where(id => id != Guid.Empty).Distinct().ToArray();
+            var requestedInstitutionIdSet = requestedInstitutionIds.ToHashSet();
+            var validInstitutionIds = (await _context.Institutions.AsNoTracking()
+                .Where(i => i.DeletedAt == null)
+                .Select(i => i.Id)
+                .ToListAsync(cancellationToken))
+                .Where(requestedInstitutionIdSet.Contains)
+                .ToHashSet();
+            var seenEmails = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            var response = new BulkImportUsersResponseDto { Total = rows.Count };
+
+            foreach (var row in rows)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                try
+                {
+                    var dto = ValidateImportRow(row, forcedInstitutionId);
+                    if (!dto.InstitutionId.HasValue || !validInstitutionIds.Contains(dto.InstitutionId.Value))
+                        throw new ArgumentException("Institution does not exist or has been deleted.");
+                    if (!seenEmails.Add(dto.Email))
+                        throw new ArgumentException("Email is duplicated in the import file.");
+                    if (existingEmails.Contains(dto.Email.ToLowerInvariant()))
+                        throw new ArgumentException("Email already exists.");
+
+                    var user = await CreateUserAsync(dto);
+                    response.Results.Add(new BulkImportUserRowResultDto
+                    {
+                        Row = row.Number,
+                        Email = dto.Email,
+                        Success = true,
+                        UserId = user.Id
+                    });
+                    response.Succeeded++;
+                }
+                catch (Exception ex)
+                {
+                    response.Results.Add(new BulkImportUserRowResultDto
+                    {
+                        Row = row.Number,
+                        Email = row.Email,
+                        Success = false,
+                        Error = ex.Message
+                    });
+                    response.Failed++;
+                }
+            }
+
+            return response;
+        }
+
+        private static List<ImportUserRow> ReadExcel(Stream stream)
+        {
+            using var workbook = new XLWorkbook(stream);
+            var sheet = workbook.Worksheets.FirstOrDefault()
+                ?? throw new ArgumentException("The workbook does not contain a worksheet.");
+            var headerRow = sheet.FirstRowUsed()
+                ?? throw new ArgumentException("The workbook is empty.");
+            var headers = headerRow.CellsUsed().ToDictionary(
+                c => NormalizeHeader(c.GetString()), c => c.Address.ColumnNumber);
+            EnsureHeaders(headers);
+
+            return sheet.RowsUsed().Where(r => r.RowNumber() > headerRow.RowNumber())
+                .Select(r => ToImportRow(r.RowNumber(), name => r.Cell(headers[name]).GetFormattedString()))
+                .Where(r => !r.IsEmpty)
+                .ToList();
+        }
+
+        private static List<ImportUserRow> ReadCsv(Stream stream)
+        {
+            using var parser = new TextFieldParser(stream)
+            {
+                TextFieldType = FieldType.Delimited,
+                HasFieldsEnclosedInQuotes = true,
+                TrimWhiteSpace = true
+            };
+            parser.SetDelimiters(",");
+            var headerValues = parser.ReadFields() ?? throw new ArgumentException("The CSV file is empty.");
+            var headers = headerValues.Select((value, index) => (Name: NormalizeHeader(value), Index: index))
+                .ToDictionary(x => x.Name, x => x.Index);
+            EnsureHeaders(headers.ToDictionary(x => x.Key, x => x.Value + 1));
+
+            var rows = new List<ImportUserRow>();
+            var rowNumber = 1;
+            while (!parser.EndOfData)
+            {
+                rowNumber++;
+                var values = parser.ReadFields() ?? [];
+                string Value(string name) => headers.TryGetValue(name, out var index) && index < values.Length ? values[index] : "";
+                var row = ToImportRow(rowNumber, Value);
+                if (!row.IsEmpty) rows.Add(row);
+            }
+            return rows;
+        }
+
+        private static void EnsureHeaders(IReadOnlyDictionary<string, int> headers)
+        {
+            var required = new[] { "email", "password", "fullname", "role" };
+            var missing = required.Where(header => !headers.ContainsKey(header)).ToList();
+            if (missing.Count > 0)
+                throw new ArgumentException($"Missing required columns: {string.Join(", ", missing)}.");
+        }
+
+        private static ImportUserRow ToImportRow(int number, Func<string, string> value) => new(
+            number,
+            value("email").Trim(),
+            value("password"),
+            value("fullname").Trim(),
+            value("role").Trim(),
+            value("institutionid").Trim(),
+            value("studentcode").Trim(),
+            value("phone").Trim());
+
+        private static CreateUserDto ValidateImportRow(ImportUserRow row, Guid? forcedInstitutionId)
+        {
+            if (string.IsNullOrWhiteSpace(row.Email)) throw new ArgumentException("Email is required.");
+            try
+            {
+                var address = new MailAddress(row.Email);
+                if (!address.Address.Equals(row.Email, StringComparison.OrdinalIgnoreCase))
+                    throw new FormatException();
+            }
+            catch { throw new ArgumentException("Email format is invalid."); }
+            if (row.Password.Length < 6) throw new ArgumentException("Password must be at least 6 characters.");
+            if (string.IsNullOrWhiteSpace(row.FullName)) throw new ArgumentException("FullName is required.");
+
+            var normalizedRole = row.Role.Replace("_", "").Replace(" ", "");
+            var role = normalizedRole.Equals("student", StringComparison.OrdinalIgnoreCase)
+                ? AppRole.Student
+                : normalizedRole.Equals("lecturer", StringComparison.OrdinalIgnoreCase)
+                    ? AppRole.Lecturer
+                    : throw new ArgumentException("Role must be Student or Lecturer.");
+            if (role == AppRole.Student && string.IsNullOrWhiteSpace(row.StudentCode))
+                throw new ArgumentException("StudentCode is required for Student.");
+
+            var institutionId = forcedInstitutionId;
+            if (institutionId is null)
+            {
+                if (!Guid.TryParse(row.InstitutionId, out var parsedInstitutionId))
+                    throw new ArgumentException("InstitutionId must be a valid GUID.");
+                institutionId = parsedInstitutionId;
+            }
+
+            return new CreateUserDto
+            {
+                Email = row.Email.ToLowerInvariant(),
+                Password = row.Password,
+                FullName = row.FullName,
+                Role = role,
+                InstitutionId = institutionId,
+                StudentCode = string.IsNullOrWhiteSpace(row.StudentCode) ? null : row.StudentCode,
+                Phone = string.IsNullOrWhiteSpace(row.Phone) ? null : row.Phone,
+                Status = UserStatus.Active
+            };
+        }
+
+        private static string NormalizeHeader(string value) =>
+            value.Trim().Replace("_", "").Replace(" ", "").ToLowerInvariant();
+
+        private sealed record ImportUserRow(
+            int Number, string Email, string Password, string FullName, string Role,
+            string InstitutionId, string StudentCode, string Phone)
+        {
+            public bool IsEmpty => string.IsNullOrWhiteSpace(Email) && string.IsNullOrWhiteSpace(FullName);
         }
 
         public async Task<bool> UpdateUserAsync(Guid id, UpdateUserDto dto)
