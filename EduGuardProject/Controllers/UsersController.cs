@@ -26,9 +26,11 @@ namespace EduGuardProject.Controllers
             try
             {
                 var role = (AppRole)HttpContext.Items["Role"]!;
-                var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast
+                var institutionId = role == AppRole.SuperAdmin
+                    ? null
+                    : HttpContext.Items["InstitutionId"] as Guid?;
 
-                Guid? scopedInstitutionId = role == AppRole.SuperAdmin ? null : institutionId;
+                Guid? scopedInstitutionId = institutionId;
                 AppRole? excludeRole = role == AppRole.Lecturer ? AppRole.SchoolAdmin : null;
 
                 var (items, totalCount) = await _service.GetUsersAsync(scopedInstitutionId, excludeRole, search, sort, page, pageSize);
@@ -45,7 +47,9 @@ namespace EduGuardProject.Controllers
         public async Task<IActionResult> GetById(Guid id)
         {
             var role = (AppRole)HttpContext.Items["Role"]!;
-            var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast
+            var institutionId = role == AppRole.SuperAdmin
+                ? null
+                : HttpContext.Items["InstitutionId"] as Guid?;
 
             var item = await _service.GetUserByIdAsync(id);
             if (item == null) return NotFound(ApiResponse<object>.OnFail("User not found."));
@@ -66,7 +70,9 @@ namespace EduGuardProject.Controllers
             try
             {
                 var role = (AppRole)HttpContext.Items["Role"]!;
-                var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast
+                var institutionId = role == AppRole.SuperAdmin
+                    ? null
+                    : HttpContext.Items["InstitutionId"] as Guid?;
 
                 if (role != AppRole.SuperAdmin)
                 {
@@ -89,12 +95,41 @@ namespace EduGuardProject.Controllers
             }
         }
 
+        [HttpPost("bulk-import")]
+        [Consumes("multipart/form-data")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        public async Task<IActionResult> BulkImport(
+            [FromForm] BulkImportUsersRequestDto request,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var role = (AppRole)HttpContext.Items["Role"]!;
+                var institutionId = role == AppRole.SuperAdmin
+                    ? null
+                    : HttpContext.Items["InstitutionId"] as Guid?;
+
+                if (role != AppRole.SuperAdmin && institutionId is null)
+                    return BadRequest(ApiResponse<object>.OnFail("Your account is not assigned to an institution."));
+
+                var result = await _service.BulkImportUsersAsync(request.File, institutionId, cancellationToken);
+                return Ok(ApiResponse<BulkImportUsersResponseDto>.OnSuccess(result,
+                    $"Import completed: {result.Succeeded} succeeded, {result.Failed} failed."));
+            }
+            catch (Exception ex)
+            {
+                return BadRequest(ApiResponse<object>.OnFail($"Bulk import failed: {ex.Message}"));
+            }
+        }
+
         [HttpPut("{id:guid}")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
         {
             var role = (AppRole)HttpContext.Items["Role"]!;
-            var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast (chỗ Giang chưa fix)
+            var institutionId = role == AppRole.SuperAdmin
+                ? null
+                : HttpContext.Items["InstitutionId"] as Guid?;
 
             var existing = await _service.GetUserByIdAsync(id);
             if (existing == null) return NotFound(ApiResponse<object>.OnFail("User not found to update."));
@@ -116,7 +151,9 @@ namespace EduGuardProject.Controllers
         public async Task<IActionResult> Delete(Guid id)
         {
             var role = (AppRole)HttpContext.Items["Role"]!;
-            var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast (chỗ Giang chưa fix)
+            var institutionId = role == AppRole.SuperAdmin
+                ? null
+                : HttpContext.Items["InstitutionId"] as Guid?;
 
             var existing = await _service.GetUserByIdAsync(id);
             if (existing == null) return NotFound(ApiResponse<object>.OnFail("User not found to delete."));
@@ -134,7 +171,7 @@ namespace EduGuardProject.Controllers
         // ================= KHU VỰC CÁ NHÂN (MỌI ROLE ĐỀU ĐƯỢC PHÉP TRUY CẬP) =================
 
         [HttpGet("me")]
-        [SupabaseAuthorize] // Trống ngoặc = Bất kỳ ai đăng nhập hợp lệ (Student, Lecturer, Admin) đều dùng được
+        [SupabaseAuthorize]
         public async Task<IActionResult> GetMyProfile()
         {
             try
@@ -154,7 +191,7 @@ namespace EduGuardProject.Controllers
         }
 
         [HttpPut("me")]
-        [SupabaseAuthorize] // Tự sinh viên/giảng viên tự sửa hồ sơ của CHÍNH HỌ
+        [SupabaseAuthorize]
         public async Task<IActionResult> UpdateMyProfile([FromBody] UpdateMyProfileDto dto)
         {
             try

@@ -2,6 +2,23 @@
 
 namespace EduGuardProject.DTOs.Response
 {
+    public class BulkImportUsersResponseDto
+    {
+        public int Total { get; set; }
+        public int Succeeded { get; set; }
+        public int Failed { get; set; }
+        public List<BulkImportUserRowResultDto> Results { get; set; } = [];
+    }
+
+    public class BulkImportUserRowResultDto
+    {
+        public int Row { get; set; }
+        public string? Email { get; set; }
+        public bool Success { get; set; }
+        public Guid? UserId { get; set; }
+        public string? Error { get; set; }
+    }
+
     public class UserResponseDto
     {
         public Guid Id { get; set; }
