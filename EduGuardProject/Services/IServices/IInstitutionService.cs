@@ -1,5 +1,6 @@
 ﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Models;
 
 namespace EduGuardProject.Services.IServices
 {
@@ -11,7 +12,8 @@ namespace EduGuardProject.Services.IServices
         Task<bool> UpdateInstitutionAsync(Guid id, UpdateInstitutionDto dto);
         Task<bool> DeleteInstitutionAsync(Guid id);
 
-        Task<bool> RenewSubscriptionAsync(Guid institutionId);
+       Task<bool> RenewSubscriptionAsync(Guid institutionId, BillingModel newBillingModel); 
+
 
     }
 }

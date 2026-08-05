@@ -26,7 +26,7 @@ namespace EduGuardProject.Controllers
             try
             {
                 var role = (AppRole)HttpContext.Items["Role"]!;
-                var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+                var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast
 
                 Guid? scopedInstitutionId = role == AppRole.SuperAdmin ? null : institutionId;
                 AppRole? excludeRole = role == AppRole.Lecturer ? AppRole.SchoolAdmin : null;
@@ -45,7 +45,7 @@ namespace EduGuardProject.Controllers
         public async Task<IActionResult> GetById(Guid id)
         {
             var role = (AppRole)HttpContext.Items["Role"]!;
-            var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+            var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast
 
             var item = await _service.GetUserByIdAsync(id);
             if (item == null) return NotFound(ApiResponse<object>.OnFail("User not found."));
@@ -66,10 +66,19 @@ namespace EduGuardProject.Controllers
             try
             {
                 var role = (AppRole)HttpContext.Items["Role"]!;
-                var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+                var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast
 
-                if (role != AppRole.SuperAdmin && dto.InstitutionId != institutionId)
-                    return BadRequest(ApiResponse<object>.OnFail("You can only create users within your own institution."));
+                if (role != AppRole.SuperAdmin)
+                {
+                    if (institutionId is null)
+                        return BadRequest(ApiResponse<object>.OnFail("Missing institution context for this account."));
+                    if (dto.InstitutionId != institutionId)
+                        return BadRequest(ApiResponse<object>.OnFail("You can only create users within your own institution."));
+                }
+                else if (dto.InstitutionId is null)
+                {
+                    return BadRequest(ApiResponse<object>.OnFail("SuperAdmin must specify an institutionId when creating a user."));
+                }
 
                 var result = await _service.CreateUserAsync(dto);
                 return StatusCode(201, ApiResponse<UserResponseDto>.OnSuccess(result, "User created successfully."));
@@ -85,7 +94,7 @@ namespace EduGuardProject.Controllers
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateUserDto dto)
         {
             var role = (AppRole)HttpContext.Items["Role"]!;
-            var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+            var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast (chỗ Giang chưa fix)
 
             var existing = await _service.GetUserByIdAsync(id);
             if (existing == null) return NotFound(ApiResponse<object>.OnFail("User not found to update."));
@@ -107,7 +116,7 @@ namespace EduGuardProject.Controllers
         public async Task<IActionResult> Delete(Guid id)
         {
             var role = (AppRole)HttpContext.Items["Role"]!;
-            var institutionId = (Guid)HttpContext.Items["InstitutionId"]!;
+            var institutionId = HttpContext.Items["InstitutionId"] as Guid?;   // SỬA: safe-cast (chỗ Giang chưa fix)
 
             var existing = await _service.GetUserByIdAsync(id);
             if (existing == null) return NotFound(ApiResponse<object>.OnFail("User not found to delete."));

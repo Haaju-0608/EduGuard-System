@@ -91,15 +91,15 @@ namespace EduGuardProject.Controllers
 
         [HttpPost("{id:guid}/renew-subscription")]
         [SupabaseAuthorize(AppRole.SchoolAdmin)]
-        public async Task<IActionResult> RenewSubscription(Guid id)
+        public async Task<IActionResult> RenewSubscription(Guid id, [FromBody] RenewSubscriptionDto dto)
         {
             try
             {
-                var success = await _service.RenewSubscriptionAsync(id);
+                var success = await _service.RenewSubscriptionAsync(id, dto.BillingModel);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found."));
                 return Ok(ApiResponse<object>.OnSuccess(null!, "Gia hạn subscription thành công."));
             }
-            catch (InvalidOperationException ex)  
+            catch (InvalidOperationException ex)
             {
                 return BadRequest(ApiResponse<object>.OnFail(ex.Message));
             }

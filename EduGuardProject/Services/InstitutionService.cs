@@ -63,7 +63,7 @@ namespace EduGuardProject.Services
         }
 
         // THÊM MỚI: gia hạn thêm 1 chu kỳ kể từ hạn cũ (nếu còn hạn) hoặc từ hiện tại (nếu đã hết hạn)
-        public async Task<bool> RenewSubscriptionAsync(Guid institutionId)
+        public async Task<bool> RenewSubscriptionAsync(Guid institutionId, BillingModel newBillingModel)
         {
             var entity = await _repo.GetByIdAsync(institutionId);
             if (entity == null) return false;
@@ -75,8 +75,8 @@ namespace EduGuardProject.Services
                 throw new UnauthorizedAccessException("You do not have permission to do this");
             }
 
-            // 1. Xác định loại giá theo billing model của trường
-            var serviceType = entity.BillingModel == BillingModel.Monthly
+            // 1. SỬA: lấy giá theo plan MỚI do người dùng chọn, không phải plan cũ của entity
+            var serviceType = newBillingModel == BillingModel.Monthly
                 ? PricingServiceType.SUBSCRIPTION_MONTHLY
                 : PricingServiceType.SUBSCRIPTION_YEARLY;
 
@@ -109,22 +109,29 @@ namespace EduGuardProject.Services
                 Amount = renewalFee,
                 Type = TransactionType.SUBSCRIPTION_FEE,
                 Status = TransactionStatus.SUCCESS,
-                Description = $"Gia hạn subscription ({entity.BillingModel})",
+                // SỬA: ghi rõ trong description có đổi gói hay không, tiện tra cứu sau này
+                Description = entity.BillingModel == newBillingModel
+                    ? $"Gia hạn subscription ({newBillingModel})"
+                    : $"Gia hạn + đổi gói subscription ({entity.BillingModel} -> {newBillingModel})",
                 ProcessedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
             };
             _context.Transactions.Add(transaction);
 
-            // 4. Dời ngày hết hạn (logic cũ giữ nguyên)
+            // 4. CỘNG DỒN thời gian còn lại - logic này giữ NGUYÊN, không đổi gì
+            // (đã đúng ý bạn: nếu còn hạn thì cộng tiếp từ hạn cũ, không quan tâm đổi gói hay không)
             var now = DateTime.UtcNow;
             var baseDate = (entity.SubscriptionExpiresAt.HasValue && entity.SubscriptionExpiresAt.Value > now)
                 ? entity.SubscriptionExpiresAt.Value
                 : now;
 
-            entity.SubscriptionExpiresAt = entity.BillingModel == BillingModel.Monthly
+            entity.SubscriptionExpiresAt = newBillingModel == BillingModel.Monthly
                 ? baseDate.AddMonths(1)
                 : baseDate.AddYears(1);
+
+            // 5. SỬA: cập nhật luôn BillingModel của entity theo gói mới vừa chọn
+            entity.BillingModel = newBillingModel;
 
             if (entity.Status == InstitutionStatus.Suspended)
                 entity.Status = InstitutionStatus.Active;
@@ -132,7 +139,6 @@ namespace EduGuardProject.Services
             entity.UpdatedAt = now;
             await _repo.UpdateAsync(entity);
 
-            // 5. Lưu tất cả (wallet + transaction) trong 1 lần — EF tự đảm bảo transaction DB
             await _context.SaveChangesAsync();
 
             await PublishInstitutionChangedAsync(entity, "renewed");
@@ -140,7 +146,7 @@ namespace EduGuardProject.Services
         }
 
 
-public async Task<bool> UpdateInstitutionAsync(Guid id, UpdateInstitutionDto dto)
+        public async Task<bool> UpdateInstitutionAsync(Guid id, UpdateInstitutionDto dto)
         {
             var entity = await _repo.GetByIdAsync(id);
             if (entity == null) return false;

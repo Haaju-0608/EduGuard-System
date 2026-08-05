@@ -65,6 +65,25 @@ namespace EduGuardProject.Services
             var result = await response.Content.ReadFromJsonAsync<AverageVectorResponse>();
             return result?.Vector ?? throw new Exception("Không nhận được vector từ AI service.");
         }
+
+        //CHeck mat khi lam bai thi 
+        public async Task<float[]> ExtractSingleFaceVectorAsync(Stream liveCaptureStream, string fileName)
+        {
+            using var content = new MultipartFormDataContent();
+            using var streamContent = new StreamContent(liveCaptureStream);
+            content.Add(streamContent, "live_capture", fileName);
+
+            var response = await _httpClient.PostAsync($"{_pythonApiUrl}/attendance/extract-single-face-vector", content);
+
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync();
+                throw new Exception($"Lỗi trích xuất vector khuôn mặt ({(int)response.StatusCode}): {errorBody}");
+            }
+
+            var result = await response.Content.ReadFromJsonAsync<SingleFaceVectorResponse>();
+            return result?.Vector ?? throw new Exception("Không nhận được vector từ AI service.");
+        }
     }
 
     // DTOs hứng dữ liệu từ FastAPI
@@ -100,6 +119,15 @@ namespace EduGuardProject.Services
     }
 
     public class AverageVectorResponse
+    {
+        [JsonPropertyName("message")]
+        public string Message { get; set; } = string.Empty;
+        [JsonPropertyName("vector")]
+        public float[] Vector { get; set; } = Array.Empty<float>();
+    }
+
+    // thêm cùng chỗ với FaceVectorResponse, VideoVectorsResponse...
+    public class SingleFaceVectorResponse
     {
         [JsonPropertyName("message")]
         public string Message { get; set; } = string.Empty;

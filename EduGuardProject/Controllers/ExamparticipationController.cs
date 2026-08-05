@@ -16,11 +16,15 @@ namespace EduGuardProject.Controllers
     {
         private readonly IExamParticipationService _service;
         private readonly IExamWorkflowService _workflowService;
+        private readonly IExamIdentityVerificationService _identityVerification;
+        private readonly ICurrentUserService _currentUser;
 
-        public ExamParticipationController(IExamParticipationService service, IExamWorkflowService workflowService)
+        public ExamParticipationController(IExamParticipationService service, IExamWorkflowService workflowService, IExamIdentityVerificationService identityVerification, ICurrentUserService currentUser)
         {
             _service = service;
             _workflowService = workflowService;
+            _identityVerification = identityVerification;
+            _currentUser = currentUser;
         }
 
 
@@ -167,16 +171,23 @@ namespace EduGuardProject.Controllers
         // Truyền dữ liệu: route id là participationId.
         // Điều kiện: role Student; Student phải là chủ participation; participation không được Submitted hoặc Disqualified.
         [HttpPost("{id:guid}/join")]
-        [SupabaseAuthorize(AppRole.Student)]
-        public async Task<IActionResult> Join(Guid id)
-        {
-            try
-            {
-                var result = await _workflowService.JoinAsync(id);
-                return Ok(ApiResponse<object>.OnSuccess(result, "Student joined exam successfully."));
-            }
-            catch (Exception ex) { return HandleException(ex); }
-        }
+[SupabaseAuthorize(AppRole.Student)]
+public async Task<IActionResult> Join(Guid id, IFormFile liveCapture)
+{
+    try
+    {
+        var user = await _currentUser.GetRequiredUserAsync(); 
+        var verifyResult = await _identityVerification.VerifyAsync(id, user.Id, liveCapture);
+
+        if (!verifyResult.IsMatch)
+            return BadRequest(ApiResponse<object>.OnFail(
+                $"Face verification failed. Please try again (distance={verifyResult.Distance:F4})."));
+
+        var result = await _workflowService.JoinAsync(id); // GIỮ NGUYÊN signature gốc, không đổi gì
+        return Ok(ApiResponse<object>.OnSuccess(result, "Student joined exam successfully."));
+    }
+    catch (Exception ex) { return HandleException(ex); }
+}
 
         // Send Exam Heartbeat
         // Truyền dữ liệu: route id là participationId, body clientTime.

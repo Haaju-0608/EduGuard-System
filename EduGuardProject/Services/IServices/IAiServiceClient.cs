@@ -11,4 +11,5 @@ public interface IAiServiceClient
 
     Task<float[]> ExtractAverageVectorFromUrlsAsync(List<string> imageUrls);
 
+    Task<float[]> ExtractSingleFaceVectorAsync(Stream liveCaptureStream, string fileName);
 }
