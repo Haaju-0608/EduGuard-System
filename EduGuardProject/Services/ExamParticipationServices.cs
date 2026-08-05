@@ -130,6 +130,12 @@ public class ExamParticipationServices : IExamParticipationService
         var entity = await GetManageableParticipationAsync(id);
         if (entity == null) return false;
 
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Student && entity.Status is ParticipationStatus.Submitted or ParticipationStatus.Disqualified)
+            throw new InvalidOperationException("Submitted or disqualified exam participations cannot be edited.");
+        if (user.Role == AppRole.Student && dto.Status != entity.Status)
+            throw new UnauthorizedAccessException("Students cannot update exam participation status directly.");
+
         // update allowed fields
         entity.ActualStart = dto.ActualStart;
         entity.ActualEnd = dto.ActualEnd;
@@ -144,9 +150,18 @@ public class ExamParticipationServices : IExamParticipationService
     }
     public async Task<bool> UpdateAsyncOnlyExamPartipationStatus(Guid examSlotId, UpdateExamParticipationStatusDto dto)
     {
-        var entity = await GetManageableParticipationAsync(examSlotId);
+        var entity = await GetManageableParticipationAsync(examSlotId, allowLecturer: true, allowStudent: false);
         if (entity == null) return false;
 
+        var user = await _currentUser.GetRequiredUserAsync();
+        if (user.Role == AppRole.Lecturer &&
+            (entity.Status != ParticipationStatus.Disqualified || dto.Status != ParticipationStatus.Submitted))
+        {
+            throw new InvalidOperationException("Lecturers can only change DISQUALIFIED participation to SUBMITTED.");
+        }
+
+        if (entity.Status == ParticipationStatus.Disqualified && dto.Status != ParticipationStatus.Disqualified)
+            entity.DisqualifiedReason = null;
         entity.Status = dto.Status;
 
         await _repo.UpdateAsync(entity);
@@ -214,7 +229,10 @@ public class ExamParticipationServices : IExamParticipationService
         _ => status.ToString()
     };
 
-    private async Task<ExamParticipation?> GetManageableParticipationAsync(Guid participationId)
+    private async Task<ExamParticipation?> GetManageableParticipationAsync(
+        Guid participationId,
+        bool allowLecturer = false,
+        bool allowStudent = true)
     {
         var entity = await _context.ExamParticipations
             .Include(p => p.ExamSlot)
@@ -233,7 +251,15 @@ public class ExamParticipationServices : IExamParticipationService
             return entity;
         }
 
-        if (user.Role == AppRole.Student && user.Id == entity.StudentId)
+        if (allowLecturer &&
+            user.Role == AppRole.Lecturer &&
+            user.InstitutionId == entity.ExamSlot.Class.InstitutionId &&
+            user.Id == entity.ExamSlot.Class.LecturerId)
+        {
+            return entity;
+        }
+
+        if (allowStudent && user.Role == AppRole.Student && user.Id == entity.StudentId)
             return entity;
 
         throw new UnauthorizedAccessException("Access denied.");

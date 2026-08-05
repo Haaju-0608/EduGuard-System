@@ -11,6 +11,8 @@ namespace EduGuardProject.Services;
 
 public class StudentExamRecordService : IStudentExamRecordService
 {
+    private const decimal ExamScoreScale = 10m;
+
     private readonly IStudentExamRecordRepository _repo;
     private readonly ICurrentUserService _currentUser;
     private readonly AppDbContext _context;
@@ -55,6 +57,8 @@ public class StudentExamRecordService : IStudentExamRecordService
         var user = await _currentUser.GetRequiredUserAsync();
         if (user.Role == AppRole.Student)
             throw new UnauthorizedAccessException("Students must submit exam records through the submit endpoint.");
+
+        ValidateScore(dto.FinalScore);
 
         var examSlot = await _context.ExamSlots
             .Include(e => e.Class)
@@ -176,6 +180,8 @@ public class StudentExamRecordService : IStudentExamRecordService
         if (user.Role == AppRole.Student)
             throw new UnauthorizedAccessException("Students cannot update exam records directly.");
         await EnsureClassAccessAsync(entity.ExamSlot.Class, user);
+        EnsureNotSubmitted(entity);
+        ValidateScore(dto.FinalScore);
 
         entity.EndedAt = dto.EndedAt;
         entity.ExamRecord = NormalizeExamRecord(dto.ExamRecord);
@@ -210,7 +216,8 @@ public class StudentExamRecordService : IStudentExamRecordService
 
         var grades = BuildGradeLookup(dto.Grades);
         var updatedQuestionIds = new HashSet<Guid>();
-        var finalScore = 0m;
+        var rawScore = 0m;
+        var answeredMaxScore = 0m;
         var stillNeedsManualMarking = false;
 
         foreach (var item in answers)
@@ -234,13 +241,21 @@ public class StudentExamRecordService : IStudentExamRecordService
             }
 
             stillNeedsManualMarking |= ReadBool(answer, "needsManualMarking");
-            finalScore += ReadOptionalDecimal(answer, "awardedPoints") ?? 0m;
+            rawScore += ReadOptionalDecimal(answer, "awardedPoints") ?? 0m;
+            answeredMaxScore += ReadDecimal(answer, "maxPoints");
         }
 
         if (updatedQuestionIds.Count != grades.Count)
             throw new InvalidOperationException("Grade question does not exist in this exam record.");
 
+        var rawMaxScore = ReadOptionalDecimal(root, "rawMaxScore")
+            ?? ReadOptionalDecimal(root, "maxScore")
+            ?? answeredMaxScore;
+        var finalScore = ToExamScore(rawScore, rawMaxScore);
+        root["rawScore"] = JsonValue.Create(rawScore);
+        root["rawMaxScore"] = JsonValue.Create(rawMaxScore);
         root["finalScore"] = JsonValue.Create(finalScore);
+        root["maxScore"] = JsonValue.Create(ExamScoreScale);
         root["requiresManualMarking"] = JsonValue.Create(stillNeedsManualMarking);
         entity.ExamRecord = root.ToJsonString();
         entity.FinalScore = finalScore;
@@ -305,8 +320,26 @@ public class StudentExamRecordService : IStudentExamRecordService
         FinalScore = entity.FinalScore,
         SubmittedAt = entity.SubmittedAt,
         DurationSeconds = entity.DurationSeconds,
-        Status = entity.Status
+        Status = entity.Status,
+        MaxScore = ExamScoreScale
     };
+
+    private static void EnsureNotSubmitted(StudentExamRecord entity)
+    {
+        if (entity.SubmittedAt.HasValue)
+            throw new InvalidOperationException("Submitted exam records cannot be edited.");
+    }
+
+    private static void ValidateScore(decimal? score)
+    {
+        if (score.HasValue && (score.Value < 0 || score.Value > ExamScoreScale))
+            throw new InvalidOperationException("Final score must be between 0 and 10.");
+    }
+
+    private static decimal ToExamScore(decimal rawScore, decimal rawMaxScore) =>
+        rawMaxScore <= 0
+            ? 0
+            : Math.Round(rawScore * ExamScoreScale / rawMaxScore, 2, MidpointRounding.AwayFromZero);
 
     private static string? NormalizeExamRecord(string? examRecord)
     {
@@ -412,7 +445,7 @@ public class StudentExamRecordService : IStudentExamRecordService
         var questions = examSlot.ExamQuestions.ToDictionary(q => q.Id);
         var seenQuestionIds = new HashSet<Guid>();
         var answers = new List<object>();
-        var finalScore = 0m;
+        var rawScore = 0m;
         var requiresManualMarking = false;
 
         foreach (var answer in dto.Answers)
@@ -434,7 +467,7 @@ public class StudentExamRecordService : IStudentExamRecordService
                 throw new InvalidOperationException("Answer option not found.");
 
             var awardedPoints = !isManual && selectedOption!.IsCorrect ? question.Points : 0m;
-            finalScore += awardedPoints;
+            rawScore += awardedPoints;
             requiresManualMarking |= isManual;
 
             answers.Add(new
@@ -450,14 +483,18 @@ public class StudentExamRecordService : IStudentExamRecordService
             });
         }
 
+        var rawMaxScore = examSlot.ExamQuestions.Sum(q => q.Points);
+        var finalScore = ToExamScore(rawScore, rawMaxScore);
         var examRecord = JsonSerializer.Serialize(new
         {
             examSlotId = examSlot.Id,
             studentId,
             submittedAt = DateTime.UtcNow,
             durationSeconds = dto.DurationSeconds,
+            rawScore,
+            rawMaxScore,
             finalScore,
-            maxScore = examSlot.ExamQuestions.Sum(q => q.Points),
+            maxScore = ExamScoreScale,
             requiresManualMarking,
             answers
         });

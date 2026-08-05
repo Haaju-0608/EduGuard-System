@@ -13,7 +13,7 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
     public async Task<(IEnumerable<AttendanceSession> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
         Guid? classId = null, Guid? institutionId = null, Guid? lecturerId = null,
-        SessionStatus? status = null)
+        SessionStatus? status = null, Guid? studentId = null)
     {
         var query = _context.AttendanceSessions
             .AsNoTracking()
@@ -27,6 +27,9 @@ public class AttendanceSessionRepository : IAttendanceSessionRepository
             query = query.Where(s => _context.Classes.Any(c => c.Id == s.ClassId && c.InstitutionId == institutionId.Value));
         if (lecturerId.HasValue)
             query = query.Where(s => _context.Classes.Any(c => c.Id == s.ClassId && c.LecturerId == lecturerId.Value));
+        if (studentId.HasValue)
+            query = query.Where(s => _context.ClassEnrollments.Any(e =>
+                e.StudentId == studentId.Value && e.ClassId == s.ClassId && e.Status == EnrollmentStatus.Active));
         if (status.HasValue)
             query = query.Where(s => s.Status == status.Value);
 

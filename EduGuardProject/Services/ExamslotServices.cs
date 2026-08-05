@@ -156,6 +156,8 @@ public class ExamslotServices : IExamSlotServices
         if (string.IsNullOrWhiteSpace(dto.ExamName))
             throw new InvalidOperationException("Exam name is required.");
 
+        ValidateExamTimes(dto.StartTime, dto.EndTime);
+
         var cls = await _context.Classes
             .Include(c => c.Lecturer)
             .FirstOrDefaultAsync(c => c.Id == dto.ClassId && c.DeletedAt == null)
@@ -217,6 +219,7 @@ public class ExamslotServices : IExamSlotServices
             ? dto.ExpectedDurationMinutes
             : entity.ExpectedDurationMinutes;
 
+        ValidateExamTimes(dto.StartTime, dto.EndTime);
         if (dto.StartTime.HasValue) entity.StartTime = dto.StartTime.Value;
         if (dto.EndTime.HasValue) entity.EndTime = dto.EndTime.Value;
 
@@ -318,6 +321,15 @@ public class ExamslotServices : IExamSlotServices
             throw new UnauthorizedAccessException("Lecturer does not belong to this institution.");
 
         return lecturer;
+    }
+
+    private static void ValidateExamTimes(DateTime? startTime, DateTime? endTime)
+    {
+        var now = DateTime.UtcNow;
+        if (startTime.HasValue && startTime.Value < now)
+            throw new InvalidOperationException("Exam start time cannot be in the past.");
+        if (endTime.HasValue && endTime.Value < now)
+            throw new InvalidOperationException("Exam end time cannot be in the past.");
     }
 
     private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null) => new()

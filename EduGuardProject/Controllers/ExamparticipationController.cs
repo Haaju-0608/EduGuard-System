@@ -117,7 +117,7 @@ namespace EduGuardProject.Controllers
 
         // Update Exam Participation
         // Truyền dữ liệu: route id, body actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
-        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; exam participation phải tồn tại.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; Student không được sửa sau khi Submitted/Disqualified.
         [HttpPut("{id:guid}")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateExamParticipationDto dto)
@@ -133,9 +133,9 @@ namespace EduGuardProject.Controllers
 
         // Update Exam Participation Status
         // Truyền dữ liệu: route id, body status.
-        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; exam participation phải tồn tại.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Lecturer đúng class; Lecturer chỉ được chuyển Disqualified sang Submitted.
         [HttpPut("{id:guid}/status")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> UpdateExamParticipationStatus(Guid id, [FromBody] UpdateExamParticipationStatusDto dto)
         {
             try
