@@ -73,6 +73,9 @@ public class ExamParticipationServices : IExamParticipationService
     public async Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto)
     {
         var user = await _currentUser.GetRequiredUserAsync();
+        if (dto.ExamSlotId == Guid.Empty)
+            throw new InvalidOperationException("Exam slot id is required.");
+
         if (user.Role == AppRole.Student)
         {
             if (dto.StudentId == Guid.Empty)
@@ -80,6 +83,9 @@ public class ExamParticipationServices : IExamParticipationService
             if (dto.StudentId != user.Id)
                 throw new UnauthorizedAccessException("Students can only create their own exam participation.");
         }
+        if (dto.StudentId == Guid.Empty)
+            throw new InvalidOperationException("Student id is required.");
+        ValidateParticipationTimes(dto.ActualStart, dto.ActualEnd);
 
         var examSlot = await _context.ExamSlots
             .AsNoTracking()
@@ -87,16 +93,9 @@ public class ExamParticipationServices : IExamParticipationService
             .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
             ?? throw new InvalidOperationException("Exam slot not found.");
 
-        if (user.Role == AppRole.Student)
-        {
-            var isEnrolled = await _context.ClassEnrollments.AnyAsync(e =>
-                e.ClassId == examSlot.ClassId &&
-                e.StudentId == user.Id &&
-                e.Status != EnrollmentStatus.Dropped);
-            if (!isEnrolled)
-                throw new UnauthorizedAccessException("Students can only create participation for their enrolled class.");
-        }
-        else if (user.Role == AppRole.SchoolAdmin && user.InstitutionId != examSlot.Class.InstitutionId)
+        await EnsureStudentCanTakeExamAsync(dto.StudentId, examSlot);
+
+        if (user.Role == AppRole.SchoolAdmin && user.InstitutionId != examSlot.Class.InstitutionId)
         {
             throw new UnauthorizedAccessException("Access denied.");
         }
@@ -135,6 +134,7 @@ public class ExamParticipationServices : IExamParticipationService
             throw new InvalidOperationException("Submitted or disqualified exam participations cannot be edited.");
         if (user.Role == AppRole.Student && dto.Status != entity.Status)
             throw new UnauthorizedAccessException("Students cannot update exam participation status directly.");
+        ValidateParticipationTimes(dto.ActualStart, dto.ActualEnd);
 
         // update allowed fields
         entity.ActualStart = dto.ActualStart;
@@ -228,6 +228,44 @@ public class ExamParticipationServices : IExamParticipationService
         ParticipationStatus.Disqualified => "Terminated",
         _ => status.ToString()
     };
+
+    private async Task EnsureStudentCanTakeExamAsync(Guid studentId, ExamSlot examSlot)
+    {
+        var studentExists = await _context.Users.AsNoTracking().AnyAsync(u =>
+            u.Id == studentId &&
+            u.Role == AppRole.Student &&
+            u.DeletedAt == null &&
+            u.Status == UserStatus.Active);
+        if (!studentExists)
+            throw new InvalidOperationException("Student not found.");
+
+        var isEnrolled = await _context.ClassEnrollments.AsNoTracking().AnyAsync(e =>
+            e.ClassId == examSlot.ClassId &&
+            e.StudentId == studentId &&
+            e.Status == EnrollmentStatus.Active);
+        if (!isEnrolled)
+            throw new UnauthorizedAccessException("Student is not enrolled in this class.");
+
+        var hasOverlap = await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
+            p.StudentId == studentId &&
+            p.ExamSlotId != examSlot.Id &&
+            p.ExamSlot.Status != ExamSlotStatus.Cancelled &&
+            p.ExamSlot.StartTime < examSlot.EndTime &&
+            p.ExamSlot.EndTime > examSlot.StartTime);
+        if (hasOverlap)
+            throw new InvalidOperationException("Student already has another exam in this time range.");
+    }
+
+    private static void ValidateParticipationTimes(DateTime? actualStart, DateTime? actualEnd)
+    {
+        var now = DateTime.UtcNow;
+        if (actualStart.HasValue && actualStart.Value < now)
+            throw new InvalidOperationException("Actual start time cannot be in the past.");
+        if (actualEnd.HasValue && actualEnd.Value < now)
+            throw new InvalidOperationException("Actual end time cannot be in the past.");
+        if (actualStart.HasValue && actualEnd.HasValue && actualEnd.Value <= actualStart.Value)
+            throw new InvalidOperationException("Actual end time must be after actual start time.");
+    }
 
     private async Task<ExamParticipation?> GetManageableParticipationAsync(
         Guid participationId,

@@ -49,6 +49,8 @@ public class ExamQuestionRepository : IExamQuestionRepository
     public Task<QuestionOption?> GetOptionByIdAsync(Guid id) =>
         _context.QuestionOptions
             .Include(o => o.Question)
+            .ThenInclude(q => q.QuestionOptions)
+            .Include(o => o.Question)
             .ThenInclude(q => q.ExamSlot)
             .ThenInclude(e => e.Class)
             .FirstOrDefaultAsync(o => o.Id == id);

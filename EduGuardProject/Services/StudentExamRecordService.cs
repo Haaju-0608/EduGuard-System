@@ -58,15 +58,24 @@ public class StudentExamRecordService : IStudentExamRecordService
         if (user.Role == AppRole.Student)
             throw new UnauthorizedAccessException("Students must submit exam records through the submit endpoint.");
 
-        ValidateScore(dto.FinalScore);
+        if (dto.ExamSlotId == Guid.Empty)
+            throw new InvalidOperationException("Exam slot id is required.");
+        if (dto.StudentId == Guid.Empty)
+            throw new InvalidOperationException("Student id is required.");
 
         var examSlot = await _context.ExamSlots
             .Include(e => e.Class)
             .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
             ?? throw new InvalidOperationException("Exam slot not found.");
 
+        ValidateRecordInput(dto.EndedAt, dto.SubmittedAt, dto.DurationSeconds, dto.FinalScore, dto.Status, examSlot);
+
         var student = await _context.Users
-            .FirstOrDefaultAsync(u => u.Id == dto.StudentId && u.Role == AppRole.Student && u.DeletedAt == null)
+            .FirstOrDefaultAsync(u =>
+                u.Id == dto.StudentId &&
+                u.Role == AppRole.Student &&
+                u.DeletedAt == null &&
+                u.Status == UserStatus.Active)
             ?? throw new InvalidOperationException("Student not found.");
 
         if (user.Role != AppRole.Student)
@@ -74,6 +83,8 @@ public class StudentExamRecordService : IStudentExamRecordService
 
         if (user.Role != AppRole.SuperAdmin && student.InstitutionId != examSlot.Class.InstitutionId)
             throw new UnauthorizedAccessException("Student does not belong to this institution.");
+        await EnsureStudentRecordEligibilityAsync(dto.StudentId, examSlot);
+        await EnsureNoActiveRecordAsync(dto.ExamSlotId, dto.StudentId);
 
         var entity = new StudentExamRecord
         {
@@ -101,9 +112,8 @@ public class StudentExamRecordService : IStudentExamRecordService
         if (user.Role != AppRole.Student)
             throw new UnauthorizedAccessException("Only students can submit exam records.");
 
-        if (dto.DurationSeconds is < 0)
-            throw new InvalidOperationException("Duration seconds must be greater than or equal to 0.");
-
+        if (dto.ExamSlotId == Guid.Empty)
+            throw new InvalidOperationException("Exam slot id is required.");
         if (dto.Answers == null)
             throw new InvalidOperationException("Answers are required.");
 
@@ -113,6 +123,7 @@ public class StudentExamRecordService : IStudentExamRecordService
                 .ThenInclude(q => q.QuestionOptions)
             .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
             ?? throw new InvalidOperationException("Exam slot not found.");
+        ValidateDuration(dto.DurationSeconds, examSlot);
 
         if (user.InstitutionId != examSlot.Class.InstitutionId)
             throw new UnauthorizedAccessException("Access denied.");
@@ -140,8 +151,9 @@ public class StudentExamRecordService : IStudentExamRecordService
         if (participation.Status is not ParticipationStatus.Joined and not ParticipationStatus.Submitted)
             throw new InvalidOperationException("This action is only allowed while the participation is JOINED or SUBMITTED.");
 
-        var (examRecord, finalScore, requiresManualMarking) = BuildSubmissionRecord(examSlot, user.Id, dto);
         var now = DateTime.UtcNow;
+        ValidateRecordTimes(now, now, examSlot);
+        var (examRecord, finalScore, requiresManualMarking) = BuildSubmissionRecord(examSlot, user.Id, dto, now);
 
         entity ??= new StudentExamRecord
         {
@@ -181,7 +193,7 @@ public class StudentExamRecordService : IStudentExamRecordService
             throw new UnauthorizedAccessException("Students cannot update exam records directly.");
         await EnsureClassAccessAsync(entity.ExamSlot.Class, user);
         EnsureNotSubmitted(entity);
-        ValidateScore(dto.FinalScore);
+        ValidateRecordInput(dto.EndedAt, dto.SubmittedAt, dto.DurationSeconds, dto.FinalScore, dto.Status, entity.ExamSlot);
 
         entity.EndedAt = dto.EndedAt;
         entity.ExamRecord = NormalizeExamRecord(dto.ExamRecord);
@@ -307,6 +319,32 @@ public class StudentExamRecordService : IStudentExamRecordService
         throw new UnauthorizedAccessException("Access denied.");
     }
 
+    private async Task EnsureStudentRecordEligibilityAsync(Guid studentId, ExamSlot examSlot)
+    {
+        var isEnrolled = await _context.ClassEnrollments.AsNoTracking().AnyAsync(e =>
+            e.ClassId == examSlot.ClassId &&
+            e.StudentId == studentId &&
+            e.Status == EnrollmentStatus.Active);
+        if (!isEnrolled)
+            throw new UnauthorizedAccessException("Student is not enrolled in this class.");
+
+        var hasParticipation = await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
+            p.ExamSlotId == examSlot.Id &&
+            p.StudentId == studentId);
+        if (!hasParticipation)
+            throw new InvalidOperationException("Exam participation not found.");
+    }
+
+    private async Task EnsureNoActiveRecordAsync(Guid examSlotId, Guid studentId)
+    {
+        var exists = await _context.StudentExamRecords.AsNoTracking().AnyAsync(r =>
+            r.ExamSlotId == examSlotId &&
+            r.StudentId == studentId &&
+            r.Status != StudentExamRecordStatus.Deleted);
+        if (exists)
+            throw new InvalidOperationException("Student exam record already exists.");
+    }
+
     private static StudentExamRecordResponseDto MapToResponseDto(StudentExamRecord entity) => new()
     {
         Id = entity.Id,
@@ -335,6 +373,49 @@ public class StudentExamRecordService : IStudentExamRecordService
         if (score.HasValue && (score.Value < 0 || score.Value > ExamScoreScale))
             throw new InvalidOperationException("Final score must be between 0 and 10.");
     }
+
+    private static void ValidateRecordInput(
+        DateTime? endedAt,
+        DateTime? submittedAt,
+        int? durationSeconds,
+        decimal? finalScore,
+        StudentExamRecordStatus status,
+        ExamSlot examSlot)
+    {
+        if (status == StudentExamRecordStatus.Deleted)
+            throw new InvalidOperationException("Use the delete endpoint to delete student exam records.");
+        ValidateScore(finalScore);
+        ValidateDuration(durationSeconds, examSlot);
+        ValidateRecordTimes(endedAt, submittedAt, examSlot);
+    }
+
+    private static void ValidateDuration(int? durationSeconds, ExamSlot examSlot)
+    {
+        if (durationSeconds is < 0)
+            throw new InvalidOperationException("Duration seconds must be greater than or equal to 0.");
+
+        var examDurationSeconds = (examSlot.EndTime - examSlot.StartTime).TotalSeconds;
+        if (durationSeconds.HasValue && examDurationSeconds > 0 && durationSeconds.Value > examDurationSeconds)
+            throw new InvalidOperationException("Duration seconds cannot exceed exam slot duration.");
+    }
+
+    private static void ValidateRecordTimes(DateTime? endedAt, DateTime? submittedAt, ExamSlot examSlot)
+    {
+        var now = DateTime.UtcNow;
+        if (endedAt.HasValue && endedAt.Value > now)
+            throw new InvalidOperationException("Ended time cannot be in the future.");
+        if (submittedAt.HasValue && submittedAt.Value > now)
+            throw new InvalidOperationException("Submitted time cannot be in the future.");
+        if (endedAt.HasValue && IsOutsideExamSlot(endedAt.Value, examSlot))
+            throw new InvalidOperationException("Ended time must be within exam slot time range.");
+        if (submittedAt.HasValue && IsOutsideExamSlot(submittedAt.Value, examSlot))
+            throw new InvalidOperationException("Submitted time must be within exam slot time range.");
+        if (endedAt.HasValue && submittedAt.HasValue && endedAt.Value < submittedAt.Value)
+            throw new InvalidOperationException("Ended time cannot be before submitted time.");
+    }
+
+    private static bool IsOutsideExamSlot(DateTime value, ExamSlot examSlot) =>
+        value < examSlot.StartTime || value > examSlot.EndTime;
 
     private static decimal ToExamScore(decimal rawScore, decimal rawMaxScore) =>
         rawMaxScore <= 0
@@ -437,7 +518,8 @@ public class StudentExamRecordService : IStudentExamRecordService
     private static (string ExamRecord, decimal FinalScore, bool RequiresManualMarking) BuildSubmissionRecord(
         ExamSlot examSlot,
         Guid studentId,
-        SubmitStudentExamRecordDto dto)
+        SubmitStudentExamRecordDto dto,
+        DateTime submittedAt)
     {
         if (examSlot.ExamQuestions.Count > 0 && dto.Answers.Count == 0)
             throw new InvalidOperationException("Answers are required.");
@@ -489,7 +571,7 @@ public class StudentExamRecordService : IStudentExamRecordService
         {
             examSlotId = examSlot.Id,
             studentId,
-            submittedAt = DateTime.UtcNow,
+            submittedAt,
             durationSeconds = dto.DurationSeconds,
             rawScore,
             rawMaxScore,
