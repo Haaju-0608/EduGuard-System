@@ -474,6 +474,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.UpdatedAt)
                 .HasDefaultValueSql("now()")
                 .HasColumnName("updated_at");
+            entity.Property(e => e.ProctorId).HasColumnName("proctor_id");
 
             entity.HasOne(d => d.Class).WithMany(p => p.ExamSlots)
                 .HasForeignKey(d => d.ClassId)
@@ -483,6 +484,11 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.CreatedBy)
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("exam_slots_created_by_fkey");
+
+            entity.HasOne(d => d.ProctorNavigation).WithMany()
+                .HasForeignKey(d => d.ProctorId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("exam_slots_proctor_id_fkey");
         });
 
         modelBuilder.Entity<Institution>(entity =>

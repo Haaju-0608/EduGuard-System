@@ -81,21 +81,27 @@ public class AttendanceSessionService : IAttendanceSessionService
 
         var cls = await _classRepo.GetByIdAsync(dto.ClassId);
         if (cls == null) throw new InvalidOperationException("Class not found.");
-        if (user.Role == AppRole.Lecturer && cls.LecturerId != user.Id)
-            throw new UnauthorizedAccessException("You can only open sessions for your own classes.");
 
-        await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
-
-        // ← THÊM: validate examSlotId nếu có truyền lên
+        // Validate examSlotId (if provided) before using it for the proctor check below.
+        ExamSlot? examSlot = null;
         if (dto.ExamSlotId.HasValue)
         {
-            var examSlot = await _context.ExamSlots.AsNoTracking()
+            examSlot = await _context.ExamSlots.AsNoTracking()
                 .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId.Value);
             if (examSlot == null)
                 throw new InvalidOperationException("Exam slot not found.");
             if (examSlot.ClassId != dto.ClassId)
                 throw new InvalidOperationException("Exam slot does not belong to the specified class.");
         }
+
+        if (user.Role == AppRole.Lecturer && cls.LecturerId != user.Id)
+        {
+            var isProctor = examSlot?.ProctorId == user.Id;
+            if (!isProctor)
+                throw new UnauthorizedAccessException("You can only open sessions for your own classes or exams you are proctoring.");
+        }
+
+        await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
 
         var entity = new AttendanceSession
         {

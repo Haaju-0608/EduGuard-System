@@ -26,12 +26,19 @@ public partial class ExamSlot
 
     public DateTime UpdatedAt { get; set; }
 
+    /// <summary>
+    /// Lecturer assigned to proctor this specific exam slot, if different from the class's own lecturer.
+    /// </summary>
+    public Guid? ProctorId { get; set; }
+
     public virtual Class Class { get; set; } = null!;
 
     [NotMapped]
     public User? Lecturer => Class?.Lecturer;
 
     public virtual User CreatedByNavigation { get; set; } = null!;
+
+    public virtual User? ProctorNavigation { get; set; }
 
     public virtual ICollection<ExamParticipation> ExamParticipations { get; set; } = new List<ExamParticipation>();
 

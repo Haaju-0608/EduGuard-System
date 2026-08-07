@@ -146,6 +146,7 @@ public class ExamslotReponseDto
     public DateTime UpdatedAt { get; set; }
     public decimal MaxScore { get; set; } = 10m;
     public UserSummaryDto? Lecturer { get; set; }
+    public UserSummaryDto? Proctor { get; set; }
 }
 
 public class ExamParticipationResponseDto
