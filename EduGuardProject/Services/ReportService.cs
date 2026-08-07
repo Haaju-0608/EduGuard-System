@@ -17,6 +17,7 @@ public class ReportService : IReportService
 
     public async Task<object> GetAttendanceReportAsync(Guid? institutionId, Guid? classId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
         var start = from ?? DateTime.MinValue;
         var end = to ?? DateTime.MaxValue;
@@ -78,6 +79,7 @@ public class ReportService : IReportService
 
     public async Task<object> GetViolationReportAsync(Guid? institutionId, Guid? examSlotId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
         var start = from ?? DateTime.MinValue;
         var end = to ?? DateTime.MaxValue;
@@ -146,6 +148,7 @@ public class ReportService : IReportService
 
     public async Task<object> GetWalletReportAsync(Guid? institutionId, Guid? walletId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
         var start = from ?? DateTime.MinValue;
         var end = to ?? DateTime.MaxValue;
@@ -211,6 +214,13 @@ public class ReportService : IReportService
 
     public async Task<object> GetRevenueReportAsync(DateTime? from, DateTime? to, string groupBy = "day", CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
+        if (!string.Equals(groupBy, "day", StringComparison.OrdinalIgnoreCase) &&
+            !string.Equals(groupBy, "month", StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("groupBy must be day or month.");
+        }
+
         await _currentUser.EnsureRoleAsync(AppRole.SuperAdmin);
 
         var start = from ?? DateTime.MinValue;
@@ -258,5 +268,11 @@ public class ReportService : IReportService
             },
             items
         };
+    }
+
+    private static void ValidateDateRange(DateTime? from, DateTime? to)
+    {
+        if (from.HasValue && to.HasValue && from.Value > to.Value)
+            throw new InvalidOperationException("from must be earlier than or equal to to.");
     }
 }

@@ -144,6 +144,7 @@ public class ExamslotReponseDto
     public ExamSlotStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public decimal MaxScore { get; set; } = 10m;
     public UserSummaryDto? Lecturer { get; set; }
 }
 
@@ -180,6 +181,7 @@ public class StudentExamRecordResponseDto
     public DateTime? SubmittedAt { get; set; }
     public int? DurationSeconds { get; set; }
     public StudentExamRecordStatus Status { get; set; }
+    public decimal MaxScore { get; set; } = 10m;
 }
 
 public class ExamQuestionResponseDto

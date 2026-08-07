@@ -155,6 +155,13 @@ public class ExamslotServices : IExamSlotServices
         var user = await _currentUser.GetRequiredUserAsync();
         if (string.IsNullOrWhiteSpace(dto.ExamName))
             throw new InvalidOperationException("Exam name is required.");
+        if (dto.ExpectedDurationMinutes <= 0)
+            throw new InvalidOperationException("Expected duration must be greater than zero.");
+        if (!Enum.IsDefined(dto.Status) || dto.Status != ExamSlotStatus.Scheduled)
+            throw new InvalidOperationException("New exam slots must start as SCHEDULED.");
+
+        ValidateNewExamTimes(dto.StartTime, dto.EndTime);
+        ValidateExpectedDuration(dto.ExpectedDurationMinutes, dto.StartTime, dto.EndTime);
 
         var cls = await _context.Classes
             .Include(c => c.Lecturer)
@@ -162,6 +169,7 @@ public class ExamslotServices : IExamSlotServices
             ?? throw new InvalidOperationException("Class not found.");
 
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
+        await EnsureClassHasNoOverlappingExamAsync(dto.ClassId, dto.StartTime, dto.EndTime);
         if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != cls.LecturerId)
         {
             cls.Lecturer = await GetClassLecturerAsync(lecturerId, cls.InstitutionId);
@@ -208,17 +216,23 @@ public class ExamslotServices : IExamSlotServices
         if (!string.IsNullOrWhiteSpace(dto.ExamName))
             entity.ExamName = dto.ExamName.Trim();
 
-        await EnsureExamSlotAdminAccessAsync(entity);
-
-        if (!string.IsNullOrWhiteSpace(dto.ExamName))
-            entity.ExamName = dto.ExamName.Trim();
-
+        if (dto.ExpectedDurationMinutes < 0)
+            throw new InvalidOperationException("Expected duration must be greater than zero.");
         entity.ExpectedDurationMinutes = dto.ExpectedDurationMinutes != 0
             ? dto.ExpectedDurationMinutes
             : entity.ExpectedDurationMinutes;
 
-        if (dto.StartTime.HasValue) entity.StartTime = dto.StartTime.Value;
-        if (dto.EndTime.HasValue) entity.EndTime = dto.EndTime.Value;
+        var startTime = dto.StartTime ?? entity.StartTime;
+        var endTime = dto.EndTime ?? entity.EndTime;
+        if (dto.StartTime.HasValue || dto.EndTime.HasValue)
+        {
+            ValidateUpdatedExamTimes(startTime, endTime, dto.StartTime.HasValue, dto.EndTime.HasValue);
+            await EnsureClassHasNoOverlappingExamAsync(entity.ClassId, startTime, endTime, entity.Id);
+            await EnsureParticipantsHaveNoOverlappingExamAsync(entity.Id, startTime, endTime);
+            entity.StartTime = startTime;
+            entity.EndTime = endTime;
+        }
+        ValidateExpectedDuration(entity.ExpectedDurationMinutes, startTime, endTime);
 
         if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != entity.Class.LecturerId)
         {
@@ -318,6 +332,72 @@ public class ExamslotServices : IExamSlotServices
             throw new UnauthorizedAccessException("Lecturer does not belong to this institution.");
 
         return lecturer;
+    }
+
+    private async Task EnsureClassHasNoOverlappingExamAsync(
+        Guid classId,
+        DateTime startTime,
+        DateTime endTime,
+        Guid? ignoredExamSlotId = null)
+    {
+        var hasOverlap = await _context.ExamSlots.AsNoTracking().AnyAsync(e =>
+            e.ClassId == classId &&
+            e.Status != ExamSlotStatus.Cancelled &&
+            (!ignoredExamSlotId.HasValue || e.Id != ignoredExamSlotId.Value) &&
+            e.StartTime < endTime &&
+            e.EndTime > startTime);
+
+        if (hasOverlap)
+            throw new InvalidOperationException("Class already has an exam in this time range.");
+    }
+
+    private async Task EnsureParticipantsHaveNoOverlappingExamAsync(Guid examSlotId, DateTime startTime, DateTime endTime)
+    {
+        var hasOverlap = await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
+            p.ExamSlotId == examSlotId &&
+            _context.ExamParticipations.Any(other =>
+                other.StudentId == p.StudentId &&
+                other.ExamSlotId != examSlotId &&
+                other.ExamSlot.Status != ExamSlotStatus.Cancelled &&
+                other.ExamSlot.StartTime < endTime &&
+                other.ExamSlot.EndTime > startTime));
+
+        if (hasOverlap)
+            throw new InvalidOperationException("One or more students already have another exam in this time range.");
+    }
+
+    private static void ValidateNewExamTimes(DateTime startTime, DateTime endTime)
+    {
+        var now = DateTime.UtcNow;
+        if (startTime == default)
+            throw new InvalidOperationException("Exam start time is required.");
+        if (endTime == default)
+            throw new InvalidOperationException("Exam end time is required.");
+        if (startTime < now)
+            throw new InvalidOperationException("Exam start time cannot be in the past.");
+        if (endTime < now)
+            throw new InvalidOperationException("Exam end time cannot be in the past.");
+        if (endTime <= startTime)
+            throw new InvalidOperationException("Exam end time must be after start time.");
+    }
+
+    private static void ValidateUpdatedExamTimes(DateTime startTime, DateTime endTime, bool startChanged, bool endChanged)
+    {
+        var now = DateTime.UtcNow;
+        if (startChanged && startTime < now)
+            throw new InvalidOperationException("Exam start time cannot be in the past.");
+        if (endChanged && endTime < now)
+            throw new InvalidOperationException("Exam end time cannot be in the past.");
+        if (endTime <= startTime)
+            throw new InvalidOperationException("Exam end time must be after start time.");
+    }
+
+    private static void ValidateExpectedDuration(int expectedDurationMinutes, DateTime startTime, DateTime endTime)
+    {
+        if (expectedDurationMinutes <= 0)
+            throw new InvalidOperationException("Expected duration must be greater than zero.");
+        if (expectedDurationMinutes > (endTime - startTime).TotalMinutes)
+            throw new InvalidOperationException("Expected duration cannot exceed the exam slot time range.");
     }
 
     private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null) => new()

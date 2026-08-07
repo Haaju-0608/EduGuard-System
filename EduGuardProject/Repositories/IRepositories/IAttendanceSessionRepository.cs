@@ -7,7 +7,7 @@ public interface IAttendanceSessionRepository
     Task<(IEnumerable<AttendanceSession> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
         Guid? classId = null, Guid? institutionId = null, Guid? lecturerId = null,
-        SessionStatus? status = null);
+        SessionStatus? status = null, Guid? studentId = null);
     Task<AttendanceSession?> GetByIdAsync(Guid id);
     Task AddAsync(AttendanceSession entity);
     Task UpdateAsync(AttendanceSession entity);

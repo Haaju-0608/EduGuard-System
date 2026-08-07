@@ -23,6 +23,7 @@ public class DashboardStatsService : IDashboardStatsService
 
     public async Task<object> GetSystemDashboardAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         await _currentUser.EnsureRoleAsync(AppRole.SuperAdmin);
 
         // Aggregation is expensive (many COUNT/SUM queries) and this dashboard doesn't
@@ -102,6 +103,7 @@ public class DashboardStatsService : IDashboardStatsService
 
     public async Task<object> GetInstitutionDashboardAsync(Guid institutionId, DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         await _currentUser.EnsureInstitutionAccessAsync(institutionId);
 
         var start = from ?? DateTime.MinValue;
@@ -159,6 +161,7 @@ public class DashboardStatsService : IDashboardStatsService
 
     public async Task<object> GetLecturerDashboardAsync(Guid? lecturerId = null, DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
         var effectiveLecturerId = lecturerId ?? user.Id;
 
@@ -207,5 +210,11 @@ public class DashboardStatsService : IDashboardStatsService
             violations = await _context.ViolationLogs.CountAsync(v =>
                 examSlotIds.Contains(v.Participation.ExamSlotId) && v.RecordedAt >= start && v.RecordedAt <= end, cancellationToken)
         };
+    }
+
+    private static void ValidateDateRange(DateTime? from, DateTime? to)
+    {
+        if (from.HasValue && to.HasValue && from.Value > to.Value)
+            throw new InvalidOperationException("from must be earlier than or equal to to.");
     }
 }

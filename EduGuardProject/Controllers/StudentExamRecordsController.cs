@@ -90,7 +90,7 @@ public class StudentExamRecordsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
-    // Roles: Lecturer, SchoolAdmin, SuperAdmin. Returns: success message only.
+    // Roles: Lecturer, SchoolAdmin, SuperAdmin; submitted records cannot be edited here. Use manual-grade for grading.
     [HttpPut("{id:guid}")]
     [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> Update(Guid id, [FromBody] UpdateStudentExamRecordDto dto)

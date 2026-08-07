@@ -41,8 +41,8 @@ public abstract class AcademicApiControllerBase : ControllerBase
         };
     }
 
-    protected IActionResult BadPagedRequest(string message) =>
-        BadRequest(ApiResponse<object>.OnFail(message));
+    protected IActionResult BadPagedRequest(string _) =>
+        BadRequest(ApiResponse<object>.OnFail("Page must be greater than 0 and pageSize must be between 1 and 100."));
 
-    protected bool ValidatePaging(int page, int pageSize) => page >= 1 && pageSize >= 1;
+    protected bool ValidatePaging(int page, int pageSize) => page >= 1 && pageSize is >= 1 and <= 100;
 }

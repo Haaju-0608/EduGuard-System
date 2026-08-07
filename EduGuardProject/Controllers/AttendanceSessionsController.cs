@@ -17,7 +17,7 @@ public class AttendanceSessionsController : AcademicApiControllerBase
     public AttendanceSessionsController(IAttendanceSessionService service) => _service = service;
 
     [HttpGet]
-    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
     public async Task<IActionResult> GetAll(
         [FromQuery] string? search,
         [FromQuery] string? sort,

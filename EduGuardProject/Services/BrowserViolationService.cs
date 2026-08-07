@@ -37,6 +37,11 @@ public class BrowserViolationService : IBrowserViolationService
 
     public async Task<BrowserViolationResponseDto> RecordAsync(BrowserViolationRequestDto dto)
     {
+        if (dto.ParticipationId == Guid.Empty)
+            throw new InvalidOperationException("Participation id is required.");
+        if (!Enum.IsDefined(dto.ViolationType) || !BrowserViolationTypes.Contains(dto.ViolationType))
+            throw new InvalidOperationException("Violation type must be TabSwitch, WindowBlur, or ExitFullscreen.");
+
         var user = await _currentUser.GetRequiredUserAsync();
         if (user.Role != AppRole.Student)
             throw new UnauthorizedAccessException("Only students can report browser violations.");
@@ -55,6 +60,13 @@ public class BrowserViolationService : IBrowserViolationService
             throw new InvalidOperationException("This exam participation is not active.");
 
         var now = DateTime.UtcNow;
+        if (participation.ExamSlot.Status == ExamSlotStatus.Cancelled)
+            throw new InvalidOperationException("Cannot record a violation for a cancelled exam slot.");
+        if (now < participation.ExamSlot.StartTime || now > participation.ExamSlot.EndTime)
+            throw new InvalidOperationException("Browser violations can only be recorded during the exam slot.");
+        if (!participation.ActualStart.HasValue || now < participation.ActualStart.Value)
+            throw new InvalidOperationException("Cannot record a violation before the participation starts.");
+
         var log = new ViolationLog
         {
             Id = Guid.NewGuid(),

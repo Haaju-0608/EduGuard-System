@@ -142,8 +142,11 @@ public class ViolationLogServices : IViolationLogService
 
     public async Task<ViolationlogResponeDto> CreateAsync(CreateViolationLogDto dto)
     {
+        if (dto.ParticipationId == Guid.Empty)
+            throw new InvalidOperationException("Participation id is required.");
+
         var user = await _currentUser.GetRequiredUserAsync();
-        if (!new[] { AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin }.Contains(user.Role))
+        if (!user.Role.IsInRoles(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin))
             throw new UnauthorizedAccessException("You do not have permission to perform this action.");
 
         var participation = await _context.ExamParticipations
@@ -154,6 +157,7 @@ public class ViolationLogServices : IViolationLogService
             ?? throw new InvalidOperationException("Exam participation not found.");
 
         await EnsureViolationAccessAsync(participation);
+        var recordedAt = ValidateCreateInput(dto, participation, user);
 
         var entity = new ViolationLog
         {
@@ -161,10 +165,11 @@ public class ViolationLogServices : IViolationLogService
             severity = dto.severity,
             violationType = dto.violationType,
             ParticipationId = dto.ParticipationId,
-            EvidencePath = dto.EvidencePath,
+            EvidencePath = null,
             AiConfidence = dto.AiConfidence,
-            ReviewedBy = user.Role == AppRole.Student ? null : await NormalizeReviewedByAsync(dto.ReviewedBy),
-            RecordedAt = dto.RecordedAt == default ? DateTime.UtcNow : dto.RecordedAt
+            IsReviewed = false,
+            ReviewedBy = null,
+            RecordedAt = recordedAt
         };
 
         await _repo.CreateAsync(entity);
@@ -207,11 +212,17 @@ public class ViolationLogServices : IViolationLogService
         if (existing == null) return false;
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         await EnsureViolationAccessAsync(existing.Participation);
-        dto.ReviewedBy = await NormalizeReviewedByAsync(dto.ReviewedBy);
+        var user = await _currentUser.GetRequiredUserAsync();
+        var requestedReviewer = dto.ReviewedBy;
+        if (!dto.IsReviewed && requestedReviewer.HasValue && requestedReviewer.Value != Guid.Empty)
+            throw new InvalidOperationException("Reviewed by must be empty when the violation is not reviewed.");
+        if (dto.IsReviewed && requestedReviewer.HasValue &&
+            requestedReviewer.Value != Guid.Empty && requestedReviewer.Value != user.Id)
+        {
+            throw new UnauthorizedAccessException("Reviewed by must be the current user.");
+        }
 
-        // update allowed fields
-        existing.IsReviewed = dto.IsReviewed;
-        existing.ReviewedBy = dto.ReviewedBy;
+        dto.ReviewedBy = dto.IsReviewed ? user.Id : null;
 
         await _repo.UpdateAsync(id, dto);
         await PublishViolationChangedAsync(id, "updated");
@@ -299,17 +310,48 @@ public class ViolationLogServices : IViolationLogService
         throw new UnauthorizedAccessException("Access denied.");
     }
 
-    private async Task<Guid?> NormalizeReviewedByAsync(Guid? reviewedBy)
+    private static DateTime ValidateCreateInput(
+        CreateViolationLogDto dto,
+        ExamParticipation participation,
+        User user)
     {
-        if (!reviewedBy.HasValue || reviewedBy.Value == Guid.Empty)
-            return null;
+        if (!Enum.IsDefined(dto.severity))
+            throw new InvalidOperationException("Invalid violation severity.");
+        if (!Enum.IsDefined(dto.violationType))
+            throw new InvalidOperationException("Invalid violation type.");
+        if (IsBrowserViolation(dto.violationType))
+            throw new InvalidOperationException("Browser violations must be reported through the browser violation endpoint.");
+        if (dto.AiConfidence.HasValue &&
+            (!double.IsFinite(dto.AiConfidence.Value) || dto.AiConfidence.Value is < 0 or > 1))
+        {
+            throw new InvalidOperationException("AI confidence must be between 0 and 1.");
+        }
+        if (!string.IsNullOrWhiteSpace(dto.EvidencePath))
+            throw new InvalidOperationException("Evidence must be uploaded through the violation evidence endpoint.");
+        if (dto.ReviewedBy.HasValue && dto.ReviewedBy.Value != Guid.Empty)
+            throw new InvalidOperationException("A new violation cannot already have a reviewer.");
+        if (user.Role == AppRole.Student && participation.Status != ParticipationStatus.Joined)
+            throw new InvalidOperationException("Students can only report violations while participating in the exam.");
+        if (participation.ExamSlot.Status == ExamSlotStatus.Cancelled)
+            throw new InvalidOperationException("Cannot record a violation for a cancelled exam slot.");
 
-        var exists = await _context.Users.AnyAsync(u => u.Id == reviewedBy.Value && u.DeletedAt == null);
-        if (!exists)
-            throw new InvalidOperationException("Reviewed by user not found.");
+        var recordedAt = dto.RecordedAt == default ? DateTime.UtcNow : dto.RecordedAt;
+        if (recordedAt > DateTime.UtcNow)
+            throw new InvalidOperationException("Recorded time cannot be in the future.");
+        if (recordedAt < participation.ExamSlot.StartTime || recordedAt > participation.ExamSlot.EndTime)
+            throw new InvalidOperationException("Recorded time must be within the exam slot time range.");
+        if (!participation.ActualStart.HasValue)
+            throw new InvalidOperationException("Cannot record a violation before the participation starts.");
+        if (recordedAt < participation.ActualStart.Value)
+            throw new InvalidOperationException("Recorded time cannot be before the participation starts.");
+        if (participation.ActualEnd.HasValue && recordedAt > participation.ActualEnd.Value)
+            throw new InvalidOperationException("Recorded time cannot be after the participation ends.");
 
-        return reviewedBy;
+        return recordedAt;
     }
+
+    private static bool IsBrowserViolation(ViolationType type) =>
+        type is ViolationType.TabSwitch or ViolationType.WindowBlur or ViolationType.ExitFullscreen;
 
     private static string DescribeViolation(ViolationType type) => type switch
     {

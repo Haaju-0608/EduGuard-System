@@ -44,8 +44,8 @@ namespace EduGuardProject.Controllers
         {
             try
             {
-                if (page < 1 || pageSize < 1)
-                    return BadRequest(ApiResponse<object>.OnFail("Page and PageSize must be greater than 0."));
+                if (page < 1 || pageSize is < 1 or > 100)
+                    return BadRequest(ApiResponse<object>.OnFail("Page must be greater than 0 and pageSize must be between 1 and 100."));
 
                 var user = await _currentUser.GetRequiredUserAsync();
                 var result = await _notificationService.GetUserNotificationsAsync(user.Id, page, pageSize);
@@ -98,8 +98,8 @@ namespace EduGuardProject.Controllers
         {
             try
             {
-                if (page < 1 || pageSize < 1)
-                    return BadRequest(ApiResponse<object>.OnFail("Page and PageSize must be greater than 0."));
+                if (page < 1 || pageSize is < 1 or > 100)
+                    return BadRequest(ApiResponse<object>.OnFail("Page must be greater than 0 and pageSize must be between 1 and 100."));
 
                 var effectiveUserId = await ResolveNotificationUserIdAsync(userId);
                 var result = await _notificationService.GetUserNotificationsAsync(effectiveUserId, page, pageSize);

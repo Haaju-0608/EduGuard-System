@@ -42,11 +42,10 @@ public class AttendanceSessionService : IAttendanceSessionService
     {
         var user = await _currentUser.GetRequiredUserAsync();
         var role = user.Role.ToCanonical();
-        if (role == AppRole.Student)
-            throw new UnauthorizedAccessException("Students cannot list attendance sessions.");
 
         Guid? institutionId = role == AppRole.SuperAdmin ? null : user.InstitutionId;
         Guid? lecturerId = role == AppRole.Lecturer ? user.Id : null;
+        Guid? studentId = role == AppRole.Student ? user.Id : null;
 
         if (role == AppRole.Lecturer)
         {
@@ -56,7 +55,8 @@ public class AttendanceSessionService : IAttendanceSessionService
                 return ([], 0);
         }
 
-        var (items, total) = await _repo.GetAllAsync(search, sort, page, pageSize, classId, institutionId, lecturerId);
+        var (items, total) = await _repo.GetAllAsync(
+            search, sort, page, pageSize, classId, institutionId, lecturerId, studentId: studentId);
         var dtos = new List<AttendanceSessionResponseDto>();
         foreach (var item in items)
         {

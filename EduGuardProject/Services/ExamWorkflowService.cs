@@ -29,12 +29,22 @@ public class ExamWorkflowService : IExamWorkflowService
 
     public async Task<object> JoinAsync(Guid participationId, CancellationToken cancellationToken = default)
     {
+        if (participationId == Guid.Empty)
+            throw new InvalidOperationException("Participation id is required.");
+
         var participation = await GetParticipationAsync(participationId, cancellationToken);
         await EnsureStudentOwnerAsync(participation);
-        if (participation.Status is ParticipationStatus.Submitted or ParticipationStatus.Disqualified)
-            throw new InvalidOperationException("A submitted or disqualified participation cannot join again.");
-
         var now = DateTime.UtcNow;
+        if (participation.ExamSlot.Status is ExamSlotStatus.Cancelled or ExamSlotStatus.Completed)
+            throw new InvalidOperationException("This exam slot is not active.");
+        if (now < participation.ExamSlot.StartTime)
+            throw new InvalidOperationException("The exam has not started yet.");
+        if (now > participation.ExamSlot.EndTime)
+            throw new InvalidOperationException("The exam has already ended.");
+        if (participation.Status is not ParticipationStatus.Absent and not ParticipationStatus.Joined)
+            throw new InvalidOperationException("This exam participation cannot join again.");
+
+        participation.ExamSlot.Status = ExamSlotStatus.InProgress;
         participation.Status = ParticipationStatus.Joined;
         participation.ActualStart ??= now;
         await _context.SaveChangesAsync(cancellationToken);
