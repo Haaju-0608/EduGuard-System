@@ -317,12 +317,24 @@ namespace EduGuardProject.Services
             var entity = await _repo.GetByIdAsync(id);
             if (entity == null) return false;
 
-            entity.InstitutionId = dto.InstitutionId;
-            entity.StudentCode = dto.StudentCode;
-            entity.FullName = dto.FullName;
-            entity.Phone = dto.Phone;
-            entity.Role = dto.Role;
-            entity.Status = dto.Status;
+            if (dto.InstitutionId.HasValue)
+                entity.InstitutionId = dto.InstitutionId.Value;
+
+            if (dto.StudentCode is not null)
+                entity.StudentCode = dto.StudentCode;
+
+            if (!string.IsNullOrWhiteSpace(dto.FullName))
+                entity.FullName = dto.FullName;
+
+            if (dto.Phone is not null)
+                entity.Phone = dto.Phone;
+
+            if (dto.Role.HasValue)
+                entity.Role = dto.Role.Value;
+
+            if (dto.Status.HasValue)
+                entity.Status = dto.Status.Value;
+
             entity.UpdatedAt = DateTime.UtcNow;
 
             await _repo.UpdateAsync(entity);

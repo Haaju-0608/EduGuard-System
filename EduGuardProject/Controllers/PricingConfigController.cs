@@ -68,5 +68,25 @@ namespace EduGuardProject.Controllers
                 return BadRequest(ApiResponse<object>.OnFail(ex.Message));
             }
         }
+
+        [HttpPut("{id:guid}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin)]
+        public async Task<IActionResult> Update(Guid id, [FromBody] UpdatePricingConfigDto dto)
+        {
+            try
+            {
+                var success = await _service.UpdateConfigAsync(id, dto);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Pricing config not found."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Pricing config updated successfully."));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
+            }
+        }
     }
 }
