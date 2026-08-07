@@ -17,6 +17,7 @@ public class ExamSlotRepository : IExamslotRepository
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .AsQueryable();
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -48,7 +49,8 @@ public class ExamSlotRepository : IExamslotRepository
         Status = e.Status,
         CreatedAt = e.CreatedAt,
         UpdatedAt = e.UpdatedAt,
-        Lecturer = ToUserSummary(e.Lecturer)
+        Lecturer = ToUserSummary(e.Lecturer),
+        Proctor = ToUserSummary(e.ProctorNavigation)
     };
 
     private static UserSummaryDto? ToUserSummary(User? user) =>
@@ -64,6 +66,7 @@ public class ExamSlotRepository : IExamslotRepository
         _context.ExamSlots
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .FirstOrDefaultAsync(s => s.Id == id);
 
     public async Task AddAsync(ExamSlot entity)

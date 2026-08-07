@@ -111,5 +111,32 @@ namespace EduGuardProject.Services
             IsActive = p.IsActive,
             CreatedAt = p.CreatedAt
         };
+
+        public async Task<bool> UpdateConfigAsync(Guid id, UpdatePricingConfigDto dto)
+        {
+            var config = await _repo.GetByIdAsync(id);
+            if (config == null) return false;
+
+            // Chỉ chặn khi UnitPrice bị đổi VÀ đã có transaction tham chiếu -
+            // đổi ServiceType/EffectiveDate/IsActive không ảnh hưởng số liệu lịch sử nên vẫn cho phép
+            if (config.UnitPrice != dto.UnitPrice)
+            {
+                var hasTransactions = await _repo.HasReferencingTransactionsAsync(id);
+                if (hasTransactions)
+                    throw new InvalidOperationException(
+                        "Không thể sửa giá của cấu hình đã có giao dịch tham chiếu. Vui lòng tạo cấu hình giá mới (Create) thay vì sửa cái này.");
+            }
+
+            config.ServiceType = dto.ServiceType;
+            config.UnitPrice = dto.UnitPrice;
+            config.EffectiveDate = dto.EffectiveDate.ToUniversalTime();
+            config.IsActive = dto.IsActive;
+            config.UpdatedAt = DateTime.UtcNow;
+
+            await _repo.UpdateAsync(config);
+            await _cache.RemoveAsync(ActiveConfigCacheKey(config.ServiceType));
+            await PublishPricingChangedAsync(config, "updated");
+            return true;
+        }
     }
 }

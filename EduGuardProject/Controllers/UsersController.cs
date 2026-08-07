@@ -140,7 +140,7 @@ namespace EduGuardProject.Controllers
             if (role != AppRole.SuperAdmin && existing.InstitutionId != institutionId)
                 return NotFound(ApiResponse<object>.OnFail("User not found to update."));
 
-            if (role != AppRole.SuperAdmin && dto.InstitutionId != institutionId)
+            if (role != AppRole.SuperAdmin && dto.InstitutionId.HasValue && dto.InstitutionId != institutionId)
                 return BadRequest(ApiResponse<object>.OnFail("You cannot move a user to another institution."));
 
             var success = await _service.UpdateUserAsync(id, dto);
