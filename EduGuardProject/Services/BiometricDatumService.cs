@@ -71,6 +71,8 @@ public class BiometricDatumService : IBiometricDatumService
     {
         if (!string.IsNullOrWhiteSpace(dto.FaceImageUrl))
             throw new InvalidOperationException("Upload biometric images through /api/storage/biometric.");
+        if (string.IsNullOrWhiteSpace(dto.ModelVersion))
+            throw new InvalidOperationException("Model version is required.");
 
         var user = await _currentUser.GetRequiredUserAsync();
 
@@ -88,6 +90,13 @@ public class BiometricDatumService : IBiometricDatumService
             throw new UnauthorizedAccessException("Access denied.");
         }
 
+        var targetUser = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u => u.Id == dto.UserId && u.DeletedAt == null);
+        if (targetUser == null)
+            throw new InvalidOperationException("User not found.");
+        if (targetUser.Role != AppRole.Student)
+            throw new InvalidOperationException("Biometric data can only be created for students.");
+
         await DeactivateExistingActiveAsync(dto.UserId);
 
         var entity = new BiometricDatum
@@ -95,7 +104,7 @@ public class BiometricDatumService : IBiometricDatumService
             Id = Guid.NewGuid(),
             UserId = dto.UserId,
             BioRequestId = dto.BioRequestId,
-            ModelVersion = dto.ModelVersion,
+            ModelVersion = dto.ModelVersion.Trim(),
             FaceVector = new Vector(new float[128]),
             FaceImageUrl = null,
             IsActive = true,
@@ -115,12 +124,18 @@ public class BiometricDatumService : IBiometricDatumService
 
         await EnsureAccessAsync(entity);
 
-        if (!string.IsNullOrWhiteSpace(dto.ModelVersion))
-            entity.ModelVersion = dto.ModelVersion;
+        if (dto.ModelVersion != null)
+        {
+            if (string.IsNullOrWhiteSpace(dto.ModelVersion))
+                throw new InvalidOperationException("Model version cannot be blank.");
+            entity.ModelVersion = dto.ModelVersion.Trim();
+        }
         if (dto.FaceImageUrl != null)
             throw new InvalidOperationException("Upload biometric images through /api/storage/biometric.");
-        if (dto.IsActive.HasValue)
-            entity.IsActive = dto.IsActive.Value;
+        if (dto.IsActive is true)
+            throw new InvalidOperationException("A biometric record can only be activated by approving a re-registration request.");
+        if (dto.IsActive is false)
+            entity.IsActive = false;
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity);

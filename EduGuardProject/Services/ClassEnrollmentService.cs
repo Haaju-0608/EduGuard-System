@@ -78,6 +78,11 @@ public class ClassEnrollmentService : IClassEnrollmentService
     {
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
 
+        if (!Enum.IsDefined(dto.Status))
+            throw new InvalidOperationException("Invalid enrollment status.");
+        if (dto.Status == EnrollmentStatus.Dropped)
+            throw new InvalidOperationException("New enrollments cannot start as DROPPED.");
+
         var cls = await _classRepo.GetByIdAsync(dto.ClassId);
         if (cls == null) throw new InvalidOperationException("Class not found.");
 
@@ -127,6 +132,9 @@ public class ClassEnrollmentService : IClassEnrollmentService
 
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         await EnsureEnrollmentAccessAsync(entity);
+
+        if (!Enum.IsDefined(dto.Status))
+            throw new InvalidOperationException("Invalid enrollment status.");
 
         entity.Status = dto.Status;
         await _repo.UpdateAsync(entity);

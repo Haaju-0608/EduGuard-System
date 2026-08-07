@@ -148,8 +148,12 @@ public class StudentExamRecordService : IStudentExamRecordService
         if (participation.Status == ParticipationStatus.Submitted && entity != null)
             return MapToResponseDto(entity);
 
-        if (participation.Status is not ParticipationStatus.Joined and not ParticipationStatus.Submitted)
-            throw new InvalidOperationException("This action is only allowed while the participation is JOINED or SUBMITTED.");
+        if (participation.Status is not ParticipationStatus.Joined
+            and not ParticipationStatus.Submitted
+            and not ParticipationStatus.Disqualified)
+        {
+            throw new InvalidOperationException("This action is only allowed while the participation is JOINED, SUBMITTED, or DISQUALIFIED.");
+        }
 
         var now = DateTime.UtcNow;
         ValidateRecordTimes(now, now, examSlot);

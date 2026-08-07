@@ -72,6 +72,16 @@ public class BiometricRequestService : IBiometricRequestService
         await _currentUser.EnsureRoleAsync(AppRole.Student);
         var user = await _currentUser.GetRequiredUserAsync();
 
+        if (string.IsNullOrWhiteSpace(dto.Reason))
+            throw new InvalidOperationException("Reason is required.");
+        if (dto.FrontFile.Length == 0 || dto.LeftFile.Length == 0 || dto.RightFile.Length == 0)
+            throw new InvalidOperationException("All three face images must not be empty.");
+
+        var hasPendingRequest = await _context.BiometricRequests.AsNoTracking()
+            .AnyAsync(r => r.StudentId == user.Id && r.Status == BiometricReqStatus.Pending);
+        if (hasPendingRequest)
+            throw new InvalidOperationException("You already have a pending biometric request awaiting review.");
+
         // 2. Mở Stream 3 file ảnh từ Request
         using var frontStream = dto.FrontFile.OpenReadStream();
         using var leftStream = dto.LeftFile.OpenReadStream();
@@ -89,7 +99,7 @@ public class BiometricRequestService : IBiometricRequestService
         {
             Id = Guid.NewGuid(),
             StudentId = user.Id,
-            Reason = dto.Reason,
+            Reason = dto.Reason.Trim(),
             Status = BiometricReqStatus.Pending,
             // Lưu trực tiếp URL Supabase được trả về từ Python AI Service
             FrontImagePath = aiResponse.FrontUrl,
@@ -229,10 +239,16 @@ public class BiometricRequestService : IBiometricRequestService
         if (entity == null) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.Student && entity.StudentId != user.Id)
-            throw new UnauthorizedAccessException("Access denied.");
+        if (user.Role == AppRole.Student)
+        {
+            if (entity.StudentId != user.Id)
+                throw new UnauthorizedAccessException("Access denied.");
+        }
         else
-            await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        {
+            await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
+            await EnsureReviewerAccessAsync(user, entity.StudentId);
+        }
 
         await _repo.SoftDeleteAsync(entity);
         await PublishBiometricRequestChangedAsync(entity, "deleted");

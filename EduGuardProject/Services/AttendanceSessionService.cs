@@ -103,13 +103,27 @@ public class AttendanceSessionService : IAttendanceSessionService
 
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
 
+        if (dto.StartTime == default)
+            throw new InvalidOperationException("Start time is required.");
+        if (!string.IsNullOrWhiteSpace(dto.VideoPath))
+            throw new InvalidOperationException("Video must be uploaded through the AI video endpoint after the session is created.");
+
+        var startTimeUtc = ToUtcTimestamp(dto.StartTime);
+        if (examSlot != null && (startTimeUtc < examSlot.StartTime || startTimeUtc > examSlot.EndTime))
+            throw new InvalidOperationException("Attendance session start time must be within the exam slot's time range.");
+
+        var hasOpenSession = await _context.AttendanceSessions.AsNoTracking().AnyAsync(s =>
+            s.ClassId == dto.ClassId && s.Status == SessionStatus.InProgress);
+        if (hasOpenSession)
+            throw new InvalidOperationException("This class already has an in-progress attendance session.");
+
         var entity = new AttendanceSession
         {
             Id = Guid.NewGuid(),
             ClassId = dto.ClassId,
             ExamSlotId = dto.ExamSlotId,
             CreatedBy = user.Id,
-            VideoPath = dto.VideoPath,
+            VideoPath = null,
             StartTime = ToUtcTimestamp(dto.StartTime),
             Status = SessionStatus.InProgress,
             TotalRecognized = 0,
@@ -147,10 +161,36 @@ public class AttendanceSessionService : IAttendanceSessionService
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         await EnsureSessionAccessAsync(entity);
 
+        if (!Enum.IsDefined(dto.Status))
+            throw new InvalidOperationException("Invalid session status.");
+        if (entity.Status is SessionStatus.Completed or SessionStatus.Cancelled)
+            throw new InvalidOperationException("This attendance session is already closed and cannot be updated.");
+        if (dto.EndTime.HasValue)
+        {
+            var endTime = ToUtcTimestamp(dto.EndTime.Value);
+            if (endTime < entity.StartTime)
+                throw new InvalidOperationException("End time cannot be before start time.");
+            if (endTime > DateTime.UtcNow)
+                throw new InvalidOperationException("End time cannot be in the future.");
+
+            if (entity.ExamSlotId.HasValue)
+            {
+                var examSlot = await _context.ExamSlots.AsNoTracking()
+                    .FirstOrDefaultAsync(e => e.Id == entity.ExamSlotId.Value);
+                if (examSlot != null && endTime > examSlot.EndTime)
+                    throw new InvalidOperationException("Attendance session end time must be within the exam slot's time range.");
+            }
+        }
+        if (dto.Status == SessionStatus.Completed && !dto.EndTime.HasValue && !entity.EndTime.HasValue)
+            throw new InvalidOperationException("End time is required to complete a session.");
+        if (dto.TotalRecognized.HasValue && dto.TotalRecognized.Value < 0)
+            throw new InvalidOperationException("Total recognized cannot be negative.");
+        if (!string.IsNullOrWhiteSpace(dto.VideoPath))
+            throw new InvalidOperationException("Video must be uploaded through the AI video endpoint.");
+
         var oldStatus = entity.Status;
         if (dto.EndTime.HasValue) entity.EndTime = ToUtcTimestamp(dto.EndTime.Value);
         entity.Status = dto.Status;
-        if (dto.VideoPath != null) entity.VideoPath = dto.VideoPath;
         if (dto.TotalRecognized.HasValue) entity.TotalRecognized = dto.TotalRecognized.Value;
         entity.UpdatedAt = DateTime.UtcNow;
 
@@ -228,6 +268,11 @@ public class AttendanceSessionService : IAttendanceSessionService
             throw new UnauthorizedAccessException("Access denied.");
 
         if (role == AppRole.Lecturer && cls.LecturerId != user.Id)
-            throw new UnauthorizedAccessException("Access denied.");
+        {
+            var isProctor = entity.ExamSlotId.HasValue &&
+                await _context.ExamSlots.AnyAsync(e => e.Id == entity.ExamSlotId.Value && e.ProctorId == user.Id);
+            if (!isProctor)
+                throw new UnauthorizedAccessException("Access denied.");
+        }
     }
 }
