@@ -26,6 +26,9 @@ namespace EduGuardProject.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10)
         {
+            if (page < 1 || pageSize is < 1 or > 100)
+                return BadRequest(ApiResponse<object>.OnFail("Page must be greater than 0 and pageSize must be between 1 and 100."));
+
             try
             {
                 var (items, totalCount) = await _service.GetInstitutionsAsync(search, sort, page, pageSize);

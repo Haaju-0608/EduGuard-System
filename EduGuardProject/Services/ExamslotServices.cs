@@ -157,8 +157,11 @@ public class ExamslotServices : IExamSlotServices
             throw new InvalidOperationException("Exam name is required.");
         if (dto.ExpectedDurationMinutes <= 0)
             throw new InvalidOperationException("Expected duration must be greater than zero.");
+        if (!Enum.IsDefined(dto.Status) || dto.Status != ExamSlotStatus.Scheduled)
+            throw new InvalidOperationException("New exam slots must start as SCHEDULED.");
 
         ValidateNewExamTimes(dto.StartTime, dto.EndTime);
+        ValidateExpectedDuration(dto.ExpectedDurationMinutes, dto.StartTime, dto.EndTime);
 
         var cls = await _context.Classes
             .Include(c => c.Lecturer)
@@ -229,6 +232,7 @@ public class ExamslotServices : IExamSlotServices
             entity.StartTime = startTime;
             entity.EndTime = endTime;
         }
+        ValidateExpectedDuration(entity.ExpectedDurationMinutes, startTime, endTime);
 
         if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != entity.Class.LecturerId)
         {
@@ -386,6 +390,14 @@ public class ExamslotServices : IExamSlotServices
             throw new InvalidOperationException("Exam end time cannot be in the past.");
         if (endTime <= startTime)
             throw new InvalidOperationException("Exam end time must be after start time.");
+    }
+
+    private static void ValidateExpectedDuration(int expectedDurationMinutes, DateTime startTime, DateTime endTime)
+    {
+        if (expectedDurationMinutes <= 0)
+            throw new InvalidOperationException("Expected duration must be greater than zero.");
+        if (expectedDurationMinutes > (endTime - startTime).TotalMinutes)
+            throw new InvalidOperationException("Expected duration cannot exceed the exam slot time range.");
     }
 
     private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null) => new()

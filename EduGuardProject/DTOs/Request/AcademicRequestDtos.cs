@@ -176,7 +176,7 @@ public class CreateExamParticipationDto
     public Guid? BillingTransId { get; set; }
     public DateTime? ActualStart { get; set; }
     public DateTime? ActualEnd { get; set; }
-    public ParticipationStatus Status { get; set; }
+    public ParticipationStatus Status { get; set; } = ParticipationStatus.Absent;
     public string? DisqualifiedReason { get; set; }
     public string? RecordingVideoPath { get; set; }
     public string? IdentitySnapshotPath { get; set; }

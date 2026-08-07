@@ -85,7 +85,7 @@ public class ExamParticipationServices : IExamParticipationService
         }
         if (dto.StudentId == Guid.Empty)
             throw new InvalidOperationException("Student id is required.");
-        ValidateParticipationTimes(dto.ActualStart, dto.ActualEnd);
+        ValidateNewParticipation(dto);
 
         var examSlot = await _context.ExamSlots
             .AsNoTracking()
@@ -110,13 +110,13 @@ public class ExamParticipationServices : IExamParticipationService
             Id = Guid.NewGuid(),
             ExamSlotId = dto.ExamSlotId,
             StudentId = dto.StudentId,
-            BillingTransId = dto.BillingTransId,
-            ActualStart = dto.ActualStart,
-            ActualEnd = dto.ActualEnd,
-            Status = dto.Status,
-            DisqualifiedReason = dto.DisqualifiedReason,
-            RecordingVideoPath = dto.RecordingVideoPath,
-            IdentitySnapshotPath = dto.IdentitySnapshotPath,
+            BillingTransId = null,
+            ActualStart = null,
+            ActualEnd = null,
+            Status = ParticipationStatus.Absent,
+            DisqualifiedReason = null,
+            RecordingVideoPath = null,
+            IdentitySnapshotPath = null,
         };
 
         await _repo.AddAsync(entity);
@@ -134,6 +134,8 @@ public class ExamParticipationServices : IExamParticipationService
             throw new InvalidOperationException("Submitted or disqualified exam participations cannot be edited.");
         if (user.Role == AppRole.Student && dto.Status != entity.Status)
             throw new UnauthorizedAccessException("Students cannot update exam participation status directly.");
+        ValidateParticipationStatus(dto.Status);
+        EnsureValidStatusTransition(entity.Status, dto.Status);
         ValidateParticipationTimes(dto.ActualStart, dto.ActualEnd);
 
         // update allowed fields
@@ -154,6 +156,8 @@ public class ExamParticipationServices : IExamParticipationService
         if (entity == null) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
+        ValidateParticipationStatus(dto.Status);
+        EnsureValidStatusTransition(entity.Status, dto.Status);
         if (user.Role == AppRole.Lecturer &&
             (entity.Status != ParticipationStatus.Disqualified || dto.Status != ParticipationStatus.Submitted))
         {
@@ -265,6 +269,36 @@ public class ExamParticipationServices : IExamParticipationService
             throw new InvalidOperationException("Actual end time cannot be in the past.");
         if (actualStart.HasValue && actualEnd.HasValue && actualEnd.Value <= actualStart.Value)
             throw new InvalidOperationException("Actual end time must be after actual start time.");
+    }
+
+    private static void ValidateNewParticipation(CreateExamParticipationDto dto)
+    {
+        ValidateParticipationStatus(dto.Status);
+        if (dto.Status != ParticipationStatus.Absent)
+            throw new InvalidOperationException("New exam participations must start as ABSENT.");
+        if (dto.ActualStart.HasValue || dto.ActualEnd.HasValue || dto.BillingTransId.HasValue ||
+            !string.IsNullOrWhiteSpace(dto.DisqualifiedReason) ||
+            !string.IsNullOrWhiteSpace(dto.RecordingVideoPath) ||
+            !string.IsNullOrWhiteSpace(dto.IdentitySnapshotPath))
+        {
+            throw new InvalidOperationException("Workflow-managed participation fields cannot be set when creating a participation.");
+        }
+    }
+
+    private static void ValidateParticipationStatus(ParticipationStatus status)
+    {
+        if (!Enum.IsDefined(status))
+            throw new InvalidOperationException("Invalid exam participation status.");
+    }
+
+    private static void EnsureValidStatusTransition(ParticipationStatus current, ParticipationStatus next)
+    {
+        var isValid = current == next ||
+            (current == ParticipationStatus.Joined && next is ParticipationStatus.Submitted or ParticipationStatus.Disqualified or ParticipationStatus.Left) ||
+            (current == ParticipationStatus.Disqualified && next == ParticipationStatus.Submitted);
+
+        if (!isValid)
+            throw new InvalidOperationException($"Cannot change participation status from {current} to {next}.");
     }
 
     private async Task<ExamParticipation?> GetManageableParticipationAsync(

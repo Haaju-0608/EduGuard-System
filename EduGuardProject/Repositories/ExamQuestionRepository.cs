@@ -23,7 +23,17 @@ public class ExamQuestionRepository : IExamQuestionRepository
         if (lecturerId.HasValue)
             query = query.Where(q => q.ExamSlot.Class.LecturerId == lecturerId.Value);
         if (studentId.HasValue)
-            query = query.Where(q => q.ExamSlot.ExamParticipations.Any(p => p.StudentId == studentId.Value));
+        {
+            var now = DateTime.UtcNow;
+            query = query.Where(q =>
+                q.ExamSlot.Status != ExamSlotStatus.Cancelled &&
+                q.ExamSlot.Status != ExamSlotStatus.Completed &&
+                q.ExamSlot.StartTime <= now &&
+                q.ExamSlot.EndTime >= now &&
+                q.ExamSlot.ExamParticipations.Any(p =>
+                    p.StudentId == studentId.Value &&
+                    p.Status == ParticipationStatus.Joined));
+        }
 
         if (!string.IsNullOrWhiteSpace(search))
         {

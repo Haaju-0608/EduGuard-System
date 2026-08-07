@@ -80,12 +80,16 @@ public class AttendanceRecordService : IAttendanceRecordService
             ?? throw new InvalidOperationException("Attendance session not found.");
 
         await EnsureSessionAccessAsync(session);
+        if (session.Status != SessionStatus.InProgress)
+            throw new InvalidOperationException("Attendance records can only be created for in-progress sessions.");
 
         var existing = await _repo.GetBySessionAndStudentAsync(dto.SessionId, dto.StudentId);
         if (existing != null)
             throw new InvalidOperationException("Attendance record already exists for this student in this session.");
 
         await EnsureStudentEnrolledAsync(session.ClassId, dto.StudentId);
+        var checkinAt = ValidateAttendanceInput(
+            dto.Status, dto.Method, dto.ConfidenceScore, dto.SnapshotPath, dto.CheckinAt, session, defaultCheckinToNow: true);
 
         var entity = new AttendanceRecord
         {
@@ -95,8 +99,8 @@ public class AttendanceRecordService : IAttendanceRecordService
             Status = dto.Status,
             Method = dto.Method,
             ConfidenceScore = dto.ConfidenceScore,
-            SnapshotPath = dto.SnapshotPath,
-            CheckinAt = dto.CheckinAt ?? DateTime.UtcNow
+            SnapshotPath = null,
+            CheckinAt = checkinAt
         };
 
         await _repo.AddAsync(entity);
@@ -114,14 +118,29 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
+        if (DateTime.UtcNow < session.StartTime ||
+            session.EndTime.HasValue && DateTime.UtcNow > session.EndTime.Value)
+        {
+            throw new InvalidOperationException("Attendance can only be recorded during the session time range.");
+        }
 
         var studentIds = dto.PresentStudentIds.Distinct().ToList();
+        if (studentIds.Count == 0)
+            throw new InvalidOperationException("At least one student id is required.");
+        if (!Enum.IsDefined(dto.Status))
+            throw new InvalidOperationException("Invalid attendance status.");
+        if (dto.Status is not AttendanceStatus.Present and not AttendanceStatus.Late)
+            throw new InvalidOperationException("Bulk attendance only supports PRESENT or LATE status.");
+        if (dto.Method != AttendanceMethod.Manual)
+            throw new InvalidOperationException("Manual attendance must use the MANUAL method.");
 
         var activeEnrollments = await _context.ClassEnrollments
             .AsNoTracking()
             .Where(e => e.ClassId == session.ClassId && studentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
             .Select(e => e.StudentId)
             .ToListAsync();
+        if (activeEnrollments.Count != studentIds.Count)
+            throw new InvalidOperationException("One or more students are not actively enrolled in this class.");
 
         var existingRecords = await _context.AttendanceRecords
             .Where(r => r.SessionId == sessionId && studentIds.Contains(r.StudentId))
@@ -178,14 +197,21 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var session = await _sessionRepo.GetByIdAsync(entity.SessionId);
-        if (session != null) await EnsureSessionAccessAsync(session);
+        if (session == null)
+            throw new InvalidOperationException("Attendance session not found.");
+        await EnsureSessionAccessAsync(session);
+        if (session.Status == SessionStatus.Cancelled)
+            throw new InvalidOperationException("Attendance records cannot be updated for cancelled sessions.");
+
+        var checkinAt = ValidateAttendanceInput(
+            dto.Status, dto.Method, dto.ConfidenceScore, dto.SnapshotPath, dto.CheckinAt, session,
+            defaultCheckinToNow: session.Status == SessionStatus.InProgress);
 
         var user = await _currentUser.GetRequiredUserAsync();
         entity.Status = dto.Status;
         entity.Method = dto.Method;
         entity.ConfidenceScore = dto.ConfidenceScore;
-        entity.SnapshotPath = dto.SnapshotPath;
-        entity.CheckinAt = dto.CheckinAt;
+        entity.CheckinAt = checkinAt;
         entity.AdjustedBy = user.Id;
         entity.AdjustedAt = DateTime.UtcNow;
 
@@ -220,6 +246,48 @@ public class AttendanceRecordService : IAttendanceRecordService
             .AnyAsync(e => e.ClassId == classId && e.StudentId == studentId && e.Status == EnrollmentStatus.Active);
         if (!enrolled)
             throw new InvalidOperationException("Student is not actively enrolled in this class.");
+    }
+
+    private static DateTime? ValidateAttendanceInput(
+        AttendanceStatus status,
+        AttendanceMethod method,
+        double? confidenceScore,
+        string? snapshotPath,
+        DateTime? checkinAt,
+        AttendanceSession session,
+        bool defaultCheckinToNow)
+    {
+        if (!Enum.IsDefined(status))
+            throw new InvalidOperationException("Invalid attendance status.");
+        if (!Enum.IsDefined(method) || method != AttendanceMethod.Manual)
+            throw new InvalidOperationException("Manual attendance must use the MANUAL method.");
+        if (confidenceScore.HasValue &&
+            (!double.IsFinite(confidenceScore.Value) || confidenceScore.Value is < 0 or > 1))
+        {
+            throw new InvalidOperationException("Confidence score must be between 0 and 1.");
+        }
+        if (!string.IsNullOrWhiteSpace(snapshotPath))
+            throw new InvalidOperationException("Attendance snapshots must be uploaded through the storage endpoint.");
+
+        if (status is AttendanceStatus.Absent or AttendanceStatus.Excused)
+        {
+            if (checkinAt.HasValue)
+                throw new InvalidOperationException("Absent or excused attendance cannot have a check-in time.");
+            return null;
+        }
+
+        var effectiveCheckin = checkinAt ?? (defaultCheckinToNow ? DateTime.UtcNow : null);
+        if (!effectiveCheckin.HasValue)
+            throw new InvalidOperationException("Check-in time is required for present or late attendance.");
+        if (effectiveCheckin.Value > DateTime.UtcNow)
+            throw new InvalidOperationException("Check-in time cannot be in the future.");
+        if (effectiveCheckin.Value < session.StartTime ||
+            session.EndTime.HasValue && effectiveCheckin.Value > session.EndTime.Value)
+        {
+            throw new InvalidOperationException("Check-in time must be within the attendance session time range.");
+        }
+
+        return effectiveCheckin;
     }
 
     private async Task UpdateSessionRecognizedCountAsync(Guid sessionId)
@@ -328,9 +396,15 @@ public class AttendanceRecordService : IAttendanceRecordService
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var session = await _sessionRepo.GetByIdAsync(sessionId)
             ?? throw new InvalidOperationException("Attendance session not found.");
+        await EnsureSessionAccessAsync(session);
 
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
+        if (DateTime.UtcNow < session.StartTime ||
+            session.EndTime.HasValue && DateTime.UtcNow > session.EndTime.Value)
+        {
+            throw new InvalidOperationException("Attendance can only be recorded during the session time range.");
+        }
 
         // 1. Gọi trực tiếp FastAPI để upload video lên Supabase Storage và bóc tách Vector khuôn mặt
         VideoVectorsResponse aiResult;

@@ -162,9 +162,17 @@ public class ExamQuestionService : IExamQuestionService
 
         if (user.Role == AppRole.Student)
         {
+            var now = DateTime.UtcNow;
+            if (entity.ExamSlot.Status is ExamSlotStatus.Cancelled or ExamSlotStatus.Completed ||
+                now < entity.ExamSlot.StartTime || now > entity.ExamSlot.EndTime)
+            {
+                throw new InvalidOperationException("Exam questions are only available during the exam slot.");
+            }
+
             var hasParticipation = await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
                 p.ExamSlotId == entity.ExamSlotId &&
-                p.StudentId == user.Id);
+                p.StudentId == user.Id &&
+                p.Status == ParticipationStatus.Joined);
             if (hasParticipation)
                 return user;
         }
