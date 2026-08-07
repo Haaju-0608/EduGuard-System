@@ -197,6 +197,7 @@ public static class AcademicMapper
             {
                 Id = session.Id,
                 ClassId = session.ClassId,
+                ExamSlotId = session.ExamSlotId,
                 Status = session.Status,
                 StartTime = session.StartTime
             };
