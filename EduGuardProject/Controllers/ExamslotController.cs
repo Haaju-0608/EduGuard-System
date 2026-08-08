@@ -171,9 +171,10 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
-        // Delete Exam Slot
+        // Cancel Exam Slot (soft delete)
         // Truyền dữ liệu: route examId.
         // Điều kiện: SchoolAdmin hoặc SuperAdmin; exam slot phải tồn tại và thuộc institution được phép truy cập.
+        // Dữ liệu được giữ lại; status được chuyển thành Cancelled để bảo toàn lịch sử và các khóa ngoại.
         [HttpDelete("{examId:guid}")]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Delete(Guid examId)
@@ -182,7 +183,7 @@ namespace EduGuardProject.Controllers
             {
                 var success = await _service.DeleteAsync(examId);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Exam slot not found."));
-                return Ok(ApiResponse<object>.OnSuccess(null!, "Exam slot deleted successfully."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Exam slot cancelled successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }

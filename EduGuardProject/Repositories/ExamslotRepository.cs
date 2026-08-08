@@ -81,12 +81,6 @@ public class ExamSlotRepository : IExamslotRepository
         await _context.SaveChangesAsync();
     }
 
-    public async Task DeleteAsync(ExamSlot entity)
-    {
-        _context.ExamSlots.Remove(entity);
-        await _context.SaveChangesAsync();
-    }
-
     private static IQueryable<ExamSlot> ApplySort(IQueryable<ExamSlot> query, string? sort) =>
         (sort ?? "-startTime").ToLower() switch
         {

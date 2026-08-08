@@ -271,8 +271,10 @@ public class ExamslotServices : IExamSlotServices
         if (entity == null) return false;
 
         await EnsureExamSlotAdminAccessAsync(entity);
-        await _repo.DeleteAsync(entity);
-        await PublishExamSlotChangedAsync(entity, "deleted");
+        entity.Status = ExamSlotStatus.Cancelled;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(entity);
+        await PublishExamSlotChangedAsync(entity, "updated");
         return true;
     }
 
