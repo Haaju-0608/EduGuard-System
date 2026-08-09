@@ -30,15 +30,29 @@ public class ExamslotServices : IExamSlotServices
         _realtime = realtime;
     }
 
-    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel)
+    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSize)
     {
-        return await _repo.GetAllAsync(search, sort, page, pageSizel);
+        var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        if (role is not AppRole.SuperAdmin and not AppRole.SchoolAdmin and not AppRole.Lecturer and not AppRole.Student)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        var institutionId = role == AppRole.SuperAdmin
+            ? (Guid?)null
+            : user.InstitutionId ?? throw new UnauthorizedAccessException("User is not assigned to an institution.");
+        var lecturerId = role == AppRole.Lecturer ? user.Id : (Guid?)null;
+        var studentId = role == AppRole.Student ? user.Id : (Guid?)null;
+
+        return await _repo.GetAllAsync(search, sort, page, pageSize, institutionId, lecturerId, studentId);
     }
 
     public async Task<ExamslotReponseDto?> GetByIdAsync(Guid ExamId)
     {
         var entity = await _repo.GetByIdAsync(ExamId);
-        return entity == null ? null : MapToResponseDto(entity);
+        if (entity == null) return null;
+
+        await EnsureExamSlotReadAccessAsync(entity);
+        return MapToResponseDto(entity);
     }
 
     public async Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid ExamId, Guid studentId)
@@ -290,6 +304,25 @@ public class ExamslotServices : IExamSlotServices
             ?? throw new InvalidOperationException("Class not found.");
 
         await _currentUser.EnsureInstitutionAccessAsync(institutionId);
+    }
+
+    private async Task EnsureExamSlotReadAccessAsync(ExamSlot entity)
+    {
+        if (entity.Class.DeletedAt != null)
+            throw new InvalidOperationException("Class not found.");
+
+        var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.SuperAdmin) return;
+        if (user.InstitutionId != entity.Class.InstitutionId)
+            throw new UnauthorizedAccessException("Access denied.");
+        if (role == AppRole.SchoolAdmin) return;
+        if (role == AppRole.Lecturer && entity.Class.LecturerId == user.Id) return;
+        if (role == AppRole.Student && await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
+                p.ExamSlotId == entity.Id && p.StudentId == user.Id))
+            return;
+
+        throw new UnauthorizedAccessException("Access denied.");
     }
 
     private async Task EnsureStudentExamSlotAccessAsync(ExamSlot entity, Guid studentId)

@@ -115,7 +115,7 @@ public interface IExamQuestionService
 
 public interface IExamSlotServices
 {
-    Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel);
+    Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSize);
 
     Task<ExamslotReponseDto?> GetByIdAsync(Guid id);
 
