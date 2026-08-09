@@ -419,7 +419,8 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         // 2. Cập nhật đường dẫn Video từ Cloud Supabase do FastAPI trả về
         session.VideoPath = aiResult.VideoUrl;
-        session.Status = SessionStatus.Completed;
+        //session.Status = SessionStatus.Completed;
+        await _sessionRepo.UpdateAsync(session);
 
         var presentStudentIds = new List<Guid>();
         double threshold = 0.40;
