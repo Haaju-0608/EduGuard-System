@@ -1,3 +1,4 @@
+using System.Text.RegularExpressions;
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Helpers;
@@ -97,15 +98,18 @@ public class ClassService : IClassService
         if (user.Role == AppRole.Lecturer && dto.LecturerId != user.Id)
             throw new UnauthorizedAccessException("Lecturers can only create classes assigned to themselves.");
 
+        ValidateClassFields(dto.CourseName, dto.CourseCode, dto.Semester, dto.AcademicYear, dto.StartDate, dto.EndDate);
+        await EnsureLecturerBelongsToInstitutionAsync(dto.LecturerId, dto.InstitutionId);
+
         var entity = new Class
         {
             Id = Guid.NewGuid(),
             InstitutionId = dto.InstitutionId,
             LecturerId = dto.LecturerId,
-            CourseName = dto.CourseName,
-            CourseCode = dto.CourseCode,
-            Semester = dto.Semester,
-            AcademicYear = dto.AcademicYear,
+            CourseName = dto.CourseName.Trim(),
+            CourseCode = NormalizeOptional(dto.CourseCode),
+            Semester = dto.Semester.Trim(),
+            AcademicYear = dto.AcademicYear.Trim(),
             StartDate = dto.StartDate,
             EndDate = dto.EndDate,
             CreatedBy = user.Id,
@@ -125,10 +129,14 @@ public class ClassService : IClassService
 
         await EnsureCanManageClassAsync(entity);
 
-        entity.CourseName = dto.CourseName;
-        entity.CourseCode = dto.CourseCode;
-        entity.Semester = dto.Semester;
-        entity.AcademicYear = dto.AcademicYear;
+        ValidateClassFields(dto.CourseName, dto.CourseCode, dto.Semester, dto.AcademicYear, dto.StartDate, dto.EndDate);
+        if (dto.LecturerId != entity.LecturerId)
+            await EnsureLecturerBelongsToInstitutionAsync(dto.LecturerId, entity.InstitutionId);
+
+        entity.CourseName = dto.CourseName.Trim();
+        entity.CourseCode = NormalizeOptional(dto.CourseCode);
+        entity.Semester = dto.Semester.Trim();
+        entity.AcademicYear = dto.AcademicYear.Trim();
         entity.LecturerId = dto.LecturerId;
         entity.StartDate = dto.StartDate;
         entity.EndDate = dto.EndDate;
@@ -138,6 +146,56 @@ public class ClassService : IClassService
         await _repo.UpdateAsync(entity);
         await PublishClassChangedAsync(entity, "updated");
         return true;
+    }
+
+    private static readonly Regex HasLetterRegex = new(@"[A-Za-zÀ-ỹ]", RegexOptions.Compiled);
+    private static readonly Regex HasDigitRegex = new(@"\d", RegexOptions.Compiled);
+
+    private static void ValidateClassFields(
+        string courseName, string? courseCode, string semester, string academicYear,
+        DateOnly? startDate, DateOnly? endDate)
+    {
+        if (string.IsNullOrWhiteSpace(courseName))
+            throw new InvalidOperationException("Course name is required.");
+        var trimmedName = courseName.Trim();
+        if (char.IsDigit(trimmedName[0]))
+            throw new InvalidOperationException("Course name cannot start with a number.");
+
+        if (!string.IsNullOrWhiteSpace(courseCode))
+        {
+            var trimmedCode = courseCode.Trim();
+            if (char.IsDigit(trimmedCode[0]))
+                throw new InvalidOperationException("Course code cannot start with a number.");
+            if (!HasLetterRegex.IsMatch(trimmedCode) || !HasDigitRegex.IsMatch(trimmedCode))
+                throw new InvalidOperationException("Course code must contain both letters and numbers.");
+        }
+
+        if (string.IsNullOrWhiteSpace(semester))
+            throw new InvalidOperationException("Semester is required.");
+        if (HasDigitRegex.IsMatch(semester))
+            throw new InvalidOperationException("Semester cannot contain numbers.");
+
+        if (string.IsNullOrWhiteSpace(academicYear))
+            throw new InvalidOperationException("Academic year is required.");
+        if (startDate.HasValue && endDate.HasValue && endDate.Value < startDate.Value)
+            throw new InvalidOperationException("End date cannot be before start date.");
+    }
+
+    private static string? NormalizeOptional(string? value) =>
+        string.IsNullOrWhiteSpace(value) ? null : value.Trim();
+
+    private async Task EnsureLecturerBelongsToInstitutionAsync(Guid lecturerId, Guid institutionId)
+    {
+        var lecturer = await _context.Users.AsNoTracking()
+            .FirstOrDefaultAsync(u =>
+                u.Id == lecturerId &&
+                u.Role == AppRole.Lecturer &&
+                u.DeletedAt == null &&
+                u.Status == UserStatus.Active);
+        if (lecturer == null)
+            throw new InvalidOperationException("Lecturer not found.");
+        if (lecturer.InstitutionId != institutionId)
+            throw new InvalidOperationException("Lecturer does not belong to this institution.");
     }
 
     public async Task<bool> DeleteAsync(Guid id)

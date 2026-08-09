@@ -145,11 +145,25 @@ public class StudentExamRecordService : IStudentExamRecordService
                 r.StudentId == user.Id &&
                 r.Status != StudentExamRecordStatus.Deleted);
 
-        if (participation.Status == ParticipationStatus.Submitted && entity != null)
+        if (participation.Status is ParticipationStatus.Submitted or ParticipationStatus.Disqualified &&
+            entity?.SubmittedAt.HasValue == true)
             return MapToResponseDto(entity);
 
-        if (participation.Status is not ParticipationStatus.Joined and not ParticipationStatus.Submitted)
-            throw new InvalidOperationException("This action is only allowed while the participation is JOINED or SUBMITTED.");
+        if (participation.Status is not ParticipationStatus.Joined and
+            not ParticipationStatus.Submitted and
+            not ParticipationStatus.Disqualified)
+        {
+            throw new InvalidOperationException("This action is only allowed while the participation is JOINED, SUBMITTED, or DISQUALIFIED.");
+        }
+
+        if (participation.Status == ParticipationStatus.Disqualified && entity == null &&
+            await _context.StudentExamRecords.AsNoTracking().AnyAsync(r =>
+                r.ExamSlotId == dto.ExamSlotId &&
+                r.StudentId == user.Id &&
+                r.Status == StudentExamRecordStatus.Deleted))
+        {
+            throw new InvalidOperationException("A voided exam result cannot be submitted again.");
+        }
 
         var now = DateTime.UtcNow;
         ValidateRecordTimes(now, now, examSlot);
@@ -172,7 +186,8 @@ public class StudentExamRecordService : IStudentExamRecordService
         entity.ExamSlot = examSlot;
         entity.Student = student;
 
-        participation.Status = ParticipationStatus.Submitted;
+        if (participation.Status != ParticipationStatus.Disqualified)
+            participation.Status = ParticipationStatus.Submitted;
         participation.ActualEnd = now;
 
         if (_context.Entry(entity).State == EntityState.Detached)

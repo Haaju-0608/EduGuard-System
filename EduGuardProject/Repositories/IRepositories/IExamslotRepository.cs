@@ -11,5 +11,4 @@ public interface IExamslotRepository
 
     Task AddAsync(ExamSlot entity);
     Task UpdateAsync(ExamSlot entity);
-    Task DeleteAsync(ExamSlot entity);
 }

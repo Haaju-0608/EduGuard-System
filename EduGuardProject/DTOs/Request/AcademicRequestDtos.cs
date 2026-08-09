@@ -335,6 +335,9 @@ public class CreateExamSlotDto
 
     public Guid? LecturerId { get; set; }
 
+    /// <summary>Lecturer assigned to proctor this exam, if different from the class's own lecturer.</summary>
+    public Guid? ProctorId { get; set; }
+
     [Required]
     [MaxLength(255)]
     public string ExamName { get; set; } = string.Empty;
@@ -356,6 +359,9 @@ public class UpdateExamSlotDto
     public string? ExamName { get; set; }
 
     public Guid? LecturerId { get; set; }
+
+    /// <summary>Lecturer assigned to proctor this exam, if different from the class's own lecturer.</summary>
+    public Guid? ProctorId { get; set; }
 
     public int ExpectedDurationMinutes { get; set; }
     public DateTime? StartTime { get; set; }

@@ -236,15 +236,30 @@ public async Task<IActionResult> Join(Guid id, IFormFile liveCapture)
 
         // Disqualify Student From Exam
         // Truyền dữ liệu: route id là participationId, body reason.
-        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution, SuperAdmin hoặc Student chính chủ; participation phải đang Joined.
+        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; participation phải đang Joined.
         [HttpPost("{id:guid}/disqualify")]
-        [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Disqualify(Guid id, [FromBody] ExamDisqualifyRequestDto dto)
         {
             try
             {
                 var result = await _workflowService.DisqualifyAsync(id, dto.Reason);
                 return Ok(ApiResponse<object>.OnSuccess(result, "Student disqualified successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        // Void Submitted Exam Result
+        // Truyền dữ liệu: route id là participationId, body reason.
+        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; participation phải đã Submitted.
+        [HttpPost("{id:guid}/void")]
+        [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> Void(Guid id, [FromBody] ExamDisqualifyRequestDto dto)
+        {
+            try
+            {
+                var result = await _workflowService.VoidAsync(id, dto.Reason);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Submitted exam result voided successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }

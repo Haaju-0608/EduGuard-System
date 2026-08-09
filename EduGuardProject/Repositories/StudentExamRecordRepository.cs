@@ -21,8 +21,9 @@ public class StudentExamRecordRepository : IStudentExamRecordRepository
             query = query.Where(r => r.ExamSlotId == examSlotId.Value);
         if (studentId.HasValue)
             query = query.Where(r => r.StudentId == studentId.Value);
-        if (status.HasValue)
-            query = query.Where(r => r.Status == status.Value);
+        query = status.HasValue
+            ? query.Where(r => r.Status == status.Value)
+            : query.Where(r => r.Status != StudentExamRecordStatus.Deleted);
         if (institutionId.HasValue)
             query = query.Where(r => r.ExamSlot.Class.InstitutionId == institutionId.Value);
         if (lecturerId.HasValue)

@@ -48,6 +48,8 @@ public class ExamslotServices : IExamSlotServices
             .Include(p => p.ExamSlot)
             .ThenInclude(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(p => p.ExamSlot)
+            .ThenInclude(e => e.ProctorNavigation)
             .FirstOrDefaultAsync(p =>
                 p.ExamSlotId == ExamId &&
                 p.StudentId == studentId);
@@ -95,6 +97,7 @@ public class ExamslotServices : IExamSlotServices
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .Where(e => e.ClassId == classId)
             .OrderBy(e => e.StartTime)
             .ToListAsync();
@@ -112,6 +115,7 @@ public class ExamslotServices : IExamSlotServices
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .Where(e =>
                 e.Class.DeletedAt == null &&
                 e.ExamParticipations.Any(p => p.StudentId == studentId));
@@ -140,6 +144,7 @@ public class ExamslotServices : IExamSlotServices
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .Where(e =>
                 e.Class.DeletedAt == null &&
                 e.ExamParticipations.Any(p => p.StudentId == user.Id))
@@ -180,6 +185,10 @@ public class ExamslotServices : IExamSlotServices
 
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
 
+        User? proctor = null;
+        if (dto.ProctorId is Guid proctorId && proctorId != Guid.Empty)
+            proctor = await GetClassLecturerAsync(proctorId, cls.InstitutionId);
+
         var entity = new ExamSlot
         {
             Id = Guid.NewGuid(),
@@ -190,6 +199,7 @@ public class ExamslotServices : IExamSlotServices
             EndTime = dto.EndTime,
             ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
             Status = dto.Status,
+            ProctorId = proctor?.Id,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -203,7 +213,7 @@ public class ExamslotServices : IExamSlotServices
             ReferenceTypeEnum.ExamSlot,
             entity.Id);
         await PublishExamSlotChangedAsync(entity, "created");
-        return MapToResponseDto(entity, cls.Lecturer);
+        return MapToResponseDto(entity, cls.Lecturer, proctor);
     }
 
     public async Task<ExamslotReponseDto?> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto)
@@ -242,6 +252,12 @@ public class ExamslotServices : IExamSlotServices
             entity.Class.UpdatedAt = DateTime.UtcNow;
         }
 
+        if (dto.ProctorId is Guid proctorId && proctorId != Guid.Empty && proctorId != entity.ProctorId)
+        {
+            entity.ProctorNavigation = await GetClassLecturerAsync(proctorId, entity.Class.InstitutionId);
+            entity.ProctorId = proctorId;
+        }
+
         entity.UpdatedAt = DateTime.UtcNow;
 
         await _repo.UpdateAsync(entity);
@@ -255,8 +271,10 @@ public class ExamslotServices : IExamSlotServices
         if (entity == null) return false;
 
         await EnsureExamSlotAdminAccessAsync(entity);
-        await _repo.DeleteAsync(entity);
-        await PublishExamSlotChangedAsync(entity, "deleted");
+        entity.Status = ExamSlotStatus.Cancelled;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(entity);
+        await PublishExamSlotChangedAsync(entity, "updated");
         return true;
     }
 
@@ -400,7 +418,7 @@ public class ExamslotServices : IExamSlotServices
             throw new InvalidOperationException("Expected duration cannot exceed the exam slot time range.");
     }
 
-    private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null) => new()
+    private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null, User? proctor = null) => new()
     {
         Id = entity.Id,
         ClassId = entity.ClassId,
@@ -411,7 +429,8 @@ public class ExamslotServices : IExamSlotServices
         Status = entity.Status,
         CreatedAt = entity.CreatedAt,
         UpdatedAt = entity.UpdatedAt,
-        Lecturer = ToUserSummary(lecturer ?? entity.Lecturer)
+        Lecturer = ToUserSummary(lecturer ?? entity.Lecturer),
+        Proctor = ToUserSummary(proctor ?? entity.ProctorNavigation)
     };
 
     private static UserSummaryDto? ToUserSummary(User? user) =>
