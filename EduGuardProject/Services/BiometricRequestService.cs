@@ -188,7 +188,7 @@ public class BiometricRequestService : IBiometricRequestService
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var entity = await _repo.GetByIdAsync(id);
-        if (entity == null) return false;
+        if (entity == null || entity.Status != BiometricReqStatus.Pending) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);
