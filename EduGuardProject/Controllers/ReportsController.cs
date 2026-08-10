@@ -61,6 +61,7 @@ public class ReportsController : AcademicApiControllerBase
 
     [HttpGet("attendance")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    [ProducesResponseType(typeof(ApiResponse<AttendanceReportResponseDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Attendance(
         [FromQuery] Guid? institutionId,
         [FromQuery] Guid? classId,
@@ -70,13 +71,14 @@ public class ReportsController : AcademicApiControllerBase
         try
         {
             var result = await _reports.GetAttendanceReportAsync(institutionId, classId, from, to);
-            return Ok(ApiResponse<object>.OnSuccess(result, "Attendance report retrieved successfully."));
+            return Ok(ApiResponse<AttendanceReportResponseDto>.OnSuccess(result, "Attendance report retrieved successfully."));
         }
         catch (Exception ex) { return HandleException(ex); }
     }
 
     [HttpGet("violations")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    [ProducesResponseType(typeof(ApiResponse<ViolationReportResponseDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Violations(
         [FromQuery] Guid? institutionId,
         [FromQuery] Guid? examSlotId,
@@ -86,13 +88,14 @@ public class ReportsController : AcademicApiControllerBase
         try
         {
             var result = await _reports.GetViolationReportAsync(institutionId, examSlotId, from, to);
-            return Ok(ApiResponse<object>.OnSuccess(result, "Violation report retrieved successfully."));
+            return Ok(ApiResponse<ViolationReportResponseDto>.OnSuccess(result, "Violation report retrieved successfully."));
         }
         catch (Exception ex) { return HandleException(ex); }
     }
 
     [HttpGet("wallet")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+    [ProducesResponseType(typeof(ApiResponse<WalletReportResponseDto>), StatusCodes.Status200OK)]
     public async Task<IActionResult> Wallet(
         [FromQuery] Guid? institutionId,
         [FromQuery] Guid? walletId,
@@ -102,7 +105,7 @@ public class ReportsController : AcademicApiControllerBase
         try
         {
             var result = await _reports.GetWalletReportAsync(institutionId, walletId, from, to);
-            return Ok(ApiResponse<object>.OnSuccess(result, "Wallet report retrieved successfully."));
+            return Ok(ApiResponse<WalletReportResponseDto>.OnSuccess(result, "Wallet report retrieved successfully."));
         }
         catch (Exception ex) { return HandleException(ex); }
     }
