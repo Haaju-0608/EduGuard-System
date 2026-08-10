@@ -187,6 +187,7 @@ public class ExamslotServices : IExamSlotServices
             .FirstOrDefaultAsync(c => c.Id == dto.ClassId && c.DeletedAt == null)
             ?? throw new InvalidOperationException("Class not found.");
 
+        ValidateClassEndDate(cls.EndDate, dto.EndTime);
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
         await EnsureClassHasNoOverlappingExamAsync(dto.ClassId, dto.StartTime, dto.EndTime);
         if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != cls.LecturerId)
@@ -248,6 +249,7 @@ public class ExamslotServices : IExamSlotServices
 
         var startTime = dto.StartTime ?? entity.StartTime;
         var endTime = dto.EndTime ?? entity.EndTime;
+        ValidateClassEndDate(entity.Class.EndDate, endTime);
         if (dto.StartTime.HasValue || dto.EndTime.HasValue)
         {
             ValidateUpdatedExamTimes(startTime, endTime, dto.StartTime.HasValue, dto.EndTime.HasValue);
@@ -449,6 +451,14 @@ public class ExamslotServices : IExamSlotServices
             throw new InvalidOperationException("Expected duration must be greater than zero.");
         if (expectedDurationMinutes > (endTime - startTime).TotalMinutes)
             throw new InvalidOperationException("Expected duration cannot exceed the exam slot time range.");
+    }
+
+    private static void ValidateClassEndDate(DateOnly? classEndDate, DateTime examEndTime)
+    {
+        if (!classEndDate.HasValue)
+            throw new InvalidOperationException("Class end date is required.");
+        if (DateOnly.FromDateTime(examEndTime) > classEndDate.Value)
+            throw new InvalidOperationException("Exam end time cannot be after class end date.");
     }
 
     private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null, User? proctor = null) => new()

@@ -179,7 +179,9 @@ public class ClassService : IClassService
 
         if (string.IsNullOrWhiteSpace(academicYear))
             throw new InvalidOperationException("Academic year is required.");
-        if (startDate.HasValue && endDate.HasValue && endDate.Value < startDate.Value)
+        if (!endDate.HasValue)
+            throw new InvalidOperationException("End date is required.");
+        if (startDate.HasValue && endDate.Value < startDate.Value)
             throw new InvalidOperationException("End date cannot be before start date.");
     }
 
