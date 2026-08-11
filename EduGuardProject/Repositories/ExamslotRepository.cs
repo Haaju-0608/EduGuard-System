@@ -11,14 +11,24 @@ public class ExamSlotRepository : IExamslotRepository
 
     public ExamSlotRepository(AppDbContext context) => _context = context;
 
-    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
+    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize,
+        Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null)
     {
         var query = _context.ExamSlots
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
             .Include(e => e.ProctorNavigation)
+            .Where(e => e.Class.DeletedAt == null)
             .AsQueryable();
+
+        if (institutionId.HasValue)
+            query = query.Where(e => e.Class.InstitutionId == institutionId.Value);
+        if (lecturerId.HasValue)
+            query = query.Where(e => e.Class.LecturerId == lecturerId.Value);
+        if (studentId.HasValue)
+            query = query.Where(e => e.ExamParticipations.Any(p => p.StudentId == studentId.Value));
 
         if (!string.IsNullOrWhiteSpace(search))
         {

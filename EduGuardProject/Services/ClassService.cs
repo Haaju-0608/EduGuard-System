@@ -130,14 +130,16 @@ public class ClassService : IClassService
         await EnsureCanManageClassAsync(entity);
 
         ValidateClassFields(dto.CourseName, dto.CourseCode, dto.Semester, dto.AcademicYear, dto.StartDate, dto.EndDate);
-        if (dto.LecturerId != entity.LecturerId)
-            await EnsureLecturerBelongsToInstitutionAsync(dto.LecturerId, entity.InstitutionId);
+        if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != entity.LecturerId)
+        {
+            await EnsureLecturerBelongsToInstitutionAsync(lecturerId, entity.InstitutionId);
+            entity.LecturerId = lecturerId;
+        }
 
         entity.CourseName = dto.CourseName.Trim();
         entity.CourseCode = NormalizeOptional(dto.CourseCode);
         entity.Semester = dto.Semester.Trim();
         entity.AcademicYear = dto.AcademicYear.Trim();
-        entity.LecturerId = dto.LecturerId;
         entity.StartDate = dto.StartDate;
         entity.EndDate = dto.EndDate;
         entity.UpdatedBy = _currentUser.UserId;
@@ -177,7 +179,9 @@ public class ClassService : IClassService
 
         if (string.IsNullOrWhiteSpace(academicYear))
             throw new InvalidOperationException("Academic year is required.");
-        if (startDate.HasValue && endDate.HasValue && endDate.Value < startDate.Value)
+        if (!endDate.HasValue)
+            throw new InvalidOperationException("End date is required.");
+        if (startDate.HasValue && endDate.Value < startDate.Value)
             throw new InvalidOperationException("End date cannot be before start date.");
     }
 

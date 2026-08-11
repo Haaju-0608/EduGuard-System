@@ -25,8 +25,9 @@ namespace EduGuardProject.Controllers
 
         // Get All Exam Slots
         // Truyền dữ liệu: query search, sort, page, pageSize.
-        // Điều kiện: user đã đăng nhập; page và pageSize phải lớn hơn 0.
+        // Điều kiện: SuperAdmin xem tất cả; SchoolAdmin cùng institution; Lecturer đúng class; Student chỉ xem exam slot của chính mình; page và pageSize hợp lệ.
         [HttpGet]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
         public async Task<IActionResult> GetAll(
            [FromQuery] string? search,
             [FromQuery] string? sort,
@@ -45,8 +46,9 @@ namespace EduGuardProject.Controllers
 
         // Get Exam Slot By Id
         // Truyền dữ liệu: route examId.
-        // Điều kiện: user đã đăng nhập; exam slot phải tồn tại.
+        // Điều kiện: SuperAdmin xem tất cả; SchoolAdmin cùng institution; Lecturer đúng class; Student phải có participation; exam slot phải tồn tại.
         [HttpGet("{examId:guid}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
         public async Task<IActionResult> GetById(Guid examId)
         {
             try

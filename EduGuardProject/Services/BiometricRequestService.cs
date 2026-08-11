@@ -119,6 +119,9 @@ public class BiometricRequestService : IBiometricRequestService
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null || entity.Status != BiometricReqStatus.Pending) return false;
 
+        var user = await _currentUser.GetRequiredUserAsync();
+        await EnsureReviewerAccessAsync(user, entity.StudentId);
+
         if (string.IsNullOrWhiteSpace(entity.FrontImagePath) ||
             string.IsNullOrWhiteSpace(entity.LeftImagePath) ||
             string.IsNullOrWhiteSpace(entity.RightImagePath))
@@ -139,8 +142,6 @@ public class BiometricRequestService : IBiometricRequestService
             throw new InvalidOperationException($"Lỗi trích xuất vector khi duyệt: {ex.Message}");
         }
 
-        var user = await _currentUser.GetRequiredUserAsync();
-        await EnsureReviewerAccessAsync(user, entity.StudentId);
         entity.Status = BiometricReqStatus.Approved;
         entity.ApprovedBy = user.Id;
         entity.ReviewedAt = DateTime.UtcNow;
@@ -188,7 +189,7 @@ public class BiometricRequestService : IBiometricRequestService
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var entity = await _repo.GetByIdAsync(id);
-        if (entity == null) return false;
+        if (entity == null || entity.Status != BiometricReqStatus.Pending) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);

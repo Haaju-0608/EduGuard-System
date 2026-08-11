@@ -105,7 +105,7 @@ public class CurrentUserService : ICurrentUserService
     public async Task EnsureInstitutionAccessAsync(Guid institutionId)
     {
         var user = await GetRequiredUserAsync();
-        if (user.Role == AppRole.SuperAdmin)
+        if (user.Role.ToCanonical() == AppRole.SuperAdmin)
             return;
 
         if (user.InstitutionId != institutionId)

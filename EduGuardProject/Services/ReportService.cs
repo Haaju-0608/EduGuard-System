@@ -1,3 +1,4 @@
+using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
@@ -15,10 +16,12 @@ public class ReportService : IReportService
         _currentUser = currentUser;
     }
 
-    public async Task<object> GetAttendanceReportAsync(Guid? institutionId, Guid? classId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
+    public async Task<AttendanceReportResponseDto> GetAttendanceReportAsync(Guid? institutionId, Guid? classId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
     {
         ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        var includeIds = role != AppRole.SchoolAdmin;
         var start = from ?? DateTime.MinValue;
         var end = to ?? DateTime.MaxValue;
 
@@ -28,15 +31,16 @@ public class ReportService : IReportService
             await _currentUser.EnsureInstitutionAccessAsync(institutionId.Value);
             classes = classes.Where(c => c.InstitutionId == institutionId.Value);
         }
-        else if (user.Role == AppRole.SchoolAdmin)
+
+        if (role == AppRole.SchoolAdmin)
         {
             classes = classes.Where(c => c.InstitutionId == user.InstitutionId);
         }
-        else if (user.Role == AppRole.Lecturer)
+        else if (role == AppRole.Lecturer)
         {
             classes = classes.Where(c => c.LecturerId == user.Id);
         }
-        else if (user.Role != AppRole.SuperAdmin)
+        else if (role != AppRole.SuperAdmin)
         {
             throw new UnauthorizedAccessException("Access denied.");
         }
@@ -51,7 +55,11 @@ public class ReportService : IReportService
             .Select(s => new
             {
                 s.Id,
+                s.Class.InstitutionId,
+                InstitutionName = s.Class.Institution.Name,
                 s.ClassId,
+                ClassName = s.Class.CourseName,
+                s.Class.CourseCode,
                 s.StartTime,
                 s.EndTime,
                 s.Status,
@@ -61,26 +69,48 @@ public class ReportService : IReportService
             })
             .ToListAsync(cancellationToken);
 
-        return new
+        return new AttendanceReportResponseDto
         {
-            filters = new { institutionId, classId, from, to },
-            summary = new
+            Filters = new AttendanceReportFilterDto
             {
-                sessions = sessions.Count,
-                completed = sessions.Count(s => s.Status == SessionStatus.Completed),
-                totalRecognized = sessions.Sum(s => s.TotalRecognized),
-                averageRecognitionRate = sessions.Count == 0
+                InstitutionId = includeIds ? institutionId : null,
+                ClassId = includeIds ? classId : null,
+                From = from,
+                To = to
+            },
+            Summary = new AttendanceReportSummaryDto
+            {
+                Sessions = sessions.Count,
+                Completed = sessions.Count(s => s.Status == SessionStatus.Completed),
+                TotalRecognized = sessions.Sum(s => s.TotalRecognized),
+                AverageRecognitionRate = sessions.Count == 0
                     ? 0
                     : sessions.Average(s => s.totalStudents == 0 ? 0 : (double)s.TotalRecognized / s.totalStudents)
             },
-            items = sessions
+            Items = sessions.Select(s => new AttendanceReportItemDto
+            {
+                Id = includeIds ? s.Id : null,
+                InstitutionId = includeIds ? s.InstitutionId : null,
+                InstitutionName = s.InstitutionName,
+                ClassId = includeIds ? s.ClassId : null,
+                ClassName = s.ClassName,
+                CourseCode = s.CourseCode,
+                StartTime = s.StartTime,
+                EndTime = s.EndTime,
+                Status = s.Status,
+                TotalRecognized = s.TotalRecognized,
+                TotalStudents = s.totalStudents,
+                Records = s.records
+            }).ToList()
         };
     }
 
-    public async Task<object> GetViolationReportAsync(Guid? institutionId, Guid? examSlotId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
+    public async Task<ViolationReportResponseDto> GetViolationReportAsync(Guid? institutionId, Guid? examSlotId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
     {
         ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        var includeIds = role != AppRole.SchoolAdmin;
         var start = from ?? DateTime.MinValue;
         var end = to ?? DateTime.MaxValue;
 
@@ -97,15 +127,18 @@ public class ReportService : IReportService
             await _currentUser.EnsureInstitutionAccessAsync(institutionId.Value);
             query = query.Where(v => v.Participation.ExamSlot.Class.InstitutionId == institutionId.Value);
         }
-        else if (user.Role == AppRole.SchoolAdmin)
+
+        if (role == AppRole.SchoolAdmin)
         {
             query = query.Where(v => v.Participation.ExamSlot.Class.InstitutionId == user.InstitutionId);
         }
-        else if (user.Role == AppRole.Lecturer)
+        else if (role == AppRole.Lecturer)
         {
-            query = query.Where(v => v.Participation.ExamSlot.Class.LecturerId == user.Id);
+            query = query.Where(v =>
+                v.Participation.ExamSlot.Class.LecturerId == user.Id ||
+                (examSlotId.HasValue && v.Participation.ExamSlot.ProctorId == user.Id));
         }
-        else if (user.Role != AppRole.SuperAdmin)
+        else if (role != AppRole.SuperAdmin)
         {
             throw new UnauthorizedAccessException("Access denied.");
         }
@@ -119,6 +152,10 @@ public class ReportService : IReportService
             {
                 violationId = v.Id,
                 v.ParticipationId,
+                v.Participation.ExamSlot.Class.InstitutionId,
+                InstitutionName = v.Participation.ExamSlot.Class.Institution.Name,
+                v.Participation.ExamSlot.ClassId,
+                ClassName = v.Participation.ExamSlot.Class.CourseName,
                 v.Participation.ExamSlotId,
                 v.Participation.ExamSlot.ExamName,
                 v.Participation.StudentId,
@@ -132,24 +169,54 @@ public class ReportService : IReportService
             })
             .ToListAsync(cancellationToken);
 
-        return new
+        return new ViolationReportResponseDto
         {
-            filters = new { institutionId, examSlotId, from, to },
-            summary = new
+            Filters = new ViolationReportFilterDto
             {
-                total = items.Count,
-                reviewed = items.Count(i => i.IsReviewed),
-                byType = items.GroupBy(i => i.type).Select(g => new { type = g.Key.ToString(), count = g.Count() }),
-                bySeverity = items.GroupBy(i => i.severity).Select(g => new { severity = g.Key.ToString(), count = g.Count() })
+                InstitutionId = includeIds ? institutionId : null,
+                ExamSlotId = includeIds ? examSlotId : null,
+                From = from,
+                To = to
             },
-            items
+            Summary = new ViolationReportSummaryDto
+            {
+                Total = items.Count,
+                Reviewed = items.Count(i => i.IsReviewed),
+                ByType = items.GroupBy(i => i.type)
+                    .Select(g => new ViolationTypeCountDto { Type = g.Key.ToString(), Count = g.Count() })
+                    .ToList(),
+                BySeverity = items.GroupBy(i => i.severity)
+                    .Select(g => new ViolationSeverityCountDto { Severity = g.Key.ToString(), Count = g.Count() })
+                    .ToList()
+            },
+            Items = items.Select(i => new ViolationReportItemDto
+            {
+                ViolationId = includeIds ? i.violationId : null,
+                ParticipationId = includeIds ? i.ParticipationId : null,
+                InstitutionId = includeIds ? i.InstitutionId : null,
+                InstitutionName = i.InstitutionName,
+                ClassId = includeIds ? i.ClassId : null,
+                ClassName = i.ClassName,
+                ExamSlotId = includeIds ? i.ExamSlotId : null,
+                ExamName = i.ExamName,
+                StudentId = includeIds ? i.StudentId : null,
+                StudentName = i.studentName,
+                Type = i.type,
+                Severity = i.severity,
+                AiConfidence = i.AiConfidence,
+                EvidencePath = i.EvidencePath,
+                IsReviewed = i.IsReviewed,
+                RecordedAt = i.RecordedAt
+            }).ToList()
         };
     }
 
-    public async Task<object> GetWalletReportAsync(Guid? institutionId, Guid? walletId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
+    public async Task<WalletReportResponseDto> GetWalletReportAsync(Guid? institutionId, Guid? walletId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default)
     {
         ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        var includeIds = role != AppRole.SchoolAdmin;
         var start = from ?? DateTime.MinValue;
         var end = to ?? DateTime.MaxValue;
 
@@ -159,11 +226,12 @@ public class ReportService : IReportService
             await _currentUser.EnsureInstitutionAccessAsync(institutionId.Value);
             wallets = wallets.Where(w => w.InstitutionId == institutionId.Value);
         }
-        else if (user.Role == AppRole.SchoolAdmin)
+
+        if (role == AppRole.SchoolAdmin)
         {
             wallets = wallets.Where(w => w.InstitutionId == user.InstitutionId);
         }
-        else if (user.Role != AppRole.SuperAdmin)
+        else if (role != AppRole.SuperAdmin)
         {
             throw new UnauthorizedAccessException("Access denied.");
         }
@@ -178,6 +246,8 @@ public class ReportService : IReportService
             .Select(t => new
             {
                 t.Id,
+                t.Wallet.InstitutionId,
+                InstitutionName = t.Wallet.Institution.Name,
                 t.WalletId,
                 t.Amount,
                 t.Type,
@@ -188,27 +258,35 @@ public class ReportService : IReportService
             })
             .ToListAsync(cancellationToken);
 
-        return new
+        return new WalletReportResponseDto
         {
-            filters = new { institutionId, walletId, from, to },
-            summary = new
+            Filters = new WalletReportFilterDto
             {
-                totalTransactions = transactions.Count,
-                successAmount = transactions.Where(t => t.Status.IsSuccess()).Sum(t => t.Amount),
-                topUpAmount = transactions.Where(t => t.Status.IsSuccess() && t.Type.IsTopUp()).Sum(t => t.Amount),
-                feeAmount = transactions.Where(t => t.Status.IsSuccess() && !t.Type.IsTopUp()).Sum(t => t.Amount)
+                InstitutionId = includeIds ? institutionId : null,
+                WalletId = includeIds ? walletId : null,
+                From = from,
+                To = to
             },
-            items = transactions.Select(t => new
+            Summary = new WalletReportSummaryDto
             {
-                t.Id,
-                t.WalletId,
-                t.Amount,
-                type = t.Type.ToCanonicalName(),
-                status = t.Status.ToCanonicalName(),
-                t.Description,
-                t.CreatedAt,
-                t.ProcessedAt
-            })
+                TotalTransactions = transactions.Count,
+                SuccessAmount = transactions.Where(t => t.Status.IsSuccess()).Sum(t => t.Amount),
+                TopUpAmount = transactions.Where(t => t.Status.IsSuccess() && t.Type.IsTopUp()).Sum(t => t.Amount),
+                FeeAmount = transactions.Where(t => t.Status.IsSuccess() && !t.Type.IsTopUp()).Sum(t => t.Amount)
+            },
+            Items = transactions.Select(t => new WalletReportItemDto
+            {
+                Id = includeIds ? t.Id : null,
+                InstitutionId = includeIds ? t.InstitutionId : null,
+                InstitutionName = t.InstitutionName,
+                WalletId = includeIds ? t.WalletId : null,
+                Amount = t.Amount,
+                Type = t.Type.ToCanonicalName(),
+                Status = t.Status.ToCanonicalName(),
+                Description = t.Description,
+                CreatedAt = t.CreatedAt,
+                ProcessedAt = t.ProcessedAt
+            }).ToList()
         };
     }
 

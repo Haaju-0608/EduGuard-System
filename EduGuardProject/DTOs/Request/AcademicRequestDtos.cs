@@ -41,7 +41,7 @@ public class UpdateClassDto
     [Required, MaxLength(20)]
     public string AcademicYear { get; set; } = null!;
 
-    public Guid LecturerId { get; set; }
+    public Guid? LecturerId { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? EndDate { get; set; }
 }
