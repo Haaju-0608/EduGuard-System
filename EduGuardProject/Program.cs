@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Authentication.JwtBearer;
 using Microsoft.AspNetCore.DataProtection;
 using Microsoft.AspNetCore.Http.Features;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 using Microsoft.Extensions.Caching.Memory;
 using Microsoft.IdentityModel.Tokens;
 using Npgsql;
@@ -71,6 +72,25 @@ dataSourceBuilder.MapEnum<ViolationType>("violation_type");
 dataSourceBuilder.MapEnum<StudentExamRecordStatus>("student_exam_record_status");
 var dataSource = dataSourceBuilder.Build();
 
+// ================= REDIS (DISTRIBUTED CACHE) =================
+// Caches Supabase token validation and dedupes exam-reminder sends across instances.
+// Falls back to an in-memory IDistributedCache when no Redis connection is configured
+// (e.g. local dev), so the app never fails to start for lack of a Redis server.
+var redisConnectionString = Environment.GetEnvironmentVariable("REDIS_URL")
+    ?? builder.Configuration.GetConnectionString("Redis");
+if (!string.IsNullOrWhiteSpace(redisConnectionString))
+{
+    builder.Services.AddStackExchangeRedisCache(options =>
+    {
+        options.Configuration = redisConnectionString;
+        options.InstanceName = "EduGuard:";
+    });
+}
+else
+{
+    builder.Services.AddDistributedMemoryCache();
+}
+
 builder.Services.AddDbContext<AppDbContext>(options =>
     options.UseNpgsql(dataSource, npgsqlOptions => npgsqlOptions.UseVector()));
 
@@ -94,6 +114,7 @@ builder.Services.AddScoped<IBiometricRequestRepository, BiometricRequestReposito
 builder.Services.AddScoped<IBiometricDatumRepository, BiometricDatumRepository>();
 builder.Services.AddScoped<IExamParticipationRepository, ExamParticipationRepository>();
 builder.Services.AddScoped<IExamslotRepository, ExamSlotRepository>();
+builder.Services.AddScoped<IExamQuestionRepository, ExamQuestionRepository>();
 builder.Services.AddScoped<IStudentExamRecordRepository, StudentExamRecordRepository>();
 builder.Services.AddScoped<IViolationLogRepository, ViolationLogRepository>();
 
@@ -115,18 +136,23 @@ builder.Services.AddScoped<IBiometricRequestService, BiometricRequestService>();
 builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
 builder.Services.AddScoped<IExamParticipationService, ExamParticipationServices>();
 builder.Services.AddScoped<IExamSlotServices, ExamslotServices>();
+builder.Services.AddScoped<IExamQuestionService, ExamQuestionService>();
 builder.Services.AddScoped<IStudentExamRecordService, StudentExamRecordService>();
 builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
+builder.Services.AddScoped<IBrowserViolationService, BrowserViolationService>();
 builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 builder.Services.AddScoped<IRealtimeEventDispatcher, RealtimeEventDispatcher>();
 builder.Services.AddScoped<IExamWorkflowService, ExamWorkflowService>();
 builder.Services.AddSingleton<IExamPresenceTracker, ExamPresenceTracker>();
 builder.Services.AddScoped<IDashboardStatsService, DashboardStatsService>();
 builder.Services.AddScoped<IReportService, ReportService>();
+builder.Services.AddScoped<ReportExportService>();
 builder.Services.AddScoped<IStorageService, StorageService>();
 builder.Services.AddScoped<EmailTemplateService>();
 builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddHttpClient<IAiServiceClient, AiServiceClient>();
+builder.Services.AddHostedService<SubscriptionExpiryBackgroundService>();
+builder.Services.AddScoped<IExamIdentityVerificationService, ExamIdentityVerificationService>();
 
 // Authentication
 builder.Services.AddAuthentication(options =>
@@ -288,8 +314,10 @@ static async Task<Guid?> ValidateSupabaseAccessTokenAsync(
     CancellationToken cancellationToken)
 {
     var tokenHash = Convert.ToHexString(SHA256.HashData(Encoding.UTF8.GetBytes(accessToken)));
-    var cache = httpContext.RequestServices.GetRequiredService<IMemoryCache>();
-    if (cache.TryGetValue<Guid>($"supabase-token:{tokenHash}", out var cachedUserId))
+    var cacheKey = $"supabase-token:{tokenHash}";
+    var cache = httpContext.RequestServices.GetRequiredService<IDistributedCache>();
+    var cachedValue = await cache.GetStringAsync(cacheKey, cancellationToken);
+    if (Guid.TryParse(cachedValue, out var cachedUserId))
         return cachedUserId;
 
     var httpClientFactory = httpContext.RequestServices.GetRequiredService<IHttpClientFactory>();
@@ -313,6 +341,10 @@ static async Task<Guid?> ValidateSupabaseAccessTokenAsync(
         return null;
     }
 
-    cache.Set($"supabase-token:{tokenHash}", userId, TimeSpan.FromMinutes(5));
+    await cache.SetStringAsync(
+        cacheKey,
+        userId.ToString(),
+        new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = TimeSpan.FromMinutes(5) },
+        cancellationToken);
     return userId;
 }

@@ -59,6 +59,7 @@ public class AttendanceSessionResponseDto
 {
     public Guid Id { get; set; }
     public Guid ClassId { get; set; }
+    public Guid? ExamSlotId { get; set; }
     public Guid CreatedBy { get; set; }
     public Guid? BillingTransId { get; set; }
     public string? VideoPath { get; set; }
@@ -95,6 +96,7 @@ public class AttendanceSessionSummaryDto
 {
     public Guid Id { get; set; }
     public Guid ClassId { get; set; }
+    public Guid? ExamSlotId { get; set; }
     public SessionStatus Status { get; set; }
     public DateTime StartTime { get; set; }
 }
@@ -142,7 +144,9 @@ public class ExamslotReponseDto
     public ExamSlotStatus Status { get; set; }
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }
+    public decimal MaxScore { get; set; } = 10m;
     public UserSummaryDto? Lecturer { get; set; }
+    public UserSummaryDto? Proctor { get; set; }
 }
 
 public class ExamParticipationResponseDto
@@ -174,7 +178,35 @@ public class StudentExamRecordResponseDto
     public DateTime CreatedAt { get; set; }
     public DateTime? EndedAt { get; set; }
     public string? ExamRecord { get; set; }
+    public decimal? FinalScore { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public int? DurationSeconds { get; set; }
     public StudentExamRecordStatus Status { get; set; }
+    public decimal MaxScore { get; set; } = 10m;
+}
+
+public class ExamQuestionResponseDto
+{
+    public Guid Id { get; set; }
+    public Guid ExamSlotId { get; set; }
+    public string? ExamName { get; set; }
+    public string QuestionType { get; set; } = null!;
+    public string QuestionContent { get; set; } = null!;
+    public string? AudioUrl { get; set; }
+    public string? ImageUrl { get; set; }
+    public decimal Points { get; set; }
+    public int DisplayOrder { get; set; }
+    public DateTime CreatedAt { get; set; }
+    public List<QuestionOptionResponseDto> Options { get; set; } = [];
+}
+
+public class QuestionOptionResponseDto
+{
+    public Guid Id { get; set; }
+    public Guid QuestionId { get; set; }
+    public string OptionLabel { get; set; } = null!;
+    public string OptionContent { get; set; } = null!;
+    public bool? IsCorrect { get; set; }
 }
 
 public class ViolationlogResponeDto
@@ -196,4 +228,20 @@ public class ViolationlogResponeDto
     public Guid? ReviewedBy { get; set; }
 
     public DateTime RecordedAt { get; set; }
+}
+
+public class BrowserViolationResponseDto
+{
+    public bool Success { get; set; } = true;
+    public int CurrentViolationCount { get; set; }
+    public bool ExamTerminated { get; set; }
+}
+
+public class ExamParticipationStatusResponseDto
+{
+    public Guid ParticipationId { get; set; }
+    public string Status { get; set; } = null!;
+    public bool IsTerminated { get; set; }
+    public string? TerminationReason { get; set; }
+    public int BrowserViolationCount { get; set; }
 }

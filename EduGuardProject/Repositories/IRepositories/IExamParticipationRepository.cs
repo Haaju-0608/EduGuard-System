@@ -7,7 +7,7 @@ namespace EduGuardProject.Repositories.IRepositories
     {
         Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllAsync(
             string? search, string? sort, int page, int pageSize,
-            Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null);
+            Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null, Guid? examSlotId = null);
 
         Task<ExamParticipation?> GetByIdAsync(Guid id);
         Task<IEnumerable<ExamParticipation>> GetByExamSlotAsync(Guid examSlotId);

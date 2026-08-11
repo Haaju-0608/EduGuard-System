@@ -119,6 +119,7 @@ public static class AcademicMapper
         {
             Id = entity.Id,
             ClassId = entity.ClassId,
+            ExamSlotId = entity.ExamSlotId,
             CreatedBy = entity.CreatedBy,
             BillingTransId = entity.BillingTransId,
             VideoPath = entity.VideoPath,
@@ -196,6 +197,7 @@ public static class AcademicMapper
             {
                 Id = session.Id,
                 ClassId = session.ClassId,
+                ExamSlotId = session.ExamSlotId,
                 Status = session.Status,
                 StartTime = session.StartTime
             };
@@ -207,6 +209,21 @@ public static class AcademicMapper
     public static async Task<BiometricRequestResponseDto> MapBiometricRequestAsync(
         AppDbContext context, BiometricRequest entity, string? expand)
     {
+        string? faceImageUrl = null;
+        try
+        {
+            faceImageUrl = await context.BiometricData
+                .AsNoTracking()
+                .Where(b => b.BioRequestId == entity.Id && b.FaceImageUrl != null)
+                .OrderByDescending(b => b.UpdatedAt)
+                .Select(b => b.FaceImageUrl)
+                .FirstOrDefaultAsync();
+        }
+        catch
+        {
+            // biometric_data.bio_request_id may not exist until migration is applied
+        }
+
         var dto = new BiometricRequestResponseDto
         {
             Id = entity.Id,
@@ -216,12 +233,7 @@ public static class AcademicMapper
             Status = entity.Status,
             ReviewedAt = entity.ReviewedAt,
             CreatedAt = entity.CreatedAt,
-            FaceImageUrl = await context.BiometricData
-                .AsNoTracking()
-                .Where(b => b.BioRequestId == entity.Id && b.FaceImageUrl != null)
-                .OrderByDescending(b => b.UpdatedAt)
-                .Select(b => b.FaceImageUrl)
-                .FirstOrDefaultAsync(),
+            FaceImageUrl = faceImageUrl,
 
             FrontImageUrl = entity.FrontImagePath,
             LeftImageUrl = entity.LeftImagePath,

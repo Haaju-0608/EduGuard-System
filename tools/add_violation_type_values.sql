@@ -1,0 +1,2 @@
+ALTER TYPE public.violation_type ADD VALUE IF NOT EXISTS 'HEAD_TURN';
+ALTER TYPE public.violation_type ADD VALUE IF NOT EXISTS 'FACE_OBSTRUCTED';

@@ -82,6 +82,7 @@ public interface IExamWorkflowService
     Task<object> SubmitAsync(Guid participationId, string? recordingVideoPath = null, CancellationToken cancellationToken = default);
     Task<object> LeaveAsync(Guid participationId, string? reason = null, CancellationToken cancellationToken = default);
     Task<object> DisqualifyAsync(Guid participationId, string reason, CancellationToken cancellationToken = default);
+    Task<object> VoidAsync(Guid participationId, string reason, CancellationToken cancellationToken = default);
     Task<object> GetRealtimeStateAsync(Guid examSlotId, CancellationToken cancellationToken = default);
 }
 

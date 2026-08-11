@@ -1,7 +1,6 @@
 ﻿using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using Microsoft.EntityFrameworkCore;
-
 namespace EduGuardProject.Repositories
 {
     public class InstitutionRepository : IInstitutionRepository
@@ -11,19 +10,17 @@ namespace EduGuardProject.Repositories
 
         public async Task<(IEnumerable<Institution> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
         {
-            var query = _context.Institutions.AsQueryable();
+            var query = _context.Institutions
+                .Where(x => x.DeletedAt == null);   // THÊM: lọc bỏ institution đã soft-delete
 
-            // 1. Xử lý chức năng SEARCH (Theo mục 5 trang 3)
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var searchLower = search.ToLower();
                 query = query.Where(x => x.Name.ToLower().Contains(searchLower) || x.SubDomain.ToLower().Contains(searchLower));
             }
 
-            // Đếm tổng số phần tử trước khi phân trang để làm metadata
             var totalCount = await query.CountAsync();
 
-            // 2. Xử lý chức năng SORT (Mẫu cơ bản: dấu trừ "-" là giảm dần)
             if (!string.IsNullOrWhiteSpace(sort))
             {
                 query = sort.ToLower() switch
@@ -32,7 +29,7 @@ namespace EduGuardProject.Repositories
                     "-name" => query.OrderByDescending(x => x.Name),
                     "createdat" => query.OrderBy(x => x.CreatedAt),
                     "-createdat" => query.OrderByDescending(x => x.CreatedAt),
-                    _ => query.OrderByDescending(x => x.CreatedAt) // Mặc định sắp xếp theo tin mới nhất
+                    _ => query.OrderByDescending(x => x.CreatedAt)
                 };
             }
             else
@@ -40,22 +37,22 @@ namespace EduGuardProject.Repositories
                 query = query.OrderByDescending(x => x.CreatedAt);
             }
 
-            // 3. Xử lý chức năng PAGING (Mục 5 trang 3)
             var items = await query
                 .Skip((page - 1) * pageSize)
                 .Take(pageSize)
                 .ToListAsync();
-
             return (items, totalCount);
         }
 
-        public async Task<Institution?> GetByIdAsync(Guid id) => await _context.Institutions.FindAsync(id);
+        // SỬA: FindAsync tra theo Primary Key, không filter được điều kiện WHERE -
+        // đổi sang FirstOrDefaultAsync để lọc thêm DeletedAt == null (giống đúng pattern UserRepository đang làm)
+        public async Task<Institution?> GetByIdAsync(Guid id) =>
+            await _context.Institutions.FirstOrDefaultAsync(x => x.Id == id && x.DeletedAt == null);
 
         public async Task AddAsync(Institution institution)
         {
             await _context.Institutions.AddAsync(institution);
             await _context.SaveChangesAsync();
-
             var wallet = await _context.Wallets
                 .FirstOrDefaultAsync(w => w.InstitutionId == institution.Id);
             if (wallet == null)
@@ -77,7 +74,6 @@ namespace EduGuardProject.Repositories
                 wallet.LowBalanceThreshold = 50000;
                 wallet.UpdatedAt = DateTime.UtcNow;
             }
-
             await _context.SaveChangesAsync();
         }
 
@@ -89,7 +85,6 @@ namespace EduGuardProject.Repositories
 
         public async Task DeleteAsync(Institution institution)
         {
-            // Dự án dùng Soft Delete (Xóa mềm) nên tụi mình chỉ update DeletedAt nha bạn
             institution.DeletedAt = DateTime.UtcNow;
             _context.Institutions.Update(institution);
             await _context.SaveChangesAsync();

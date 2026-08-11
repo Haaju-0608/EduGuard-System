@@ -18,17 +18,14 @@ public partial class BiometricRequest
     [Column("status")]
     public BiometricReqStatus Status { get; set; }
 
-    [Required]
-    [Column("front_image_path")] 
-    public string FrontImagePath { get; set; } = null!;
+    [Column("front_image_path")]
+    public string? FrontImagePath { get; set; }
 
-    [Required]
-    [Column("left_image_path")]  
-    public string LeftImagePath { get; set; } = null!;
+    [Column("left_image_path")]
+    public string? LeftImagePath { get; set; }
 
-    [Required]
-    [Column("right_image_path")] 
-    public string RightImagePath { get; set; } = null!;
+    [Column("right_image_path")]
+    public string? RightImagePath { get; set; }
 
     public DateTime? ReviewedAt { get; set; }
 

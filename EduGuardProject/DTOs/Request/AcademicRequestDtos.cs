@@ -41,7 +41,7 @@ public class UpdateClassDto
     [Required, MaxLength(20)]
     public string AcademicYear { get; set; } = null!;
 
-    public Guid LecturerId { get; set; }
+    public Guid? LecturerId { get; set; }
     public DateOnly? StartDate { get; set; }
     public DateOnly? EndDate { get; set; }
 }
@@ -66,6 +66,8 @@ public class CreateAttendanceSessionDto
 {
     [Required]
     public Guid ClassId { get; set; }
+
+    public Guid? ExamSlotId { get; set; }
 
     [Required]
     public DateTime StartTime { get; set; }
@@ -174,7 +176,7 @@ public class CreateExamParticipationDto
     public Guid? BillingTransId { get; set; }
     public DateTime? ActualStart { get; set; }
     public DateTime? ActualEnd { get; set; }
-    public ParticipationStatus Status { get; set; }
+    public ParticipationStatus Status { get; set; } = ParticipationStatus.Absent;
     public string? DisqualifiedReason { get; set; }
     public string? RecordingVideoPath { get; set; }
     public string? IdentitySnapshotPath { get; set; }
@@ -206,6 +208,9 @@ public class CreateStudentExamRecordDto
 
     public DateTime? EndedAt { get; set; }
     public string? ExamRecord { get; set; }
+    public decimal? FinalScore { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public int? DurationSeconds { get; set; }
     public StudentExamRecordStatus Status { get; set; } = StudentExamRecordStatus.Marked;
 }
 
@@ -213,7 +218,113 @@ public class UpdateStudentExamRecordDto
 {
     public DateTime? EndedAt { get; set; }
     public string? ExamRecord { get; set; }
+    public decimal? FinalScore { get; set; }
+    public DateTime? SubmittedAt { get; set; }
+    public int? DurationSeconds { get; set; }
     public StudentExamRecordStatus Status { get; set; }
+}
+
+public class GradeStudentExamRecordDto
+{
+    [Required]
+    public List<GradeStudentAnswerDto> Grades { get; set; } = [];
+}
+
+public class GradeStudentAnswerDto
+{
+    [Required]
+    public Guid QuestionId { get; set; }
+
+    public decimal AwardedPoints { get; set; }
+}
+
+public class SubmitStudentExamRecordDto
+{
+    [Required]
+    public Guid ExamSlotId { get; set; }
+
+    [Required]
+    public List<SubmitStudentAnswerDto> Answers { get; set; } = [];
+
+    public int? DurationSeconds { get; set; }
+}
+
+public class SubmitStudentAnswerDto
+{
+    [Required]
+    public Guid QuestionId { get; set; }
+
+    public Guid? OptionId { get; set; }
+
+    [MaxLength(10)]
+    public string? SelectedOption { get; set; }
+
+    public string? AnswerText { get; set; }
+}
+
+public class CreateExamQuestionDto
+{
+    [Required]
+    public Guid ExamSlotId { get; set; }
+
+    [Required, MaxLength(30)]
+    public string QuestionType { get; set; } = null!;
+
+    [Required]
+    public string QuestionContent { get; set; } = null!;
+
+    [MaxLength(500)]
+    public string? AudioUrl { get; set; }
+
+    [MaxLength(500)]
+    public string? ImageUrl { get; set; }
+
+    public decimal Points { get; set; } = 1;
+
+    public int DisplayOrder { get; set; }
+
+    public List<CreateQuestionOptionDto>? Options { get; set; }
+}
+
+public class UpdateExamQuestionDto
+{
+    [Required, MaxLength(30)]
+    public string QuestionType { get; set; } = null!;
+
+    [Required]
+    public string QuestionContent { get; set; } = null!;
+
+    [MaxLength(500)]
+    public string? AudioUrl { get; set; }
+
+    [MaxLength(500)]
+    public string? ImageUrl { get; set; }
+
+    public decimal Points { get; set; } = 1;
+
+    public int DisplayOrder { get; set; }
+}
+
+public class CreateQuestionOptionDto
+{
+    [Required, MaxLength(10)]
+    public string OptionLabel { get; set; } = null!;
+
+    [Required]
+    public string OptionContent { get; set; } = null!;
+
+    public bool IsCorrect { get; set; }
+}
+
+public class UpdateQuestionOptionDto
+{
+    [Required, MaxLength(10)]
+    public string OptionLabel { get; set; } = null!;
+
+    [Required]
+    public string OptionContent { get; set; } = null!;
+
+    public bool IsCorrect { get; set; }
 }
 
 
@@ -223,6 +334,9 @@ public class CreateExamSlotDto
     public Guid ClassId { get; set; }
 
     public Guid? LecturerId { get; set; }
+
+    /// <summary>Lecturer assigned to proctor this exam, if different from the class's own lecturer.</summary>
+    public Guid? ProctorId { get; set; }
 
     [Required]
     [MaxLength(255)]
@@ -245,6 +359,9 @@ public class UpdateExamSlotDto
     public string? ExamName { get; set; }
 
     public Guid? LecturerId { get; set; }
+
+    /// <summary>Lecturer assigned to proctor this exam, if different from the class's own lecturer.</summary>
+    public Guid? ProctorId { get; set; }
 
     public int ExpectedDurationMinutes { get; set; }
     public DateTime? StartTime { get; set; }
@@ -271,4 +388,13 @@ public class UpdateViolationLogDto
 {
     public bool IsReviewed { get; set; }
     public Guid? ReviewedBy { get; set; }
+}
+
+public class BrowserViolationRequestDto
+{
+    [Required]
+    public Guid ParticipationId { get; set; }
+
+    [Required]
+    public ViolationType ViolationType { get; set; }
 }

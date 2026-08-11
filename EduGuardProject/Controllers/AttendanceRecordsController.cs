@@ -118,7 +118,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
             var results = await _service.CreateBulkByAiVideoAsync(sessionId, stream, videoFile.FileName);
 
             return StatusCode(201, ApiResponse<IEnumerable<AttendanceRecordResponseDto>>.OnSuccess(
-                results, "Điểm danh bằng AI qua video thành công!"));
+                results, "Điểm danh bằng AI hoàn tất. Ca điểm danh vẫn đang mở để bạn kiểm tra và điểm danh bù thủ công."));
         }
         catch (Exception ex)
         {

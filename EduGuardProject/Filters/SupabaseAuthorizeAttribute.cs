@@ -1,4 +1,4 @@
-using System.Security.Claims;
+﻿using System.Security.Claims;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
@@ -52,7 +52,7 @@ public class SupabaseAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
             return;
         }
 
-        if (_allowedRoles.Length > 0 && !_allowedRoles.Contains(userProfile.Role))
+        if (_allowedRoles.Length > 0 && !userProfile.Role.IsInRoles(_allowedRoles))
         {
             context.Result = new ObjectResult(
                 ApiResponse<object>.OnFail("Forbidden: You do not have permission to access this resource."))
@@ -63,5 +63,8 @@ public class SupabaseAuthorizeAttribute : Attribute, IAsyncAuthorizationFilter
         }
 
         context.HttpContext.Items["UserId"] = userId;
+
+        context.HttpContext.Items["Role"] = userProfile.Role.ToCanonical();       
+        context.HttpContext.Items["InstitutionId"] = userProfile.InstitutionId;
     }
 }

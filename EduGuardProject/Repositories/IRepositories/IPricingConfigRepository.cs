@@ -9,5 +9,7 @@ namespace EduGuardProject.Repositories.IRepositories
         Task<PricingConfig?> GetActiveConfigByServiceTypeAsync(PricingServiceType serviceType);
         Task AddAsync(PricingConfig config);
         Task UpdateAsync(PricingConfig config);
+
+        Task<bool> HasReferencingTransactionsAsync(Guid pricingConfigId);
     }
 }

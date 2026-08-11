@@ -10,5 +10,8 @@ namespace EduGuardProject.Services.IServices
         Task<PricingConfigResponseDto?> GetConfigByIdAsync(Guid id);
         Task<PricingConfigResponseDto?> GetCurrentActiveConfigAsync(PricingServiceType serviceType);
         Task<PricingConfigResponseDto> CreateConfigAsync(CreatePricingConfigDto dto, Guid adminId);
+
+        Task<bool> UpdateConfigAsync(Guid id, UpdatePricingConfigDto dto);   
+
     }
 }

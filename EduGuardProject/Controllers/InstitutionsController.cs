@@ -26,6 +26,9 @@ namespace EduGuardProject.Controllers
             [FromQuery] int page = 1,
             [FromQuery] int pageSize = 10)
         {
+            if (page < 1 || pageSize is < 1 or > 100)
+                return BadRequest(ApiResponse<object>.OnFail("Page must be greater than 0 and pageSize must be between 1 and 100."));
+
             try
             {
                 var (items, totalCount) = await _service.GetInstitutionsAsync(search, sort, page, pageSize);
@@ -69,13 +72,19 @@ namespace EduGuardProject.Controllers
 
         // 4. API CẬP NHẬT TRƯỜNG HỌC
         [HttpPut("{id:guid}")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)] // Admin trường học có thể tự sửa thông tin trường của mình
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateInstitutionDto dto)
         {
-            var success = await _service.UpdateInstitutionAsync(id, dto);
-            if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found to update."));
-
-            return Ok(ApiResponse<object>.OnSuccess(null!, "Institution updated successfully."));
+            try
+            {
+                var success = await _service.UpdateInstitutionAsync(id, dto);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found to update."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Institution updated successfully."));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
+            }
         }
 
         // 5. API XÓA TRƯỜNG HỌC
@@ -87,6 +96,30 @@ namespace EduGuardProject.Controllers
             if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found to delete."));
 
             return Ok(ApiResponse<object>.OnSuccess(null!, "Institution deleted successfully."));
+        }
+
+        [HttpPost("{id:guid}/renew-subscription")]
+        [SupabaseAuthorize(AppRole.SchoolAdmin)]
+        public async Task<IActionResult> RenewSubscription(Guid id, [FromBody] RenewSubscriptionDto dto)
+        {
+            try
+            {
+                var success = await _service.RenewSubscriptionAsync(id, dto.BillingModel);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Gia hạn subscription thành công."));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.OnFail(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
+            }
         }
     }
 }

@@ -36,6 +36,7 @@ public class BiometricRequestService : IBiometricRequestService
         _storage = storage;
         _context = context;
         _logger = logger;
+        _aiClient = aiClient;
     }
 
     public async Task<(IEnumerable<BiometricRequestResponseDto> Items, int TotalCount)> GetAllAsync(
@@ -58,76 +59,52 @@ public class BiometricRequestService : IBiometricRequestService
     public async Task<BiometricRequestResponseDto?> GetByIdAsync(Guid id, string? expand)
     {
         var entity = await _repo.GetByIdAsync(id);
-        //if (entity == null || entity.Status == BiometricReqStatus.Rejected) return null;
-        //await EnsureRequestAccessAsync(entity);
-        //return await AcademicMapper.MapBiometricRequestAsync(_context, entity, expand);
-        // SỬA: Cho phép xem đơn bị Rejected để check lịch sử, chỉ chặn khi không tìm thấy thực tế
         if (entity == null) return null;
 
         await EnsureRequestAccessAsync(entity);
         return await AcademicMapper.MapBiometricRequestAsync(_context, entity, expand);
     }
 
-    //public async Task<BiometricRequestResponseDto> CreateAsync(CreateBiometricRequestDto dto)
-    //{
-    //    await _currentUser.EnsureRoleAsync(AppRole.Student);
-    //    var user = await _currentUser.GetRequiredUserAsync();
-
-    //    var entity = new BiometricRequest
-    //    {
-    //        Id = Guid.NewGuid(),
-    //        StudentId = user.Id,
-    //        Reason = dto.Reason,
-    //        Status = BiometricReqStatus.Pending,
-    //        CreatedAt = DateTime.UtcNow
-    //    };
-
-    //    await _repo.AddAsync(entity);
-    //    return await AcademicMapper.MapBiometricRequestAsync(_context, entity, null);
-    //}
-
-    // SỬA: Controller sau khi upload file lên Supabase Storage thành công sẽ ném 3 đường dẫn Path vào đây với giờ chưa có storage nên tui lưu ở wwwroot nhá
+    //  SỬA ĐỔI: Không lưu file vào wwwroot nữa, đẩy trực tiếp Stream sang FastAPI & Supabase
     public async Task<BiometricRequestResponseDto> CreateAsync(CreateBiometricRequestDto dto)
     {
         // 1. Kiểm tra phân quyền Sinh viên
         await _currentUser.EnsureRoleAsync(AppRole.Student);
         var user = await _currentUser.GetRequiredUserAsync();
 
-        // 2. Kiểm tra và tạo thư mục lưu ảnh cục bộ nếu chưa có
-        var uploadFolder = Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", "uploads", "biometrics");
-        if (!Directory.Exists(uploadFolder))
-        {
-            Directory.CreateDirectory(uploadFolder);
-        }
+        if (string.IsNullOrWhiteSpace(dto.Reason))
+            throw new InvalidOperationException("Reason is required.");
+        if (dto.FrontFile.Length == 0 || dto.LeftFile.Length == 0 || dto.RightFile.Length == 0)
+            throw new InvalidOperationException("All three face images must not be empty.");
 
-        // 3. Định danh tên file độc nhất bằng Guid để tránh ghi đè
-        var frontFileName = $"{Guid.NewGuid()}_{dto.FrontFile.FileName}";
-        var leftFileName = $"{Guid.NewGuid()}_{dto.LeftFile.FileName}";
-        var rightFileName = $"{Guid.NewGuid()}_{dto.RightFile.FileName}";
+        var hasPendingRequest = await _context.BiometricRequests.AsNoTracking()
+            .AnyAsync(r => r.StudentId == user.Id && r.Status == BiometricReqStatus.Pending);
+        if (hasPendingRequest)
+            throw new InvalidOperationException("You already have a pending biometric request awaiting review.");
 
-        // Đường dẫn tương đối lưu vào DB
-        string frontPath = Path.Combine("uploads", "biometrics", frontFileName);
-        string leftPath = Path.Combine("uploads", "biometrics", leftFileName);
-        string rightPath = Path.Combine("uploads", "biometrics", rightFileName);
+        // 2. Mở Stream 3 file ảnh từ Request
+        using var frontStream = dto.FrontFile.OpenReadStream();
+        using var leftStream = dto.LeftFile.OpenReadStream();
+        using var rightStream = dto.RightFile.OpenReadStream();
 
-        // 4. Tiến hành ghi trực tiếp file vật lý xuống ổ đĩa cục bộ server
-        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", frontPath), FileMode.Create))
-            await dto.FrontFile.CopyToAsync(fs);
-        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", leftPath), FileMode.Create))
-            await dto.LeftFile.CopyToAsync(fs);
-        using (var fs = new FileStream(Path.Combine(Directory.GetCurrentDirectory(), "wwwroot", rightPath), FileMode.Create))
-            await dto.RightFile.CopyToAsync(fs);
+        // 3. Gọi FastAPI Python trên Render để AI xử lý trích xuất Vector & Upload Supabase
+        var aiResponse = await _aiClient.ExtractVectorFrom3FacesAsync(
+            frontStream, dto.FrontFile.FileName,
+            leftStream, dto.LeftFile.FileName,
+            rightStream, dto.RightFile.FileName
+        );
 
-        // 5. Khởi tạo thực thể Request gửi lên trường với trạng thái PENDING (Hoàn toàn không có Vector)
+        // 4. Khởi tạo thực thể Request lưu link Supabase URL thu được từ AI Service
         var entity = new BiometricRequest
         {
             Id = Guid.NewGuid(),
             StudentId = user.Id,
-            Reason = dto.Reason,
+            Reason = dto.Reason.Trim(),
             Status = BiometricReqStatus.Pending,
-            FrontImagePath = frontPath,
-            LeftImagePath = leftPath,
-            RightImagePath = rightPath,
+            // Lưu trực tiếp URL Supabase được trả về từ Python AI Service
+            FrontImagePath = aiResponse.FrontUrl,
+            LeftImagePath = aiResponse.LeftUrl,  
+            RightImagePath = aiResponse.RightUrl,
             CreatedAt = DateTime.UtcNow
         };
 
@@ -144,14 +121,59 @@ public class BiometricRequestService : IBiometricRequestService
 
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);
+
+        if (string.IsNullOrWhiteSpace(entity.FrontImagePath) ||
+            string.IsNullOrWhiteSpace(entity.LeftImagePath) ||
+            string.IsNullOrWhiteSpace(entity.RightImagePath))
+        {
+            throw new InvalidOperationException("Thiếu ảnh để trích xuất vector (cần đủ 3 ảnh thẳng/trái/phải).");
+        }
+
+        float[] averageVector;
+        try
+        {
+            averageVector = await _aiClient.ExtractAverageVectorFromUrlsAsync(new List<string>
+        {
+            entity.FrontImagePath, entity.LeftImagePath, entity.RightImagePath
+        });
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Lỗi trích xuất vector khi duyệt: {ex.Message}");
+        }
+
         entity.Status = BiometricReqStatus.Approved;
         entity.ApprovedBy = user.Id;
         entity.ReviewedAt = DateTime.UtcNow;
         if (!string.IsNullOrWhiteSpace(dto?.Reason))
             entity.Reason = dto.Reason;
 
+        var oldActiveRecords = await _context.BiometricData
+            .Where(b => b.UserId == entity.StudentId && b.IsActive)
+            .ToListAsync();
+        foreach (var old in oldActiveRecords)
+        {
+            old.IsActive = false;
+            old.UpdatedAt = DateTime.UtcNow;
+        }
+
+        var biometricDatum = new BiometricDatum
+        {
+            Id = Guid.NewGuid(),
+            UserId = entity.StudentId,
+            BioRequestId = entity.Id,
+            ModelVersion = "face_recognition_v1",
+            FaceVector = new Pgvector.Vector(averageVector),
+            FaceImageUrl = entity.FrontImagePath,
+            IsActive = true,
+            CreatedAt = DateTime.UtcNow,
+            UpdatedAt = DateTime.UtcNow
+        };
+        await _context.BiometricData.AddAsync(biometricDatum);
+
         await _repo.UpdateAsync(entity);
-        await DeleteBiometricFilesAsync(entity.Id);
+        await _context.SaveChangesAsync();
+
         await _notifications.SendToUserAsync(
             entity.StudentId,
             "Khuôn mặt đã được phê duyệt",
@@ -167,7 +189,7 @@ public class BiometricRequestService : IBiometricRequestService
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var entity = await _repo.GetByIdAsync(id);
-        if (entity == null) return false;
+        if (entity == null || entity.Status != BiometricReqStatus.Pending) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);
@@ -178,7 +200,9 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         await _repo.UpdateAsync(entity);
-        await DeleteBiometricFilesAsync(entity.Id);
+
+        await DeleteRequestImagesAsync(entity);
+
         await _notifications.SendToUserAsync(
             entity.StudentId,
             "Đăng ký khuôn mặt bị từ chối",
@@ -190,16 +214,42 @@ public class BiometricRequestService : IBiometricRequestService
         return true;
     }
 
+    // THÊM MỚI: helper xoá 3 ảnh gắn trực tiếp với BiometricRequest
+    private async Task DeleteRequestImagesAsync(BiometricRequest entity)
+    {
+        var paths = new[] { entity.FrontImagePath, entity.LeftImagePath, entity.RightImagePath }
+            .Where(p => !string.IsNullOrWhiteSpace(p))
+            .Distinct();
+
+        foreach (var path in paths)
+        {
+            try
+            {
+                await _storage.DeleteAsync(StorageService.BiometricFacesBucket, path!);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex, "Không xoá được ảnh {Path} của request {RequestId}.", path, entity.Id);
+            }
+        }
+    }
+
     public async Task<bool> DeleteAsync(Guid id)
     {
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
-        if (user.Role == AppRole.Student && entity.StudentId != user.Id)
-            throw new UnauthorizedAccessException("Access denied.");
+        if (user.Role == AppRole.Student)
+        {
+            if (entity.StudentId != user.Id)
+                throw new UnauthorizedAccessException("Access denied.");
+        }
         else
-            await _currentUser.EnsureRoleAsync(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        {
+            await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
+            await EnsureReviewerAccessAsync(user, entity.StudentId);
+        }
 
         await _repo.SoftDeleteAsync(entity);
         await PublishBiometricRequestChangedAsync(entity, "deleted");

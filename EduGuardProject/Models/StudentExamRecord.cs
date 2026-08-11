@@ -16,6 +16,12 @@ public partial class StudentExamRecord
 
     public string? ExamRecord { get; set; }
 
+    public decimal? FinalScore { get; set; }
+
+    public DateTime? SubmittedAt { get; set; }
+
+    public int? DurationSeconds { get; set; }
+
     [Column("status")]
     public StudentExamRecordStatus Status { get; set; } = StudentExamRecordStatus.Marked;
 

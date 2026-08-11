@@ -16,7 +16,35 @@ public enum AppRole
     SchoolAdmin,
 
     [PgName("SUPER_ADMIN")]
-    SuperAdmin
+    SuperAdmin,
+
+    [PgName("student")]
+    Student_LEGACY,
+
+    [PgName("lecturer")]
+    Lecturer_LEGACY,
+
+    [PgName("school_admin")]
+    SchoolAdmin_LEGACY,
+
+    [PgName("super_admin")]
+    SuperAdmin_LEGACY
+}
+
+public static class AppRoleExtensions
+{
+    public static AppRole ToCanonical(this AppRole role) =>
+        role switch
+        {
+            AppRole.Student_LEGACY => AppRole.Student,
+            AppRole.Lecturer_LEGACY => AppRole.Lecturer,
+            AppRole.SchoolAdmin_LEGACY => AppRole.SchoolAdmin,
+            AppRole.SuperAdmin_LEGACY => AppRole.SuperAdmin,
+            _ => role
+        };
+
+    public static bool IsInRoles(this AppRole role, params AppRole[] allowedRoles) =>
+        allowedRoles.Any(allowed => role.ToCanonical() == allowed.ToCanonical());
 }
 
 public enum UserStatus
@@ -32,11 +60,11 @@ public enum UserStatus
 //ENUM cho Institution
 public enum BillingModel
 {
-    [PgName("PAY_AS_YOU_GO")]
-    PayAsYouGo,
+    [PgName("MONTHLY")]
+    Monthly,
 
-    [PgName("SUBSCRIPTION")]
-    Subscription
+    [PgName("YEARLY")]
+    Yearly
 }
 
 public enum InstitutionStatus
@@ -70,7 +98,10 @@ public enum TransactionType
     ATTENDANCE_FEE_LEGACY,
 
     [PgName("proctoring_fee")]
-    PROCTORING_FEE_LEGACY
+    PROCTORING_FEE_LEGACY,
+
+    [PgName("SUBSCRIPTION_FEE")]   
+    SUBSCRIPTION_FEE,
 }
 
 public static class TransactionTypeExtensions
@@ -140,7 +171,13 @@ public enum PricingServiceType
     ATTENDANCE_UNIT,
 
     [PgName("proctoring_per_hour")]
-    PROCTORING_PER_HOUR
+    PROCTORING_PER_HOUR,
+
+    [PgName("subscription_monthly")]   
+    SUBSCRIPTION_MONTHLY,
+
+    [PgName("subscription_yearly")]    
+    SUBSCRIPTION_YEARLY
 }
 
 //ENUM cho notification
@@ -309,6 +346,7 @@ public enum ViolationSeverity
 
     [PgName("SEVERE")]
     Severe
+
 }
 
 public enum ViolationType
@@ -323,5 +361,21 @@ public enum ViolationType
     MultipleFaces,
 
     [PgName("ABSENCE")]
-    Absence
+    Absence,
+
+    [PgName("HEAD_TURN")]
+    HeadTurn,
+
+    [PgName("FACE_OBSTRUCTED")]
+    FaceObstructed,
+
+    //Browser violation types
+    [PgName("TabSwitch")]
+    TabSwitch,
+
+    [PgName("WindowBlur")]
+    WindowBlur,
+
+    [PgName("ExitFullscreen")]
+    ExitFullscreen
 }

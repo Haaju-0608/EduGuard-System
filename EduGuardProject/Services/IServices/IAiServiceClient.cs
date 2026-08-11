@@ -1,12 +1,15 @@
-﻿namespace EduGuardProject.Services.IServices
-{
-    public interface IAiServiceClient
-    {
-        Task<float[]> ExtractVectorFrom3FacesAsync(
-            Stream frontStream, string frontName,
-            Stream leftStream, string leftName,
-            Stream rightStream, string rightName);
+﻿namespace EduGuardProject.Services.IServices;
 
-        Task<List<float[]>> ExtractVectorsFromVideoAsync(Stream videoStream, string fileName);
-    }
+public interface IAiServiceClient
+{
+    Task<FaceVectorResponse> ExtractVectorFrom3FacesAsync(
+        Stream frontStream, string frontName,
+        Stream leftStream, string leftName,
+        Stream rightStream, string rightName);
+
+    Task<VideoVectorsResponse> ExtractVectorsFromVideoAsync(Stream videoStream, string fileName);
+
+    Task<float[]> ExtractAverageVectorFromUrlsAsync(List<string> imageUrls);
+
+    Task<float[]> ExtractSingleFaceVectorAsync(Stream liveCaptureStream, string fileName);
 }

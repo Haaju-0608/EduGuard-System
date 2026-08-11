@@ -1,23 +1,37 @@
+using System.Text.Json;
 using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace EduGuardProject.Services;
 
 public class DashboardStatsService : IDashboardStatsService
 {
+    private static readonly TimeSpan SystemDashboardCacheTtl = TimeSpan.FromSeconds(60);
+
     private readonly AppDbContext _context;
     private readonly ICurrentUserService _currentUser;
+    private readonly IDistributedCache _cache;
 
-    public DashboardStatsService(AppDbContext context, ICurrentUserService currentUser)
+    public DashboardStatsService(AppDbContext context, ICurrentUserService currentUser, IDistributedCache cache)
     {
         _context = context;
         _currentUser = currentUser;
+        _cache = cache;
     }
 
     public async Task<object> GetSystemDashboardAsync(DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         await _currentUser.EnsureRoleAsync(AppRole.SuperAdmin);
+
+        // Aggregation is expensive (many COUNT/SUM queries) and this dashboard doesn't
+        // need second-level freshness, so cache the computed snapshot briefly.
+        var cacheKey = $"dashboard:system:{from:O}:{to:O}";
+        var cached = await _cache.GetStringAsync(cacheKey, cancellationToken);
+        if (cached != null)
+            return JsonSerializer.Deserialize<JsonElement>(cached);
 
         var start = from ?? DateTime.MinValue;
         var end = to ?? DateTime.MaxValue;
@@ -40,7 +54,7 @@ public class DashboardStatsService : IDashboardStatsService
                 t.CreatedAt >= start &&
                 t.CreatedAt <= end);
 
-        return new
+        var result = new
         {
             range = new { from = start == DateTime.MinValue ? null : from, to = end == DateTime.MaxValue ? null : to },
             institutions = new
@@ -77,10 +91,19 @@ public class DashboardStatsService : IDashboardStatsService
                     .SumAsync(t => (decimal?)t.Amount, cancellationToken) ?? 0
             }
         };
+
+        await _cache.SetStringAsync(
+            cacheKey,
+            JsonSerializer.Serialize(result),
+            new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = SystemDashboardCacheTtl },
+            cancellationToken);
+
+        return result;
     }
 
     public async Task<object> GetInstitutionDashboardAsync(Guid institutionId, DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         await _currentUser.EnsureInstitutionAccessAsync(institutionId);
 
         var start = from ?? DateTime.MinValue;
@@ -138,6 +161,7 @@ public class DashboardStatsService : IDashboardStatsService
 
     public async Task<object> GetLecturerDashboardAsync(Guid? lecturerId = null, DateTime? from = null, DateTime? to = null, CancellationToken cancellationToken = default)
     {
+        ValidateDateRange(from, to);
         var user = await _currentUser.GetRequiredUserAsync();
         var effectiveLecturerId = lecturerId ?? user.Id;
 
@@ -186,5 +210,11 @@ public class DashboardStatsService : IDashboardStatsService
             violations = await _context.ViolationLogs.CountAsync(v =>
                 examSlotIds.Contains(v.Participation.ExamSlotId) && v.RecordedAt >= start && v.RecordedAt <= end, cancellationToken)
         };
+    }
+
+    private static void ValidateDateRange(DateTime? from, DateTime? to)
+    {
+        if (from.HasValue && to.HasValue && from.Value > to.Value)
+            throw new InvalidOperationException("from must be earlier than or equal to to.");
     }
 }

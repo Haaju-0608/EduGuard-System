@@ -1,3 +1,5 @@
+using EduGuardProject.DTOs.Response;
+
 namespace EduGuardProject.Services.IServices;
 
 public interface IDashboardStatsService
@@ -9,8 +11,8 @@ public interface IDashboardStatsService
 
 public interface IReportService
 {
-    Task<object> GetAttendanceReportAsync(Guid? institutionId, Guid? classId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
-    Task<object> GetViolationReportAsync(Guid? institutionId, Guid? examSlotId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
-    Task<object> GetWalletReportAsync(Guid? institutionId, Guid? walletId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
+    Task<AttendanceReportResponseDto> GetAttendanceReportAsync(Guid? institutionId, Guid? classId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
+    Task<ViolationReportResponseDto> GetViolationReportAsync(Guid? institutionId, Guid? examSlotId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
+    Task<WalletReportResponseDto> GetWalletReportAsync(Guid? institutionId, Guid? walletId, DateTime? from, DateTime? to, CancellationToken cancellationToken = default);
     Task<object> GetRevenueReportAsync(DateTime? from, DateTime? to, string groupBy = "day", CancellationToken cancellationToken = default);
 }

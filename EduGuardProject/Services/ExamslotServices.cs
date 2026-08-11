@@ -30,15 +30,29 @@ public class ExamslotServices : IExamSlotServices
         _realtime = realtime;
     }
 
-    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSizel)
+    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSize)
     {
-        return await _repo.GetAllAsync(search, sort, page, pageSizel);
+        var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        if (role is not AppRole.SuperAdmin and not AppRole.SchoolAdmin and not AppRole.Lecturer and not AppRole.Student)
+            throw new UnauthorizedAccessException("Access denied.");
+
+        var institutionId = role == AppRole.SuperAdmin
+            ? (Guid?)null
+            : user.InstitutionId ?? throw new UnauthorizedAccessException("User is not assigned to an institution.");
+        var lecturerId = role == AppRole.Lecturer ? user.Id : (Guid?)null;
+        var studentId = role == AppRole.Student ? user.Id : (Guid?)null;
+
+        return await _repo.GetAllAsync(search, sort, page, pageSize, institutionId, lecturerId, studentId);
     }
 
     public async Task<ExamslotReponseDto?> GetByIdAsync(Guid ExamId)
     {
         var entity = await _repo.GetByIdAsync(ExamId);
-        return entity == null ? null : MapToResponseDto(entity);
+        if (entity == null) return null;
+
+        await EnsureExamSlotReadAccessAsync(entity);
+        return MapToResponseDto(entity);
     }
 
     public async Task<ExamslotReponseDto?> GetByIdForStudentAsync(Guid ExamId, Guid studentId)
@@ -48,6 +62,8 @@ public class ExamslotServices : IExamSlotServices
             .Include(p => p.ExamSlot)
             .ThenInclude(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(p => p.ExamSlot)
+            .ThenInclude(e => e.ProctorNavigation)
             .FirstOrDefaultAsync(p =>
                 p.ExamSlotId == ExamId &&
                 p.StudentId == studentId);
@@ -81,6 +97,11 @@ public class ExamslotServices : IExamSlotServices
             if (!enrolled)
                 throw new UnauthorizedAccessException("Access denied.");
         }
+        else if (user.Role == AppRole.Lecturer)   // ← THÊM MỚI: Lecturer chỉ thấy exam slot của lớp mình dạy
+        {
+            if (cls.LecturerId != user.Id)
+                throw new UnauthorizedAccessException("You can only view exam slots for your own classes.");
+        }
         else if (user.Role != AppRole.SuperAdmin)
         {
             throw new UnauthorizedAccessException("Access denied.");
@@ -90,6 +111,7 @@ public class ExamslotServices : IExamSlotServices
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .Where(e => e.ClassId == classId)
             .OrderBy(e => e.StartTime)
             .ToListAsync();
@@ -107,6 +129,7 @@ public class ExamslotServices : IExamSlotServices
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .Where(e =>
                 e.Class.DeletedAt == null &&
                 e.ExamParticipations.Any(p => p.StudentId == studentId));
@@ -135,6 +158,7 @@ public class ExamslotServices : IExamSlotServices
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .Where(e =>
                 e.Class.DeletedAt == null &&
                 e.ExamParticipations.Any(p => p.StudentId == user.Id))
@@ -150,13 +174,22 @@ public class ExamslotServices : IExamSlotServices
         var user = await _currentUser.GetRequiredUserAsync();
         if (string.IsNullOrWhiteSpace(dto.ExamName))
             throw new InvalidOperationException("Exam name is required.");
+        if (dto.ExpectedDurationMinutes <= 0)
+            throw new InvalidOperationException("Expected duration must be greater than zero.");
+        if (!Enum.IsDefined(dto.Status) || dto.Status != ExamSlotStatus.Scheduled)
+            throw new InvalidOperationException("New exam slots must start as SCHEDULED.");
+
+        ValidateNewExamTimes(dto.StartTime, dto.EndTime);
+        ValidateExpectedDuration(dto.ExpectedDurationMinutes, dto.StartTime, dto.EndTime);
 
         var cls = await _context.Classes
             .Include(c => c.Lecturer)
             .FirstOrDefaultAsync(c => c.Id == dto.ClassId && c.DeletedAt == null)
             ?? throw new InvalidOperationException("Class not found.");
 
+        ValidateClassEndDate(cls.EndDate, dto.EndTime);
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
+        await EnsureClassHasNoOverlappingExamAsync(dto.ClassId, dto.StartTime, dto.EndTime);
         if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != cls.LecturerId)
         {
             cls.Lecturer = await GetClassLecturerAsync(lecturerId, cls.InstitutionId);
@@ -166,6 +199,10 @@ public class ExamslotServices : IExamSlotServices
         }
 
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
+
+        User? proctor = null;
+        if (dto.ProctorId is Guid proctorId && proctorId != Guid.Empty)
+            proctor = await GetClassLecturerAsync(proctorId, cls.InstitutionId);
 
         var entity = new ExamSlot
         {
@@ -177,6 +214,7 @@ public class ExamslotServices : IExamSlotServices
             EndTime = dto.EndTime,
             ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
             Status = dto.Status,
+            ProctorId = proctor?.Id,
             CreatedAt = DateTime.UtcNow,
             UpdatedAt = DateTime.UtcNow
         };
@@ -190,7 +228,7 @@ public class ExamslotServices : IExamSlotServices
             ReferenceTypeEnum.ExamSlot,
             entity.Id);
         await PublishExamSlotChangedAsync(entity, "created");
-        return MapToResponseDto(entity, cls.Lecturer);
+        return MapToResponseDto(entity, cls.Lecturer, proctor);
     }
 
     public async Task<ExamslotReponseDto?> UpdateAsync(Guid ExamId, UpdateExamSlotDto dto)
@@ -203,17 +241,24 @@ public class ExamslotServices : IExamSlotServices
         if (!string.IsNullOrWhiteSpace(dto.ExamName))
             entity.ExamName = dto.ExamName.Trim();
 
-        await EnsureExamSlotAdminAccessAsync(entity);
-
-        if (!string.IsNullOrWhiteSpace(dto.ExamName))
-            entity.ExamName = dto.ExamName.Trim();
-
+        if (dto.ExpectedDurationMinutes < 0)
+            throw new InvalidOperationException("Expected duration must be greater than zero.");
         entity.ExpectedDurationMinutes = dto.ExpectedDurationMinutes != 0
             ? dto.ExpectedDurationMinutes
             : entity.ExpectedDurationMinutes;
 
-        if (dto.StartTime.HasValue) entity.StartTime = dto.StartTime.Value;
-        if (dto.EndTime.HasValue) entity.EndTime = dto.EndTime.Value;
+        var startTime = dto.StartTime ?? entity.StartTime;
+        var endTime = dto.EndTime ?? entity.EndTime;
+        ValidateClassEndDate(entity.Class.EndDate, endTime);
+        if (dto.StartTime.HasValue || dto.EndTime.HasValue)
+        {
+            ValidateUpdatedExamTimes(startTime, endTime, dto.StartTime.HasValue, dto.EndTime.HasValue);
+            await EnsureClassHasNoOverlappingExamAsync(entity.ClassId, startTime, endTime, entity.Id);
+            await EnsureParticipantsHaveNoOverlappingExamAsync(entity.Id, startTime, endTime);
+            entity.StartTime = startTime;
+            entity.EndTime = endTime;
+        }
+        ValidateExpectedDuration(entity.ExpectedDurationMinutes, startTime, endTime);
 
         if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != entity.Class.LecturerId)
         {
@@ -221,6 +266,12 @@ public class ExamslotServices : IExamSlotServices
             entity.Class.LecturerId = lecturerId;
             entity.Class.UpdatedBy = _currentUser.UserId;
             entity.Class.UpdatedAt = DateTime.UtcNow;
+        }
+
+        if (dto.ProctorId is Guid proctorId && proctorId != Guid.Empty && proctorId != entity.ProctorId)
+        {
+            entity.ProctorNavigation = await GetClassLecturerAsync(proctorId, entity.Class.InstitutionId);
+            entity.ProctorId = proctorId;
         }
 
         entity.UpdatedAt = DateTime.UtcNow;
@@ -236,8 +287,10 @@ public class ExamslotServices : IExamSlotServices
         if (entity == null) return false;
 
         await EnsureExamSlotAdminAccessAsync(entity);
-        await _repo.DeleteAsync(entity);
-        await PublishExamSlotChangedAsync(entity, "deleted");
+        entity.Status = ExamSlotStatus.Cancelled;
+        entity.UpdatedAt = DateTime.UtcNow;
+        await _repo.UpdateAsync(entity);
+        await PublishExamSlotChangedAsync(entity, "updated");
         return true;
     }
 
@@ -253,6 +306,25 @@ public class ExamslotServices : IExamSlotServices
             ?? throw new InvalidOperationException("Class not found.");
 
         await _currentUser.EnsureInstitutionAccessAsync(institutionId);
+    }
+
+    private async Task EnsureExamSlotReadAccessAsync(ExamSlot entity)
+    {
+        if (entity.Class.DeletedAt != null)
+            throw new InvalidOperationException("Class not found.");
+
+        var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.SuperAdmin) return;
+        if (user.InstitutionId != entity.Class.InstitutionId)
+            throw new UnauthorizedAccessException("Access denied.");
+        if (role == AppRole.SchoolAdmin) return;
+        if (role == AppRole.Lecturer && entity.Class.LecturerId == user.Id) return;
+        if (role == AppRole.Student && await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
+                p.ExamSlotId == entity.Id && p.StudentId == user.Id))
+            return;
+
+        throw new UnauthorizedAccessException("Access denied.");
     }
 
     private async Task EnsureStudentExamSlotAccessAsync(ExamSlot entity, Guid studentId)
@@ -315,7 +387,81 @@ public class ExamslotServices : IExamSlotServices
         return lecturer;
     }
 
-    private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null) => new()
+    private async Task EnsureClassHasNoOverlappingExamAsync(
+        Guid classId,
+        DateTime startTime,
+        DateTime endTime,
+        Guid? ignoredExamSlotId = null)
+    {
+        var hasOverlap = await _context.ExamSlots.AsNoTracking().AnyAsync(e =>
+            e.ClassId == classId &&
+            e.Status != ExamSlotStatus.Cancelled &&
+            (!ignoredExamSlotId.HasValue || e.Id != ignoredExamSlotId.Value) &&
+            e.StartTime < endTime &&
+            e.EndTime > startTime);
+
+        if (hasOverlap)
+            throw new InvalidOperationException("Class already has an exam in this time range.");
+    }
+
+    private async Task EnsureParticipantsHaveNoOverlappingExamAsync(Guid examSlotId, DateTime startTime, DateTime endTime)
+    {
+        var hasOverlap = await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
+            p.ExamSlotId == examSlotId &&
+            _context.ExamParticipations.Any(other =>
+                other.StudentId == p.StudentId &&
+                other.ExamSlotId != examSlotId &&
+                other.ExamSlot.Status != ExamSlotStatus.Cancelled &&
+                other.ExamSlot.StartTime < endTime &&
+                other.ExamSlot.EndTime > startTime));
+
+        if (hasOverlap)
+            throw new InvalidOperationException("One or more students already have another exam in this time range.");
+    }
+
+    private static void ValidateNewExamTimes(DateTime startTime, DateTime endTime)
+    {
+        var now = DateTime.UtcNow;
+        if (startTime == default)
+            throw new InvalidOperationException("Exam start time is required.");
+        if (endTime == default)
+            throw new InvalidOperationException("Exam end time is required.");
+        if (startTime < now)
+            throw new InvalidOperationException("Exam start time cannot be in the past.");
+        if (endTime < now)
+            throw new InvalidOperationException("Exam end time cannot be in the past.");
+        if (endTime <= startTime)
+            throw new InvalidOperationException("Exam end time must be after start time.");
+    }
+
+    private static void ValidateUpdatedExamTimes(DateTime startTime, DateTime endTime, bool startChanged, bool endChanged)
+    {
+        var now = DateTime.UtcNow;
+        if (startChanged && startTime < now)
+            throw new InvalidOperationException("Exam start time cannot be in the past.");
+        if (endChanged && endTime < now)
+            throw new InvalidOperationException("Exam end time cannot be in the past.");
+        if (endTime <= startTime)
+            throw new InvalidOperationException("Exam end time must be after start time.");
+    }
+
+    private static void ValidateExpectedDuration(int expectedDurationMinutes, DateTime startTime, DateTime endTime)
+    {
+        if (expectedDurationMinutes <= 0)
+            throw new InvalidOperationException("Expected duration must be greater than zero.");
+        if (expectedDurationMinutes > (endTime - startTime).TotalMinutes)
+            throw new InvalidOperationException("Expected duration cannot exceed the exam slot time range.");
+    }
+
+    private static void ValidateClassEndDate(DateOnly? classEndDate, DateTime examEndTime)
+    {
+        if (!classEndDate.HasValue)
+            throw new InvalidOperationException("Class end date is required.");
+        if (DateOnly.FromDateTime(examEndTime) > classEndDate.Value)
+            throw new InvalidOperationException("Exam end time cannot be after class end date.");
+    }
+
+    private static ExamslotReponseDto MapToResponseDto(ExamSlot entity, User? lecturer = null, User? proctor = null) => new()
     {
         Id = entity.Id,
         ClassId = entity.ClassId,
@@ -326,7 +472,8 @@ public class ExamslotServices : IExamSlotServices
         Status = entity.Status,
         CreatedAt = entity.CreatedAt,
         UpdatedAt = entity.UpdatedAt,
-        Lecturer = ToUserSummary(lecturer ?? entity.Lecturer)
+        Lecturer = ToUserSummary(lecturer ?? entity.Lecturer),
+        Proctor = ToUserSummary(proctor ?? entity.ProctorNavigation)
     };
 
     private static UserSummaryDto? ToUserSummary(User? user) =>

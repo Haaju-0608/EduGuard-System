@@ -45,6 +45,7 @@ public class ViolationLogController : AcademicApiControllerBase
     // Get Violation Logs By Exam Slot
     // Truyền dữ liệu: route examSlotId; query search, sort, page, pageSize, fields.
     // Điều kiện: Lecturer đúng class của exam slot; SchoolAdmin cùng institution; SuperAdmin xem tất cả student trong exam slot.
+    // Note: Dùng cho Lecturer/Admin xem toàn bộ violation log của mọi student trong một exam slot.
     [HttpGet("exam-slot/{examSlotId:guid}")]
     [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> GetByExamSlot(
@@ -68,6 +69,7 @@ public class ViolationLogController : AcademicApiControllerBase
     // Get Violation Logs By Exam Slot And Student
     // Truyền dữ liệu: route examSlotId, route studentId; query search, sort, page, pageSize, fields.
     // Điều kiện: Student chỉ xem chính mình; Lecturer đúng class của exam slot; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
+    // Note: Dùng để lọc violation log của một student cụ thể trong một exam slot cụ thể.
     [HttpGet("exam-slot/{examSlotId:guid}/student/{studentId:guid}")]
     [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> GetByExamSlotAndStudent(
@@ -94,6 +96,7 @@ public class ViolationLogController : AcademicApiControllerBase
     // Get Violation Logs By Student
     // Truyền dữ liệu: route studentId; query search, sort, page, pageSize, fields.
     // Điều kiện: Student chỉ xem chính mình; Lecturer chỉ xem log thuộc class mình dạy; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
+    // Note: Dùng để xem toàn bộ lịch sử violation log của một student trên tất cả exam slot được phép truy cập.
     [HttpGet("student/{studentId:guid}")]
     [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
     public async Task<IActionResult> GetByStudentId(

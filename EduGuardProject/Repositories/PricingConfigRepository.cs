@@ -45,5 +45,10 @@ namespace EduGuardProject.Repositories
             _context.PricingConfigs.Update(config);
             await _context.SaveChangesAsync();
         }
+
+        public async Task<bool> HasReferencingTransactionsAsync(Guid pricingConfigId)
+        {
+            return await _context.Transactions.AnyAsync(t => t.PricingConfigId == pricingConfigId);
+        }
     }
 }

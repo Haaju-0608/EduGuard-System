@@ -29,12 +29,33 @@ public class ExamWorkflowService : IExamWorkflowService
 
     public async Task<object> JoinAsync(Guid participationId, CancellationToken cancellationToken = default)
     {
+        if (participationId == Guid.Empty)
+            throw new InvalidOperationException("Participation id is required.");
+
         var participation = await GetParticipationAsync(participationId, cancellationToken);
         await EnsureStudentOwnerAsync(participation);
-        if (participation.Status is ParticipationStatus.Submitted or ParticipationStatus.Disqualified)
-            throw new InvalidOperationException("A submitted or disqualified participation cannot join again.");
-
         var now = DateTime.UtcNow;
+        if (participation.ExamSlot.Status is ExamSlotStatus.Cancelled or ExamSlotStatus.Completed)
+            throw new InvalidOperationException("This exam slot is not active.");
+        if (now < participation.ExamSlot.StartTime)
+            throw new InvalidOperationException("The exam has not started yet.");
+        if (now > participation.ExamSlot.EndTime)
+            throw new InvalidOperationException("The exam has already ended.");
+        if (participation.Status is not ParticipationStatus.Absent and not ParticipationStatus.Joined)
+            throw new InvalidOperationException("This exam participation cannot join again.");
+
+        var hasAttendance = await _context.AttendanceRecords
+            .AsNoTracking()
+            .AnyAsync(r =>
+                r.StudentId == participation.StudentId &&
+                r.Session.ExamSlotId == participation.ExamSlotId &&
+                r.Session.Status != SessionStatus.Cancelled &&
+                (r.Status == AttendanceStatus.Present || r.Status == AttendanceStatus.Late),
+                cancellationToken);
+        if (!hasAttendance)
+            throw new InvalidOperationException("You must be marked present or late before you can start the exam.");
+
+        participation.ExamSlot.Status = ExamSlotStatus.InProgress;
         participation.Status = ParticipationStatus.Joined;
         participation.ActualStart ??= now;
         await _context.SaveChangesAsync(cancellationToken);
@@ -174,6 +195,59 @@ public class ExamWorkflowService : IExamWorkflowService
             participation.StudentId,
             "Bạn đã bị loại khỏi kỳ thi",
             reason,
+            NotificationType.ViolationDetected,
+            ReferenceTypeEnum.ExamSlot,
+            participation.ExamSlotId,
+            cancellationToken);
+
+        return payload;
+    }
+
+    public async Task<object> VoidAsync(Guid participationId, string reason, CancellationToken cancellationToken = default)
+    {
+        if (string.IsNullOrWhiteSpace(reason))
+            throw new InvalidOperationException("Void reason is required.");
+
+        var participation = await GetParticipationAsync(participationId, cancellationToken);
+        await EnsureStaffAccessAsync(participation.ExamSlot.Class);
+        if (participation.Status != ParticipationStatus.Submitted)
+            throw new InvalidOperationException("Only a SUBMITTED exam participation can be voided.");
+
+        var now = DateTime.UtcNow;
+        var records = await _context.StudentExamRecords
+            .Where(r =>
+                r.ExamSlotId == participation.ExamSlotId &&
+                r.StudentId == participation.StudentId &&
+                r.Status != StudentExamRecordStatus.Deleted)
+            .ToListAsync(cancellationToken);
+
+        participation.Status = ParticipationStatus.Disqualified;
+        participation.DisqualifiedReason = reason.Trim();
+        participation.ActualEnd ??= now;
+        foreach (var record in records)
+            record.Status = StudentExamRecordStatus.Deleted;
+
+        await _context.SaveChangesAsync(cancellationToken);
+
+        var payload = new
+        {
+            participationId = participation.Id,
+            participation.ExamSlotId,
+            examName = participation.ExamSlot.ExamName,
+            participation.StudentId,
+            participation.Student.FullName,
+            reason = participation.DisqualifiedReason,
+            voidedAt = now,
+            invalidatedRecordCount = records.Count
+        };
+
+        await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.Disqualified, payload, cancellationToken);
+        await _realtime.PushExamStudentAsync(participation.ExamSlotId, participation.StudentId, HubEvents.Disqualified, payload, cancellationToken);
+        await PublishParticipationChangedAsync(participation, "voided", payload, cancellationToken);
+        await _notifications.SendToUserAsync(
+            participation.StudentId,
+            "Kết quả bài thi đã bị hủy",
+            participation.DisqualifiedReason,
             NotificationType.ViolationDetected,
             ReferenceTypeEnum.ExamSlot,
             participation.ExamSlotId,

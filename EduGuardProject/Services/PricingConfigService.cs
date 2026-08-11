@@ -1,20 +1,26 @@
-﻿using EduGuardProject.DTOs.Request;
+﻿using System.Text.Json;
+using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using Microsoft.Extensions.Caching.Distributed;
 
 namespace EduGuardProject.Services
 {
     public class PricingConfigService : IPricingConfigService
     {
+        private static readonly TimeSpan ActiveConfigCacheTtl = TimeSpan.FromMinutes(30);
+
         private readonly IPricingConfigRepository _repo;
         private readonly IRealtimeEventDispatcher _realtime;
+        private readonly IDistributedCache _cache;
 
-        public PricingConfigService(IPricingConfigRepository repo, IRealtimeEventDispatcher realtime)
+        public PricingConfigService(IPricingConfigRepository repo, IRealtimeEventDispatcher realtime, IDistributedCache cache)
         {
             _repo = repo;
             _realtime = realtime;
+            _cache = cache;
         }
 
         public async Task<IEnumerable<PricingConfigResponseDto>> GetAllConfigsAsync()
@@ -31,9 +37,23 @@ namespace EduGuardProject.Services
 
         public async Task<PricingConfigResponseDto?> GetCurrentActiveConfigAsync(PricingServiceType serviceType)
         {
+            var cacheKey = ActiveConfigCacheKey(serviceType);
+            var cached = await _cache.GetStringAsync(cacheKey);
+            if (cached != null)
+                return JsonSerializer.Deserialize<PricingConfigResponseDto>(cached);
+
             var config = await _repo.GetActiveConfigByServiceTypeAsync(serviceType);
-            return config == null ? null : MapToDto(config);
+            var dto = config == null ? null : MapToDto(config);
+
+            await _cache.SetStringAsync(
+                cacheKey,
+                JsonSerializer.Serialize(dto),
+                new DistributedCacheEntryOptions { AbsoluteExpirationRelativeToNow = ActiveConfigCacheTtl });
+
+            return dto;
         }
+
+        private static string ActiveConfigCacheKey(PricingServiceType serviceType) => $"pricing-config:active:{serviceType}";
 
         public async Task<PricingConfigResponseDto> CreateConfigAsync(CreatePricingConfigDto dto, Guid adminId)
         {
@@ -64,6 +84,7 @@ namespace EduGuardProject.Services
             };
 
             await _repo.AddAsync(newConfig);
+            await _cache.RemoveAsync(ActiveConfigCacheKey(dto.ServiceType));
             await PublishPricingChangedAsync(newConfig, "created");
             return MapToDto(newConfig);
         }
@@ -90,5 +111,32 @@ namespace EduGuardProject.Services
             IsActive = p.IsActive,
             CreatedAt = p.CreatedAt
         };
+
+        public async Task<bool> UpdateConfigAsync(Guid id, UpdatePricingConfigDto dto)
+        {
+            var config = await _repo.GetByIdAsync(id);
+            if (config == null) return false;
+
+            // Chỉ chặn khi UnitPrice bị đổi VÀ đã có transaction tham chiếu -
+            // đổi ServiceType/EffectiveDate/IsActive không ảnh hưởng số liệu lịch sử nên vẫn cho phép
+            if (config.UnitPrice != dto.UnitPrice)
+            {
+                var hasTransactions = await _repo.HasReferencingTransactionsAsync(id);
+                if (hasTransactions)
+                    throw new InvalidOperationException(
+                        "Không thể sửa giá của cấu hình đã có giao dịch tham chiếu. Vui lòng tạo cấu hình giá mới (Create) thay vì sửa cái này.");
+            }
+
+            config.ServiceType = dto.ServiceType;
+            config.UnitPrice = dto.UnitPrice;
+            config.EffectiveDate = dto.EffectiveDate.ToUniversalTime();
+            config.IsActive = dto.IsActive;
+            config.UpdatedAt = DateTime.UtcNow;
+
+            await _repo.UpdateAsync(config);
+            await _cache.RemoveAsync(ActiveConfigCacheKey(config.ServiceType));
+            await PublishPricingChangedAsync(config, "updated");
+            return true;
+        }
     }
 }

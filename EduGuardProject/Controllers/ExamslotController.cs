@@ -25,8 +25,9 @@ namespace EduGuardProject.Controllers
 
         // Get All Exam Slots
         // Truyền dữ liệu: query search, sort, page, pageSize.
-        // Điều kiện: user đã đăng nhập; page và pageSize phải lớn hơn 0.
+        // Điều kiện: SuperAdmin xem tất cả; SchoolAdmin cùng institution; Lecturer đúng class; Student chỉ xem exam slot của chính mình; page và pageSize hợp lệ.
         [HttpGet]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
         public async Task<IActionResult> GetAll(
            [FromQuery] string? search,
             [FromQuery] string? sort,
@@ -45,8 +46,9 @@ namespace EduGuardProject.Controllers
 
         // Get Exam Slot By Id
         // Truyền dữ liệu: route examId.
-        // Điều kiện: user đã đăng nhập; exam slot phải tồn tại.
+        // Điều kiện: SuperAdmin xem tất cả; SchoolAdmin cùng institution; Lecturer đúng class; Student phải có participation; exam slot phải tồn tại.
         [HttpGet("{examId:guid}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
         public async Task<IActionResult> GetById(Guid examId)
         {
             try
@@ -80,7 +82,7 @@ namespace EduGuardProject.Controllers
         // Truyền dữ liệu: route classId.
         // Điều kiện: Student phải đang học class đó; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
         [HttpGet("class/{classId:guid}")]
-        [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        [SupabaseAuthorize(AppRole.Student, AppRole.SchoolAdmin, AppRole.SuperAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> GetByClassId(Guid classId)
         {
             try
@@ -171,9 +173,10 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
-        // Delete Exam Slot
+        // Cancel Exam Slot (soft delete)
         // Truyền dữ liệu: route examId.
         // Điều kiện: SchoolAdmin hoặc SuperAdmin; exam slot phải tồn tại và thuộc institution được phép truy cập.
+        // Dữ liệu được giữ lại; status được chuyển thành Cancelled để bảo toàn lịch sử và các khóa ngoại.
         [HttpDelete("{examId:guid}")]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Delete(Guid examId)
@@ -182,7 +185,7 @@ namespace EduGuardProject.Controllers
             {
                 var success = await _service.DeleteAsync(examId);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Exam slot not found."));
-                return Ok(ApiResponse<object>.OnSuccess(null!, "Exam slot deleted successfully."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Exam slot cancelled successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }

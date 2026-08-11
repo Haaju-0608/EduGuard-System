@@ -43,14 +43,20 @@ namespace EduGuardProject.Repositories
         }
 
 
-        public async Task<(IEnumerable<User> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
+        public async Task<(IEnumerable<User> Items, int TotalCount)> GetAllAsync(
+    Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize)
         {
             var query = _context.Users.AsQueryable();
-
-            // Lọc ra những user chưa bị xóa mềm
             query = query.Where(u => u.DeletedAt == null);
 
-             // SEARCH: Tìm theo Tên, Email hoặc Mã sinh viên [cite: 55]
+            // Tenant isolation — null = SuperAdmin (xem hết), có giá trị = ép theo trường
+            if (institutionId.HasValue)
+                query = query.Where(u => u.InstitutionId == institutionId.Value);
+
+            // Lecturer không được thấy School Admin trong danh sách
+            if (excludeRole.HasValue)
+                query = query.Where(u => u.Role != excludeRole.Value);
+
             if (!string.IsNullOrWhiteSpace(search))
             {
                 var searchLower = search.ToLower();
@@ -62,24 +68,17 @@ namespace EduGuardProject.Repositories
 
             var totalCount = await query.CountAsync();
 
-            // SORT [cite: 56]
-            if (!string.IsNullOrWhiteSpace(sort))
-            {
-                query = sort.ToLower() switch
+            query = !string.IsNullOrWhiteSpace(sort)
+                ? sort.ToLower() switch
                 {
                     "fullname" => query.OrderBy(x => x.FullName),
                     "-fullname" => query.OrderByDescending(x => x.FullName),
                     "email" => query.OrderBy(x => x.Email),
                     "-email" => query.OrderByDescending(x => x.Email),
                     _ => query.OrderByDescending(x => x.CreatedAt)
-                };
-            }
-            else
-            {
-                query = query.OrderByDescending(x => x.CreatedAt);
-            }
+                }
+                : query.OrderByDescending(x => x.CreatedAt);
 
-            // PAGING [cite: 57]
             var items = await query.Skip((page - 1) * pageSize).Take(pageSize).ToListAsync();
             return (items, totalCount);
         }

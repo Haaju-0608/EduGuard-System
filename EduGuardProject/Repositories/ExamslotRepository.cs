@@ -11,13 +11,24 @@ public class ExamSlotRepository : IExamslotRepository
 
     public ExamSlotRepository(AppDbContext context) => _context = context;
 
-    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllAsync(string? search, string? sort, int page, int pageSize)
+    public async Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllAsync(
+        string? search, string? sort, int page, int pageSize,
+        Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null)
     {
         var query = _context.ExamSlots
             .AsNoTracking()
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
+            .Where(e => e.Class.DeletedAt == null)
             .AsQueryable();
+
+        if (institutionId.HasValue)
+            query = query.Where(e => e.Class.InstitutionId == institutionId.Value);
+        if (lecturerId.HasValue)
+            query = query.Where(e => e.Class.LecturerId == lecturerId.Value);
+        if (studentId.HasValue)
+            query = query.Where(e => e.ExamParticipations.Any(p => p.StudentId == studentId.Value));
 
         if (!string.IsNullOrWhiteSpace(search))
         {
@@ -48,7 +59,8 @@ public class ExamSlotRepository : IExamslotRepository
         Status = e.Status,
         CreatedAt = e.CreatedAt,
         UpdatedAt = e.UpdatedAt,
-        Lecturer = ToUserSummary(e.Lecturer)
+        Lecturer = ToUserSummary(e.Lecturer),
+        Proctor = ToUserSummary(e.ProctorNavigation)
     };
 
     private static UserSummaryDto? ToUserSummary(User? user) =>
@@ -64,6 +76,7 @@ public class ExamSlotRepository : IExamslotRepository
         _context.ExamSlots
             .Include(e => e.Class)
             .ThenInclude(c => c.Lecturer)
+            .Include(e => e.ProctorNavigation)
             .FirstOrDefaultAsync(s => s.Id == id);
 
     public async Task AddAsync(ExamSlot entity)
@@ -75,12 +88,6 @@ public class ExamSlotRepository : IExamslotRepository
     public async Task UpdateAsync(ExamSlot entity)
     {
         _context.ExamSlots.Update(entity);
-        await _context.SaveChangesAsync();
-    }
-
-    public async Task DeleteAsync(ExamSlot entity)
-    {
-        _context.ExamSlots.Remove(entity);
         await _context.SaveChangesAsync();
     }
 

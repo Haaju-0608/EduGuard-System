@@ -7,7 +7,6 @@ using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.EntityFrameworkCore;
-using Supabase.Interfaces;
 
 namespace EduGuardProject.Services;
 
@@ -24,7 +23,6 @@ public class AttendanceRecordService : IAttendanceRecordService
     private readonly AppDbContext _context;
     private readonly IAiServiceClient _aiClient;
 
-    // ✅ SỬA LỖI CÚ PHÁP CONSTRUCTOR
     public AttendanceRecordService(
         IWebHostEnvironment webHostEnvironment,
         IAttendanceRecordRepository repo,
@@ -82,12 +80,16 @@ public class AttendanceRecordService : IAttendanceRecordService
             ?? throw new InvalidOperationException("Attendance session not found.");
 
         await EnsureSessionAccessAsync(session);
+        if (session.Status != SessionStatus.InProgress)
+            throw new InvalidOperationException("Attendance records can only be created for in-progress sessions.");
 
         var existing = await _repo.GetBySessionAndStudentAsync(dto.SessionId, dto.StudentId);
         if (existing != null)
             throw new InvalidOperationException("Attendance record already exists for this student in this session.");
 
         await EnsureStudentEnrolledAsync(session.ClassId, dto.StudentId);
+        var checkinAt = ValidateAttendanceInput(
+            dto.Status, dto.Method, dto.ConfidenceScore, dto.SnapshotPath, dto.CheckinAt, session, defaultCheckinToNow: true);
 
         var entity = new AttendanceRecord
         {
@@ -97,8 +99,8 @@ public class AttendanceRecordService : IAttendanceRecordService
             Status = dto.Status,
             Method = dto.Method,
             ConfidenceScore = dto.ConfidenceScore,
-            SnapshotPath = dto.SnapshotPath,
-            CheckinAt = dto.CheckinAt ?? DateTime.UtcNow
+            SnapshotPath = null,
+            CheckinAt = checkinAt
         };
 
         await _repo.AddAsync(entity);
@@ -116,14 +118,29 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
+        if (DateTime.UtcNow < session.StartTime ||
+            session.EndTime.HasValue && DateTime.UtcNow > session.EndTime.Value)
+        {
+            throw new InvalidOperationException("Attendance can only be recorded during the session time range.");
+        }
 
         var studentIds = dto.PresentStudentIds.Distinct().ToList();
+        if (studentIds.Count == 0)
+            throw new InvalidOperationException("At least one student id is required.");
+        if (!Enum.IsDefined(dto.Status))
+            throw new InvalidOperationException("Invalid attendance status.");
+        if (dto.Status is not AttendanceStatus.Present and not AttendanceStatus.Late)
+            throw new InvalidOperationException("Bulk attendance only supports PRESENT or LATE status.");
+        if (dto.Method != AttendanceMethod.Manual)
+            throw new InvalidOperationException("Manual attendance must use the MANUAL method.");
 
         var activeEnrollments = await _context.ClassEnrollments
             .AsNoTracking()
             .Where(e => e.ClassId == session.ClassId && studentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
             .Select(e => e.StudentId)
             .ToListAsync();
+        if (activeEnrollments.Count != studentIds.Count)
+            throw new InvalidOperationException("One or more students are not actively enrolled in this class.");
 
         var existingRecords = await _context.AttendanceRecords
             .Where(r => r.SessionId == sessionId && studentIds.Contains(r.StudentId))
@@ -180,14 +197,21 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var session = await _sessionRepo.GetByIdAsync(entity.SessionId);
-        if (session != null) await EnsureSessionAccessAsync(session);
+        if (session == null)
+            throw new InvalidOperationException("Attendance session not found.");
+        await EnsureSessionAccessAsync(session);
+        if (session.Status == SessionStatus.Cancelled)
+            throw new InvalidOperationException("Attendance records cannot be updated for cancelled sessions.");
+
+        var checkinAt = ValidateAttendanceInput(
+            dto.Status, dto.Method, dto.ConfidenceScore, dto.SnapshotPath, dto.CheckinAt, session,
+            defaultCheckinToNow: session.Status == SessionStatus.InProgress);
 
         var user = await _currentUser.GetRequiredUserAsync();
         entity.Status = dto.Status;
         entity.Method = dto.Method;
         entity.ConfidenceScore = dto.ConfidenceScore;
-        entity.SnapshotPath = dto.SnapshotPath;
-        entity.CheckinAt = dto.CheckinAt;
+        entity.CheckinAt = checkinAt;
         entity.AdjustedBy = user.Id;
         entity.AdjustedAt = DateTime.UtcNow;
 
@@ -222,6 +246,48 @@ public class AttendanceRecordService : IAttendanceRecordService
             .AnyAsync(e => e.ClassId == classId && e.StudentId == studentId && e.Status == EnrollmentStatus.Active);
         if (!enrolled)
             throw new InvalidOperationException("Student is not actively enrolled in this class.");
+    }
+
+    private static DateTime? ValidateAttendanceInput(
+        AttendanceStatus status,
+        AttendanceMethod method,
+        double? confidenceScore,
+        string? snapshotPath,
+        DateTime? checkinAt,
+        AttendanceSession session,
+        bool defaultCheckinToNow)
+    {
+        if (!Enum.IsDefined(status))
+            throw new InvalidOperationException("Invalid attendance status.");
+        if (!Enum.IsDefined(method) || method != AttendanceMethod.Manual)
+            throw new InvalidOperationException("Manual attendance must use the MANUAL method.");
+        if (confidenceScore.HasValue &&
+            (!double.IsFinite(confidenceScore.Value) || confidenceScore.Value is < 0 or > 1))
+        {
+            throw new InvalidOperationException("Confidence score must be between 0 and 1.");
+        }
+        if (!string.IsNullOrWhiteSpace(snapshotPath))
+            throw new InvalidOperationException("Attendance snapshots must be uploaded through the storage endpoint.");
+
+        if (status is AttendanceStatus.Absent or AttendanceStatus.Excused)
+        {
+            if (checkinAt.HasValue)
+                throw new InvalidOperationException("Absent or excused attendance cannot have a check-in time.");
+            return null;
+        }
+
+        var effectiveCheckin = checkinAt ?? (defaultCheckinToNow ? DateTime.UtcNow : null);
+        if (!effectiveCheckin.HasValue)
+            throw new InvalidOperationException("Check-in time is required for present or late attendance.");
+        if (effectiveCheckin.Value > DateTime.UtcNow)
+            throw new InvalidOperationException("Check-in time cannot be in the future.");
+        if (effectiveCheckin.Value < session.StartTime ||
+            session.EndTime.HasValue && effectiveCheckin.Value > session.EndTime.Value)
+        {
+            throw new InvalidOperationException("Check-in time must be within the attendance session time range.");
+        }
+
+        return effectiveCheckin;
     }
 
     private async Task UpdateSessionRecognizedCountAsync(Guid sessionId)
@@ -324,63 +390,43 @@ public class AttendanceRecordService : IAttendanceRecordService
             throw new UnauthorizedAccessException("Access denied.");
     }
 
+    // 🌟 SỬA ĐỔI: Không ghi ổ đĩa local nữa, đẩy trực tiếp Stream sang FastAPI & Supabase
     public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkByAiVideoAsync(Guid sessionId, Stream videoStream, string fileName)
     {
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var session = await _sessionRepo.GetByIdAsync(sessionId)
             ?? throw new InvalidOperationException("Attendance session not found.");
+        await EnsureSessionAccessAsync(session);
 
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
-
-        string savedVideoPath = null!;
-        string fullPath = null!;
-        try
+        if (DateTime.UtcNow < session.StartTime ||
+            session.EndTime.HasValue && DateTime.UtcNow > session.EndTime.Value)
         {
-            var uploadsFolder = Path.Combine(_webHostEnvironment.WebRootPath, "uploads", "attendance-videos");
-            if (!Directory.Exists(uploadsFolder))
-            {
-                Directory.CreateDirectory(uploadsFolder);
-            }
-
-            var fileExtension = Path.GetExtension(fileName);
-            var uniqueFileName = $"session_{sessionId}_{DateTime.UtcNow:yyyyMMdd_HHmmss}{fileExtension}";
-            fullPath = Path.Combine(uploadsFolder, uniqueFileName);
-
-            using (var fileStream = new FileStream(fullPath, FileMode.Create))
-            {
-                await videoStream.CopyToAsync(fileStream);
-            }
-
-            savedVideoPath = $"/uploads/attendance-videos/{uniqueFileName}";
-        }
-        catch (Exception fileEx)
-        {
-            throw new InvalidOperationException($"Lỗi lưu file video vào hệ thống: {fileEx.Message}");
+            throw new InvalidOperationException("Attendance can only be recorded during the session time range.");
         }
 
-        List<float[]> detectedVectors;
+        // 1. Gọi trực tiếp FastAPI để upload video lên Supabase Storage và bóc tách Vector khuôn mặt
+        VideoVectorsResponse aiResult;
         try
         {
-            using (var pythonStream = new FileStream(fullPath, FileMode.Open, FileAccess.Read))
-            {
-                detectedVectors = await _aiClient.ExtractVectorsFromVideoAsync(pythonStream, fileName);
-            }
+            aiResult = await _aiClient.ExtractVectorsFromVideoAsync(videoStream, fileName);
         }
         catch (Exception aiEx)
         {
-            if (File.Exists(fullPath)) File.Delete(fullPath);
             throw new InvalidOperationException($"Lỗi xử lý AI từ Python: {aiEx.Message}");
         }
 
-        session.VideoPath = savedVideoPath;
-        session.Status = SessionStatus.Completed;
+        // 2. Cập nhật đường dẫn Video từ Cloud Supabase do FastAPI trả về
+        session.VideoPath = aiResult.VideoUrl;
+        //session.Status = SessionStatus.Completed;
+        await _sessionRepo.UpdateAsync(session);
 
         var presentStudentIds = new List<Guid>();
         double threshold = 0.40;
 
-        // Truy vấn Vector Khớp Diện Mạo từ pgvector
-        foreach (var vectorArray in detectedVectors)
+        // 3. Truy vấn Vector Khớp Diện Mạo từ pgvector
+        foreach (var vectorArray in aiResult.Vectors)
         {
             var pgVector = new Pgvector.Vector(vectorArray);
 
@@ -399,14 +445,14 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         var uniqueStudentIds = presentStudentIds.Distinct().ToList();
 
-        // [TỐI ƯU] Tải trước toàn bộ Enrollment hợp lệ của lớp học
+        // 4. [TỐI ƯU] Tải trước toàn bộ Enrollment hợp lệ của lớp học
         var activeEnrollmentIds = await _context.ClassEnrollments
             .AsNoTracking()
             .Where(e => e.ClassId == session.ClassId && uniqueStudentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
             .Select(e => e.StudentId)
             .ToListAsync();
 
-        // [TỐI ƯU] Tải trước danh sách Record đã có của phiên này
+        // 5. [TỐI ƯU] Tải trước danh sách Record đã có của phiên này
         var existingRecords = await _context.AttendanceRecords
             .Where(r => r.SessionId == sessionId && uniqueStudentIds.Contains(r.StudentId))
             .ToDictionaryAsync(r => r.StudentId);
@@ -415,7 +461,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         var recordsToInsert = new List<AttendanceRecord>();
         var results = new List<AttendanceRecordResponseDto>();
 
-        // Thực hiện so khớp trực tiếp trên RAM (In-Memory) không gọi DB
+        // 6. Thực hiện so khớp trực tiếp trên RAM (In-Memory)
         foreach (var studentId in uniqueStudentIds)
         {
             if (!activeEnrollmentIds.Contains(studentId)) continue;

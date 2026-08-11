@@ -16,11 +16,15 @@ namespace EduGuardProject.Controllers
     {
         private readonly IExamParticipationService _service;
         private readonly IExamWorkflowService _workflowService;
+        private readonly IExamIdentityVerificationService _identityVerification;
+        private readonly ICurrentUserService _currentUser;
 
-        public ExamParticipationController(IExamParticipationService service, IExamWorkflowService workflowService)
+        public ExamParticipationController(IExamParticipationService service, IExamWorkflowService workflowService, IExamIdentityVerificationService identityVerification, ICurrentUserService currentUser)
         {
             _service = service;
             _workflowService = workflowService;
+            _identityVerification = identityVerification;
+            _currentUser = currentUser;
         }
 
 
@@ -46,6 +50,27 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
+        // Get Exam Participations By Exam Slot
+        // Roles: SuperAdmin all; SchoolAdmin same institution; Lecturer own class; Student own participation. Returns: paged ExamParticipationResponseDto list for one examSlotId.
+        [HttpGet("exam-slots/{examSlotId:guid}")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer, AppRole.Student)]
+        public async Task<IActionResult> GetByExamSlot(
+            Guid examSlotId,
+            [FromQuery] string? search,
+            [FromQuery] string? sort,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10)
+        {
+            if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
+            try
+            {
+                var (items, total) = await _service.GetAllExamparticipationsAsync(search, sort, page, pageSize, examSlotId);
+                var response = ApiPagedResponse<ExamParticipationResponseDto>.OnPagedSuccess(items, page, pageSize, total, "Exam participations retrieved successfully.");
+                return Ok(response);
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
         // Get Exam Participation By Id
         // Truyền dữ liệu: route id.
         // Điều kiện: user đã đăng nhập; SuperAdmin xem tất cả, SchoolAdmin/Lecturer cùng institution/class, Student chỉ xem participation của chính mình.
@@ -58,6 +83,23 @@ namespace EduGuardProject.Controllers
                 var item = await _service.GetByIdAsync(id);
                 if (item == null) return NotFound(ApiResponse<object>.OnFail("Exam participation not found."));
                 return OkSingle(item, "Exam participation retrieved successfully.");
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        // Get Exam Participation Status
+        // Truyền dữ liệu: route id là participationId.
+        // Điều kiện: Student chỉ xem participation của chính mình; Lecturer đúng class; SchoolAdmin cùng institution; SuperAdmin xem tất cả.
+        // Note: dùng cho FE khi load trang thi, F5, hoặc reconnect để biết exam còn active hay đã bị terminate, không phụ thuộc hoàn toàn vào SignalR.
+        [HttpGet("{id:guid}/status")]
+        [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> GetStatus(Guid id)
+        {
+            try
+            {
+                var status = await _service.GetParticipationStatusAsync(id);
+                if (status == null) return NotFound(ApiResponse<object>.OnFail("Participation not found."));
+                return OkSingle(status, "Exam participation status retrieved successfully.");
             }
             catch (Exception ex) { return HandleException(ex); }
         }
@@ -79,7 +121,7 @@ namespace EduGuardProject.Controllers
 
         // Update Exam Participation
         // Truyền dữ liệu: route id, body actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
-        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; exam participation phải tồn tại.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; Student không được sửa sau khi Submitted/Disqualified.
         [HttpPut("{id:guid}")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateExamParticipationDto dto)
@@ -95,9 +137,9 @@ namespace EduGuardProject.Controllers
 
         // Update Exam Participation Status
         // Truyền dữ liệu: route id, body status.
-        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; exam participation phải tồn tại.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Lecturer đúng class; Lecturer chỉ được chuyển Disqualified sang Submitted.
         [HttpPut("{id:guid}/status")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Student)]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> UpdateExamParticipationStatus(Guid id, [FromBody] UpdateExamParticipationStatusDto dto)
         {
             try
@@ -129,16 +171,23 @@ namespace EduGuardProject.Controllers
         // Truyền dữ liệu: route id là participationId.
         // Điều kiện: role Student; Student phải là chủ participation; participation không được Submitted hoặc Disqualified.
         [HttpPost("{id:guid}/join")]
-        [SupabaseAuthorize(AppRole.Student)]
-        public async Task<IActionResult> Join(Guid id)
-        {
-            try
-            {
-                var result = await _workflowService.JoinAsync(id);
-                return Ok(ApiResponse<object>.OnSuccess(result, "Student joined exam successfully."));
-            }
-            catch (Exception ex) { return HandleException(ex); }
-        }
+[SupabaseAuthorize(AppRole.Student)]
+public async Task<IActionResult> Join(Guid id, IFormFile liveCapture)
+{
+    try
+    {
+        var user = await _currentUser.GetRequiredUserAsync(); 
+        var verifyResult = await _identityVerification.VerifyAsync(id, user.Id, liveCapture);
+
+        if (!verifyResult.IsMatch)
+            return BadRequest(ApiResponse<object>.OnFail(
+                $"Face verification failed. Please try again (distance={verifyResult.Distance:F4})."));
+
+        var result = await _workflowService.JoinAsync(id); // GIỮ NGUYÊN signature gốc, không đổi gì
+        return Ok(ApiResponse<object>.OnSuccess(result, "Student joined exam successfully."));
+    }
+    catch (Exception ex) { return HandleException(ex); }
+}
 
         // Send Exam Heartbeat
         // Truyền dữ liệu: route id là participationId, body clientTime.
@@ -187,15 +236,30 @@ namespace EduGuardProject.Controllers
 
         // Disqualify Student From Exam
         // Truyền dữ liệu: route id là participationId, body reason.
-        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution, SuperAdmin hoặc Student chính chủ; participation phải đang Joined.
+        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; participation phải đang Joined.
         [HttpPost("{id:guid}/disqualify")]
-        [SupabaseAuthorize(AppRole.Student, AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Disqualify(Guid id, [FromBody] ExamDisqualifyRequestDto dto)
         {
             try
             {
                 var result = await _workflowService.DisqualifyAsync(id, dto.Reason);
                 return Ok(ApiResponse<object>.OnSuccess(result, "Student disqualified successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        // Void Submitted Exam Result
+        // Truyền dữ liệu: route id là participationId, body reason.
+        // Điều kiện: Lecturer của class, SchoolAdmin cùng institution hoặc SuperAdmin; participation phải đã Submitted.
+        [HttpPost("{id:guid}/void")]
+        [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+        public async Task<IActionResult> Void(Guid id, [FromBody] ExamDisqualifyRequestDto dto)
+        {
+            try
+            {
+                var result = await _workflowService.VoidAsync(id, dto.Reason);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Submitted exam result voided successfully."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }

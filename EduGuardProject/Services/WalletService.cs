@@ -111,15 +111,22 @@ namespace EduGuardProject.Services
         {
             var vnpay = new VnPayLibrary();
 
-            // 1. Lấy cấu hình từ appsettings.json
+            // 0. Tìm ví TRƯỚC — fail sớm nếu không có ví, tránh tạo URL vô nghĩa
+            var wallet = await _context.Wallets
+                .FirstOrDefaultAsync(w => w.InstitutionId == dto.InstitutionId);
+
+            if (wallet == null)
+                throw new Exception("Không tìm thấy ví của trường học này.");
+
+            if (dto.Amount <= 0)
+                throw new Exception("Số tiền nạp phải lớn hơn 0.");
+
             string tmnCode = _configuration["VnPay:TmnCode"];
             string hashSecret = _configuration["VnPay:HashSecret"];
             string baseUrl = _configuration["VnPay:BaseUrl"];
 
-            // 2. Ép kiểu số tiền sang long và nhân 100 (Tuyệt đối không để dính dấu thập phân)
             long amountInCents = (long)(dto.Amount * 100);
 
-            // 3. Đưa dữ liệu vào bộ thư viện VnPayLibrary mới cập nhật
             vnpay.AddRequestData("vnp_Version", "2.1.0");
             vnpay.AddRequestData("vnp_Command", "pay");
             vnpay.AddRequestData("vnp_TmnCode", tmnCode);
@@ -127,73 +134,116 @@ namespace EduGuardProject.Services
             vnpay.AddRequestData("vnp_CreateDate", DateTime.Now.ToString("yyyyMMddHHmmss"));
             vnpay.AddRequestData("vnp_CurrCode", "VND");
 
-            // 🔥 BẪY IP: Không dùng httpContext để lấy IP lúc test Local/Ngrok (tránh bị dính "::1")
-            // Ép cứng luôn IPv4 chuẩn này để VNPay Sandbox không bắt bẻ chữ ký
             string ipAddress = httpContext.Connection.RemoteIpAddress?.ToString();
-
             if (string.IsNullOrEmpty(ipAddress) || ipAddress == "::1")
-            {
-                ipAddress = "14.169.25.10"; // test tạm IPv4 public
-            }
-
+                ipAddress = "14.169.25.10";
             vnpay.AddRequestData("vnp_IpAddr", ipAddress);
 
             vnpay.AddRequestData("vnp_Locale", "vn");
             vnpay.AddRequestData("vnp_OrderInfo", "NapTienVi_EduGuard");
             vnpay.AddRequestData("vnp_OrderType", "other");
 
-            // 🔥 BẪY URL RETURN: Khớp hoàn toàn với Route [HttpGet("vnpay-return")] ở Controller của bạn
-            // Hãy lấy chính xác link Ngrok đang active của bạn điền vào đây
             string returnUrl = _configuration["VnPay:ReturnUrl"];
             vnpay.AddRequestData("vnp_ReturnUrl", returnUrl);
 
-            // Mã giao dịch duy nhất (Ví dụ dùng Guid hoặc Id tự tăng từ DB)
+            // ⚠️ Guid.Substring(0,8) dễ đụng hàng khi traffic lớn — nhưng OK cho scope capstone.
+            // Quan trọng hơn: PHẢI unique trong DB (VnpayRef đã có unique index sẵn ở model, tốt).
             string txnRef = Guid.NewGuid().ToString().Substring(0, 8);
             vnpay.AddRequestData("vnp_TxnRef", txnRef);
 
-            // 4. Tiến hành sinh URL (Sử dụng hàm băm tự động sửa lỗi %20 và chữ HOA)
-            string paymentUrl = vnpay.CreateRequestUrl(baseUrl, hashSecret);
-            Console.WriteLine("========= FINAL PAYMENT URL =========");
-            Console.WriteLine(paymentUrl);
-            Console.WriteLine("=====================================");
+            // 🔥 CHỖ THIẾU: lưu transaction PENDING xuống DB, để lúc return có cái mà tra
+            var transaction = new Transaction
+            {
+                WalletId = wallet.Id,
+                Amount = dto.Amount,
+                Type = TransactionType.TOP_UP,
+                Status = TransactionStatus.PENDING,   // đổi tên enum member nếu khác
+                Description = dto.Description ?? "Nạp tiền qua VNPay",
+                VnpayRef = txnRef,
+                CreatedAt = DateTime.UtcNow
+            };
+            _context.Transactions.Add(transaction);
+            await _context.SaveChangesAsync();
 
+            string paymentUrl = vnpay.CreateRequestUrl(baseUrl, hashSecret);
             return paymentUrl;
         }
 
-        public async Task<bool> ProcessVnPayReturnAsync(IQueryCollection query)
+        public async Task<VnPayReturnResultDto> ProcessVnPayReturnAsync(IQueryCollection query)
         {
             var vnpay = new VnPayLibrary();
 
-            // 1. Đọc toàn bộ Query string do VNPay gửi về đưa vào Library
             foreach (var key in query.Keys)
             {
                 if (!string.IsNullOrEmpty(key) && key.StartsWith("vnp_"))
-                {
                     vnpay.AddResponseData(key, query[key]);
-                }
             }
 
-            // 2. Lấy chữ ký do VNPay gửi qua và mã Secret Key trong máy của bạn
             string vnp_SecureHash = query["vnp_SecureHash"];
             string secretKey = _configuration["VnPay:HashSecret"];
 
-            // 3. Xác thực chữ ký song phương
             bool isValidSignature = vnpay.ValidateSignature(vnp_SecureHash, secretKey);
+            if (!isValidSignature)
+                return new VnPayReturnResultDto { Success = false, Message = "Chữ ký không hợp lệ." };
 
-            if (isValidSignature)
-            {
-                string responseCode = query["vnp_ResponseCode"];
-                if (responseCode == "00")
+            string responseCode = query["vnp_ResponseCode"];
+            string txnRef = query["vnp_TxnRef"];
+            string vnpAmountRaw = query["vnp_Amount"];
+
+            var transaction = await _context.Transactions
+                .FirstOrDefaultAsync(t => t.VnpayRef == txnRef);
+
+            if (transaction == null)
+                return new VnPayReturnResultDto { Success = false, Message = "Không tìm thấy giao dịch." };
+
+            if (transaction.Status == TransactionStatus.SUCCESS)
+                return new VnPayReturnResultDto
                 {
-                    // Giao dịch thành công quả quyết! 
-                    // Thực hiện logic cộng tiền vào DB của bạn ở đây...
+                    Success = true,
+                    Message = "Giao dịch đã được xử lý trước đó.",
+                    Amount = transaction.Amount,
+                    TxnRef = txnRef
+                };
 
-                    return true;
+            if (long.TryParse(vnpAmountRaw, out long vnpAmountCents))
+            {
+                var expectedCents = (long)(transaction.Amount * 100);
+                if (vnpAmountCents != expectedCents)
+                {
+                    transaction.Status = TransactionStatus.FAILED;
+                    transaction.ProcessedAt = DateTime.UtcNow;
+                    await _context.SaveChangesAsync();
+                    return new VnPayReturnResultDto { Success = false, Message = "Số tiền không khớp.", TxnRef = txnRef };
                 }
             }
 
-            // Chữ ký sai hoặc giao dịch thất bại (Hủy thanh toán)
-            return false;
+            if (responseCode != "00")
+            {
+                transaction.Status = TransactionStatus.FAILED;
+                transaction.ProcessedAt = DateTime.UtcNow;
+                await _context.SaveChangesAsync();
+                return new VnPayReturnResultDto { Success = false, Message = "Thanh toán không thành công.", TxnRef = txnRef };
+            }
+
+            var wallet = await _context.Wallets.FirstOrDefaultAsync(w => w.Id == transaction.WalletId);
+            if (wallet == null)
+                return new VnPayReturnResultDto { Success = false, Message = "Không tìm thấy ví.", TxnRef = txnRef };
+
+            wallet.Balance += transaction.Amount;
+            wallet.UpdatedAt = DateTime.UtcNow;
+
+            transaction.Status = TransactionStatus.SUCCESS;
+            transaction.ProcessedAt = DateTime.UtcNow;
+
+            await _context.SaveChangesAsync();
+
+            return new VnPayReturnResultDto
+            {
+                Success = true,
+                Message = "Nạp tiền thành công.",
+                Amount = transaction.Amount,
+                TxnRef = txnRef
+            };
         }
     }
 }
