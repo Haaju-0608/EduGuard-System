@@ -41,11 +41,18 @@ namespace EduGuardProject.Services
 
         public async Task<InstitutionResponseDto> CreateInstitutionAsync(CreateInstitutionDto dto)
         {
+            var normalizedName = dto.Name.Trim();
+            var nameExists = await _context.Institutions
+                .AnyAsync(i => i.DeletedAt == null && i.Name.ToLower() == normalizedName.ToLower());
+            if (nameExists)
+                throw new InvalidOperationException($"Institution name '{normalizedName}' already exists.");
+
+
             var now = DateTime.UtcNow;
             var entity = new Institution
             {
                 Id = Guid.NewGuid(),
-                Name = dto.Name,
+                Name = normalizedName,
                 SubDomain = dto.SubDomain,
                 ContactEmail = dto.ContactEmail,
                 BillingModel = dto.BillingModel,
@@ -151,7 +158,13 @@ namespace EduGuardProject.Services
             var entity = await _repo.GetByIdAsync(id);
             if (entity == null) return false;
 
-            entity.Name = dto.Name;
+            var normalizedName = dto.Name.Trim();
+            var nameExists = await _context.Institutions
+                .AnyAsync(i => i.Id != id && i.DeletedAt == null && i.Name.ToLower() == normalizedName.ToLower());
+            if (nameExists)
+                throw new InvalidOperationException($"Institution name '{normalizedName}' already exists.");
+
+            entity.Name = normalizedName;
             entity.SubDomain = dto.SubDomain;
             entity.ContactEmail = dto.ContactEmail;
             entity.BillingModel = dto.BillingModel;

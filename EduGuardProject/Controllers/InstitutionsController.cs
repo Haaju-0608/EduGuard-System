@@ -72,13 +72,19 @@ namespace EduGuardProject.Controllers
 
         // 4. API CẬP NHẬT TRƯỜNG HỌC
         [HttpPut("{id:guid}")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)] // Admin trường học có thể tự sửa thông tin trường của mình
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Update(Guid id, [FromBody] UpdateInstitutionDto dto)
         {
-            var success = await _service.UpdateInstitutionAsync(id, dto);
-            if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found to update."));
-
-            return Ok(ApiResponse<object>.OnSuccess(null!, "Institution updated successfully."));
+            try
+            {
+                var success = await _service.UpdateInstitutionAsync(id, dto);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found to update."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Institution updated successfully."));
+            }
+            catch (InvalidOperationException ex)
+            {
+                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
+            }
         }
 
         // 5. API XÓA TRƯỜNG HỌC
