@@ -92,7 +92,7 @@ public class ReportService : IReportService
                 Id = includeIds ? s.Id : null,
                 InstitutionId = includeIds ? s.InstitutionId : null,
                 InstitutionName = s.InstitutionName,
-                ClassId = includeIds ? s.ClassId : null,
+                ClassId = s.ClassId,
                 ClassName = s.ClassName,
                 CourseCode = s.CourseCode,
                 StartTime = s.StartTime,
