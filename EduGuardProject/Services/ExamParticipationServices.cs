@@ -135,7 +135,7 @@ public class ExamParticipationServices : IExamParticipationService
         if (user.Role == AppRole.Student && dto.Status != entity.Status)
             throw new UnauthorizedAccessException("Students cannot update exam participation status directly.");
         ValidateParticipationStatus(dto.Status);
-        EnsureValidStatusTransition(entity.Status, dto.Status);
+        EnsureValidStatusTransition(entity.Status, dto.Status, entity.ExamSlot.EndTime, DateTime.UtcNow);
         ValidateParticipationTimes(dto.ActualStart, dto.ActualEnd);
 
         // update allowed fields
@@ -156,17 +156,19 @@ public class ExamParticipationServices : IExamParticipationService
         if (entity == null) return false;
 
         var user = await _currentUser.GetRequiredUserAsync();
-        ValidateParticipationStatus(dto.Status);
-        EnsureValidStatusTransition(entity.Status, dto.Status);
+        var utcNow = DateTime.UtcNow;
+        var targetStatus = ResolveRestoreStatus(entity.Status, dto.Status, entity.ExamSlot.EndTime, utcNow);
+        ValidateParticipationStatus(targetStatus);
+        EnsureValidStatusTransition(entity.Status, targetStatus, entity.ExamSlot.EndTime, utcNow);
         if (user.Role == AppRole.Lecturer &&
-            (entity.Status != ParticipationStatus.Disqualified || dto.Status != ParticipationStatus.Submitted))
+            (entity.Status != ParticipationStatus.Disqualified || targetStatus is not (ParticipationStatus.Joined or ParticipationStatus.Submitted)))
         {
-            throw new InvalidOperationException("Lecturers can only change DISQUALIFIED participation to SUBMITTED.");
+            throw new InvalidOperationException("Lecturers can only restore a DISQUALIFIED participation.");
         }
 
-        if (entity.Status == ParticipationStatus.Disqualified && dto.Status != ParticipationStatus.Disqualified)
+        if (entity.Status == ParticipationStatus.Disqualified && targetStatus != ParticipationStatus.Disqualified)
             entity.DisqualifiedReason = null;
-        entity.Status = dto.Status;
+        entity.Status = targetStatus;
 
         await _repo.UpdateAsync(entity);
         await PublishParticipationChangedAsync(entity.Id, "status-updated");
@@ -291,15 +293,30 @@ public class ExamParticipationServices : IExamParticipationService
             throw new InvalidOperationException("Invalid exam participation status.");
     }
 
-    private static void EnsureValidStatusTransition(ParticipationStatus current, ParticipationStatus next)
+    private static void EnsureValidStatusTransition(
+        ParticipationStatus current,
+        ParticipationStatus next,
+        DateTime examEndTime,
+        DateTime utcNow)
     {
         var isValid = current == next ||
             (current == ParticipationStatus.Joined && next is ParticipationStatus.Submitted or ParticipationStatus.Disqualified or ParticipationStatus.Left) ||
-            (current == ParticipationStatus.Disqualified && next == ParticipationStatus.Submitted);
+            (current == ParticipationStatus.Disqualified &&
+             (next == ParticipationStatus.Submitted ||
+              (next == ParticipationStatus.Joined && utcNow < examEndTime)));
 
         if (!isValid)
             throw new InvalidOperationException($"Cannot change participation status from {current} to {next}.");
     }
+
+    private static ParticipationStatus ResolveRestoreStatus(
+        ParticipationStatus current,
+        ParticipationStatus requested,
+        DateTime examEndTime,
+        DateTime utcNow) =>
+        current == ParticipationStatus.Disqualified && requested is ParticipationStatus.Joined or ParticipationStatus.Submitted
+            ? utcNow < examEndTime ? ParticipationStatus.Joined : ParticipationStatus.Submitted
+            : requested;
 
     private async Task<ExamParticipation?> GetManageableParticipationAsync(
         Guid participationId,
