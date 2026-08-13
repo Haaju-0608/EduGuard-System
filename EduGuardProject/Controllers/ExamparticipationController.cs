@@ -1,11 +1,8 @@
-﻿using EduGuardProject.Controllers;
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Filters;
 using EduGuardProject.Models;
-using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers
