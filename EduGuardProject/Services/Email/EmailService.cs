@@ -6,12 +6,12 @@ namespace EduGuardProject.Services.Email;
 
 public class EmailService : IEmailService
 {
-    private readonly EmailTemplateService _templateService;
+    private readonly IEmailTemplateService _templateService;
     private readonly EmailSettings _settings;
     private readonly ILogger<EmailService> _logger;
 
     public EmailService(
-        EmailTemplateService templateService,
+        IEmailTemplateService templateService,
         IOptions<EmailSettings> settings,
         ILogger<EmailService> logger)
     {
