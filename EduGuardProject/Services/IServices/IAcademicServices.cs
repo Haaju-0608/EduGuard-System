@@ -113,6 +113,14 @@ public interface IExamQuestionService
     Task<bool> DeleteOptionAsync(Guid optionId);
 }
 
+public interface IReadingPassageService
+{
+    Task<ReadingPassageResponseDto?> GetByIdAsync(Guid id);
+    Task<ReadingPassageResponseDto> CreateAsync(CreateReadingPassageDto dto);
+    Task<ReadingPassageResponseDto?> UpdateAsync(Guid id, UpdateReadingPassageDto dto);
+    Task<bool> DeleteAsync(Guid id);
+}
+
 public interface IExamSlotServices
 {
     Task<(IEnumerable<ExamslotReponseDto> Items, int TotalCount)> GetAllExamSlotsAsync(string? search, string? sort, int page, int pageSize);

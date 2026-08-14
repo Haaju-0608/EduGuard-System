@@ -31,6 +31,8 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<ExamQuestion> ExamQuestions { get; set; }
 
+    public virtual DbSet<ReadingPassage> ReadingPassages { get; set; }
+
     public virtual DbSet<ExamSlot> ExamSlots { get; set; }
 
     public virtual DbSet<Institution> Institutions { get; set; }
@@ -417,6 +419,8 @@ public partial class AppDbContext : DbContext
 
             entity.HasIndex(e => e.ExamSlotId, "idx_exam_questions_exam_slot");
 
+            entity.HasIndex(e => e.PassageId, "idx_exam_questions_passage");
+
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
                 .HasColumnName("id");
@@ -431,6 +435,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.ImageUrl)
                 .HasMaxLength(500)
                 .HasColumnName("image_url");
+            entity.Property(e => e.PassageId).HasColumnName("passage_id");
             entity.Property(e => e.Points)
                 .HasPrecision(6, 2)
                 .HasDefaultValueSql("1")
@@ -443,6 +448,36 @@ public partial class AppDbContext : DbContext
             entity.HasOne(d => d.ExamSlot).WithMany(p => p.ExamQuestions)
                 .HasForeignKey(d => d.ExamSlotId)
                 .HasConstraintName("exam_questions_exam_slot_id_fkey");
+
+            entity.HasOne(d => d.Passage).WithMany(p => p.ExamQuestions)
+                .HasForeignKey(d => d.PassageId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("exam_questions_passage_id_fkey");
+        });
+
+        modelBuilder.Entity<ReadingPassage>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("reading_passages_pkey");
+
+            entity.ToTable("reading_passages");
+
+            entity.HasIndex(e => e.ExamSlotId, "idx_reading_passages_exam_slot");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.ExamSlotId).HasColumnName("exam_slot_id");
+            entity.Property(e => e.PassageText).HasColumnName("passage_text");
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.ExamSlot).WithMany(p => p.ReadingPassages)
+                .HasForeignKey(d => d.ExamSlotId)
+                .HasConstraintName("reading_passages_exam_slot_id_fkey");
         });
 
         modelBuilder.Entity<ExamSlot>(entity =>

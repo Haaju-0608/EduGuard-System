@@ -137,6 +137,7 @@ builder.Services.AddScoped<IBiometricDatumService, BiometricDatumService>();
 builder.Services.AddScoped<IExamParticipationService, ExamParticipationServices>();
 builder.Services.AddScoped<IExamSlotServices, ExamslotServices>();
 builder.Services.AddScoped<IExamQuestionService, ExamQuestionService>();
+builder.Services.AddScoped<IReadingPassageService, ReadingPassageService>();
 builder.Services.AddScoped<IStudentExamRecordService, StudentExamRecordService>();
 builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
 builder.Services.AddScoped<IBrowserViolationService, BrowserViolationService>();

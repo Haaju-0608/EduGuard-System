@@ -189,6 +189,8 @@ public class ExamQuestionResponseDto
 {
     public Guid Id { get; set; }
     public Guid ExamSlotId { get; set; }
+    public Guid? PassageId { get; set; }
+    public string? PassageText { get; set; }
     public string? ExamName { get; set; }
     public string QuestionType { get; set; } = null!;
     public string QuestionContent { get; set; } = null!;
@@ -198,6 +200,16 @@ public class ExamQuestionResponseDto
     public int DisplayOrder { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<QuestionOptionResponseDto> Options { get; set; } = [];
+}
+
+public class ReadingPassageResponseDto
+{
+    public Guid Id { get; set; }
+    public Guid ExamSlotId { get; set; }
+    public string PassageText { get; set; } = null!;
+    public DateTime CreatedAt { get; set; }
+    public DateTime UpdatedAt { get; set; }
+    public List<ExamQuestionResponseDto> Questions { get; set; } = [];
 }
 
 public class QuestionOptionResponseDto
