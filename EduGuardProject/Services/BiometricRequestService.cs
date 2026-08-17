@@ -129,13 +129,22 @@ public class BiometricRequestService : IBiometricRequestService
             throw new InvalidOperationException("Thiếu ảnh để trích xuất vector (cần đủ 3 ảnh thẳng/trái/phải).");
         }
 
-        float[] averageVector;
+        // mỗi lần chỉ đưa 1 URL nên "average" của 1 phần tử = chính vector đó.
+        var imagePaths = new (string Url, string Label)[]
+        {
+    (entity.FrontImagePath!, "front"),
+    (entity.LeftImagePath!, "left"),
+    (entity.RightImagePath!, "right"),
+        };
+
+        var newVectors = new List<(float[] Vector, string Label)>();
         try
         {
-            averageVector = await _aiClient.ExtractAverageVectorFromUrlsAsync(new List<string>
-        {
-            entity.FrontImagePath, entity.LeftImagePath, entity.RightImagePath
-        });
+            foreach (var (url, label) in imagePaths)
+            {
+                var vector = await _aiClient.ExtractAverageVectorFromUrlsAsync(new List<string> { url });
+                newVectors.Add((vector, label));
+            }
         }
         catch (Exception ex)
         {
@@ -157,20 +166,22 @@ public class BiometricRequestService : IBiometricRequestService
             old.UpdatedAt = DateTime.UtcNow;
         }
 
-        var biometricDatum = new BiometricDatum
+        foreach (var (vector, label) in newVectors)
         {
-            Id = Guid.NewGuid(),
-            UserId = entity.StudentId,
-            BioRequestId = entity.Id,
-            ModelVersion = "face_recognition_v1",
-            FaceVector = new Pgvector.Vector(averageVector),
-            FaceImageUrl = entity.FrontImagePath,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        await _context.BiometricData.AddAsync(biometricDatum);
-
+            var biometricDatum = new BiometricDatum
+            {
+                Id = Guid.NewGuid(),
+                UserId = entity.StudentId,
+                BioRequestId = entity.Id,
+                ModelVersion = "face_recognition_v1",
+                FaceVector = new Pgvector.Vector(vector),
+                FaceImageUrl = entity.FrontImagePath,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            await _context.BiometricData.AddAsync(biometricDatum);
+        }
         await _repo.UpdateAsync(entity);
         await _context.SaveChangesAsync();
 

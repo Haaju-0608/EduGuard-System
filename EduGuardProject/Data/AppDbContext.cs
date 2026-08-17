@@ -208,8 +208,7 @@ public partial class AppDbContext : DbContext
             entity.HasIndex(e => e.FaceImageUrl, "idx_biometric_face_image");
 
             entity.HasIndex(e => e.UserId, "ux_biometric_active")
-                .IsUnique()
-                .HasFilter("(is_active = true)");
+    .HasFilter("(is_active = true)");
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
@@ -243,9 +242,9 @@ public partial class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("biometric_data_bio_request_id_fkey");
 
-            entity.HasOne(d => d.User).WithOne(p => p.BiometricDatum)
-                .HasForeignKey<BiometricDatum>(d => d.UserId)
-                .HasConstraintName("biometric_data_user_id_fkey");
+            entity.HasOne(d => d.User).WithMany(p => p.BiometricData)
+    .HasForeignKey(d => d.UserId)
+    .HasConstraintName("biometric_data_user_id_fkey");
         });
 
         modelBuilder.Entity<BiometricRequest>(entity =>

@@ -22,12 +22,11 @@ namespace EduGuardProject.Services
     Guid participationId, Guid studentId, IFormFile liveCapture,
     CancellationToken cancellationToken = default)
         {
-            var biometric = await _context.BiometricData
-                .Where(b => b.UserId == studentId && b.IsActive)
-                .OrderByDescending(b => b.CreatedAt)
-                .FirstOrDefaultAsync(cancellationToken);
+            var biometrics = await _context.BiometricData
+    .Where(b => b.UserId == studentId && b.IsActive && b.FaceVector != null)
+    .ToListAsync(cancellationToken);
 
-            if (biometric?.FaceVector is null)
+            if (biometrics.Count == 0)
                 throw new InvalidOperationException("Student has no active biometric profile registered.");
 
             float[] liveVector;
@@ -36,7 +35,11 @@ namespace EduGuardProject.Services
                 liveVector = await _aiService.ExtractSingleFaceVectorAsync(liveStream, liveCapture.FileName);
             }
 
-            var distance = ComputeEuclideanDistance(biometric.FaceVector.ToArray(), liveVector);
+            // So với cả 3 vector (front/left/right), lấy khoảng cách nhỏ nhất — vẫn giữ nguyên
+            // ngưỡng 0.45 nên không đổi độ nghiêm ngặt bảo mật, chỉ đổi cách so sánh.
+            var distance = biometrics
+                .Select(b => ComputeEuclideanDistance(b.FaceVector!.ToArray(), liveVector))
+                .Min();
             var isMatch = distance <= IDENTITY_MATCH_TOLERANCE;
 
             string? snapshotPath = null;
