@@ -5,9 +5,10 @@ namespace EduGuardProject.Helpers;
 
 public static class SubscriptionGuard
 {
-   
     public static async Task EnsureInstitutionActiveAsync(AppDbContext context, Guid? institutionId)
     {
+        throw new UnauthorizedAccessException("DEBUG: guard is running - " + DateTime.UtcNow.Ticks);
+
         if (institutionId is null) return;
 
         var status = await context.Institutions
