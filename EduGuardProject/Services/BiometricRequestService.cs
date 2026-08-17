@@ -255,14 +255,36 @@ public class BiometricRequestService : IBiometricRequestService
         {
             if (entity.StudentId != user.Id)
                 throw new UnauthorizedAccessException("Access denied.");
+
+            if (entity.Status == BiometricReqStatus.Approved)
+                throw new InvalidOperationException(
+                    "Không thể xoá yêu cầu đã được duyệt. Nếu muốn đăng ký lại khuôn mặt, " +
+                    "hãy gửi một yêu cầu đăng ký mới.");
         }
         else
         {
             await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
             await EnsureReviewerAccessAsync(user, entity.StudentId);
+
+            \
+            if (entity.Status == BiometricReqStatus.Approved)
+            {
+                var relatedBiometrics = await _context.BiometricData
+                    .Where(b => b.BioRequestId == entity.Id && b.IsActive)
+                    .ToListAsync();
+                foreach (var b in relatedBiometrics)
+                {
+                    b.IsActive = false;
+                    b.UpdatedAt = DateTime.UtcNow;
+                }
+                if (relatedBiometrics.Count > 0)
+                    await _context.SaveChangesAsync();
+            }
         }
 
         await _repo.SoftDeleteAsync(entity);
+        await DeleteRequestImagesAsync(entity); // dọn 3 ảnh front/left/right khỏi storage,
+                                                // nhất quán với luồng RejectAsync
         await PublishBiometricRequestChangedAsync(entity, "deleted");
         return true;
     }
