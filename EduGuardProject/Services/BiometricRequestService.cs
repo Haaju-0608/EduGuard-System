@@ -266,7 +266,6 @@ public class BiometricRequestService : IBiometricRequestService
             await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
             await EnsureReviewerAccessAsync(user, entity.StudentId);
 
-            \
             if (entity.Status == BiometricReqStatus.Approved)
             {
                 var relatedBiometrics = await _context.BiometricData
