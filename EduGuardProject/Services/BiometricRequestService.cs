@@ -72,6 +72,8 @@ public class BiometricRequestService : IBiometricRequestService
         await _currentUser.EnsureRoleAsync(AppRole.Student);
         var user = await _currentUser.GetRequiredUserAsync();
 
+        await SubscriptionGuard.EnsureInstitutionActiveAsync(_context, user.InstitutionId);
+
         if (string.IsNullOrWhiteSpace(dto.Reason))
             throw new InvalidOperationException("Reason is required.");
         if (dto.FrontFile.Length == 0 || dto.LeftFile.Length == 0 || dto.RightFile.Length == 0)
@@ -121,6 +123,14 @@ public class BiometricRequestService : IBiometricRequestService
 
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);
+
+        var studentInstitutionId = await _context.Users
+        .AsNoTracking()
+        .Where(u => u.Id == entity.StudentId)
+        .Select(u => u.InstitutionId)
+        .FirstOrDefaultAsync();
+        await SubscriptionGuard.EnsureInstitutionActiveAsync(_context, studentInstitutionId);
+
 
         if (string.IsNullOrWhiteSpace(entity.FrontImagePath) ||
             string.IsNullOrWhiteSpace(entity.LeftImagePath) ||

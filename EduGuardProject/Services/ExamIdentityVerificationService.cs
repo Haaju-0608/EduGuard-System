@@ -1,4 +1,5 @@
-﻿using EduGuardProject.Models;
+﻿using EduGuardProject.Helpers;
+using EduGuardProject.Models;
 using EduGuardProject.Services.IServices;
 using Microsoft.EntityFrameworkCore;
 
@@ -22,6 +23,14 @@ namespace EduGuardProject.Services
     Guid participationId, Guid studentId, IFormFile liveCapture,
     CancellationToken cancellationToken = default)
         {
+
+            var studentInstitutionId = await _context.Users
+       .AsNoTracking()
+       .Where(u => u.Id == studentId)
+       .Select(u => u.InstitutionId)
+       .FirstOrDefaultAsync(cancellationToken);
+            await SubscriptionGuard.EnsureInstitutionActiveAsync(_context, studentInstitutionId);
+
             var biometrics = await _context.BiometricData
     .Where(b => b.UserId == studentId && b.IsActive && b.FaceVector != null)
     .ToListAsync(cancellationToken);
