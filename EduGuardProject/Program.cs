@@ -154,6 +154,7 @@ builder.Services.AddScoped<IEmailService, EmailService>();
 builder.Services.AddHttpClient<IAiServiceClient, AiServiceClient>();
 builder.Services.AddHostedService<SubscriptionExpiryBackgroundService>();
 builder.Services.AddScoped<IExamIdentityVerificationService, ExamIdentityVerificationService>();
+builder.Services.AddScoped<IContactRequestService, ContactRequestService>();
 
 // Authentication
 builder.Services.AddAuthentication(options =>
