@@ -104,6 +104,7 @@ public class ExamQuestionRepository : IExamQuestionRepository
     private IQueryable<ExamQuestion> BaseQuery() =>
         _context.ExamQuestions
             .Include(q => q.QuestionOptions)
+            .Include(q => q.Passage)
             .Include(q => q.ExamSlot)
             .ThenInclude(e => e.Class)
             .Include(q => q.ExamSlot)

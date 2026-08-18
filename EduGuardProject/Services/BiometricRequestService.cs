@@ -72,6 +72,8 @@ public class BiometricRequestService : IBiometricRequestService
         await _currentUser.EnsureRoleAsync(AppRole.Student);
         var user = await _currentUser.GetRequiredUserAsync();
 
+        await SubscriptionGuard.EnsureInstitutionActiveAsync(_context, user.InstitutionId);
+
         if (string.IsNullOrWhiteSpace(dto.Reason))
             throw new InvalidOperationException("Reason is required.");
         if (dto.FrontFile.Length == 0 || dto.LeftFile.Length == 0 || dto.RightFile.Length == 0)
@@ -122,6 +124,14 @@ public class BiometricRequestService : IBiometricRequestService
         var user = await _currentUser.GetRequiredUserAsync();
         await EnsureReviewerAccessAsync(user, entity.StudentId);
 
+        var studentInstitutionId = await _context.Users
+        .AsNoTracking()
+        .Where(u => u.Id == entity.StudentId)
+        .Select(u => u.InstitutionId)
+        .FirstOrDefaultAsync();
+        await SubscriptionGuard.EnsureInstitutionActiveAsync(_context, studentInstitutionId);
+
+
         if (string.IsNullOrWhiteSpace(entity.FrontImagePath) ||
             string.IsNullOrWhiteSpace(entity.LeftImagePath) ||
             string.IsNullOrWhiteSpace(entity.RightImagePath))
@@ -129,13 +139,22 @@ public class BiometricRequestService : IBiometricRequestService
             throw new InvalidOperationException("Thiếu ảnh để trích xuất vector (cần đủ 3 ảnh thẳng/trái/phải).");
         }
 
-        float[] averageVector;
+        // mỗi lần chỉ đưa 1 URL nên "average" của 1 phần tử = chính vector đó.
+        var imagePaths = new (string Url, string Label)[]
+        {
+    (entity.FrontImagePath!, "front"),
+    (entity.LeftImagePath!, "left"),
+    (entity.RightImagePath!, "right"),
+        };
+
+        var newVectors = new List<(float[] Vector, string Label)>();
         try
         {
-            averageVector = await _aiClient.ExtractAverageVectorFromUrlsAsync(new List<string>
-        {
-            entity.FrontImagePath, entity.LeftImagePath, entity.RightImagePath
-        });
+            foreach (var (url, label) in imagePaths)
+            {
+                var vector = await _aiClient.ExtractAverageVectorFromUrlsAsync(new List<string> { url });
+                newVectors.Add((vector, label));
+            }
         }
         catch (Exception ex)
         {
@@ -157,20 +176,22 @@ public class BiometricRequestService : IBiometricRequestService
             old.UpdatedAt = DateTime.UtcNow;
         }
 
-        var biometricDatum = new BiometricDatum
+        foreach (var (vector, label) in newVectors)
         {
-            Id = Guid.NewGuid(),
-            UserId = entity.StudentId,
-            BioRequestId = entity.Id,
-            ModelVersion = "face_recognition_v1",
-            FaceVector = new Pgvector.Vector(averageVector),
-            FaceImageUrl = entity.FrontImagePath,
-            IsActive = true,
-            CreatedAt = DateTime.UtcNow,
-            UpdatedAt = DateTime.UtcNow
-        };
-        await _context.BiometricData.AddAsync(biometricDatum);
-
+            var biometricDatum = new BiometricDatum
+            {
+                Id = Guid.NewGuid(),
+                UserId = entity.StudentId,
+                BioRequestId = entity.Id,
+                ModelVersion = "face_recognition_v1",
+                FaceVector = new Pgvector.Vector(vector),
+                FaceImageUrl = entity.FrontImagePath,
+                IsActive = true,
+                CreatedAt = DateTime.UtcNow,
+                UpdatedAt = DateTime.UtcNow
+            };
+            await _context.BiometricData.AddAsync(biometricDatum);
+        }
         await _repo.UpdateAsync(entity);
         await _context.SaveChangesAsync();
 
@@ -244,14 +265,35 @@ public class BiometricRequestService : IBiometricRequestService
         {
             if (entity.StudentId != user.Id)
                 throw new UnauthorizedAccessException("Access denied.");
+
+            if (entity.Status == BiometricReqStatus.Approved)
+                throw new InvalidOperationException(
+                    "Không thể xoá yêu cầu đã được duyệt. Nếu muốn đăng ký lại khuôn mặt, " +
+                    "hãy gửi một yêu cầu đăng ký mới.");
         }
         else
         {
             await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
             await EnsureReviewerAccessAsync(user, entity.StudentId);
+
+            if (entity.Status == BiometricReqStatus.Approved)
+            {
+                var relatedBiometrics = await _context.BiometricData
+                    .Where(b => b.BioRequestId == entity.Id && b.IsActive)
+                    .ToListAsync();
+                foreach (var b in relatedBiometrics)
+                {
+                    b.IsActive = false;
+                    b.UpdatedAt = DateTime.UtcNow;
+                }
+                if (relatedBiometrics.Count > 0)
+                    await _context.SaveChangesAsync();
+            }
         }
 
         await _repo.SoftDeleteAsync(entity);
+        await DeleteRequestImagesAsync(entity); // dọn 3 ảnh front/left/right khỏi storage,
+                                                // nhất quán với luồng RejectAsync
         await PublishBiometricRequestChangedAsync(entity, "deleted");
         return true;
     }

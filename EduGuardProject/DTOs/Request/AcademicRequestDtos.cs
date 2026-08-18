@@ -267,6 +267,8 @@ public class CreateExamQuestionDto
     [Required]
     public Guid ExamSlotId { get; set; }
 
+    public Guid? PassageId { get; set; }
+
     [Required, MaxLength(30)]
     public string QuestionType { get; set; } = null!;
 
@@ -288,6 +290,8 @@ public class CreateExamQuestionDto
 
 public class UpdateExamQuestionDto
 {
+    public Guid? PassageId { get; set; }
+
     [Required, MaxLength(30)]
     public string QuestionType { get; set; } = null!;
 
@@ -303,6 +307,21 @@ public class UpdateExamQuestionDto
     public decimal Points { get; set; } = 1;
 
     public int DisplayOrder { get; set; }
+}
+
+public class CreateReadingPassageDto
+{
+    [Required]
+    public Guid ExamSlotId { get; set; }
+
+    [Required]
+    public string PassageText { get; set; } = null!;
+}
+
+public class UpdateReadingPassageDto
+{
+    [Required]
+    public string PassageText { get; set; } = null!;
 }
 
 public class CreateQuestionOptionDto

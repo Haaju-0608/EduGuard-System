@@ -398,6 +398,9 @@ public class AttendanceRecordService : IAttendanceRecordService
             ?? throw new InvalidOperationException("Attendance session not found.");
         await EnsureSessionAccessAsync(session);
 
+        var cls = await _classRepo.GetByIdAsync(session.ClassId);
+        await SubscriptionGuard.EnsureInstitutionActiveAsync(_context, cls?.InstitutionId);
+
         if (session.Status != SessionStatus.InProgress)
             throw new InvalidOperationException("Can only mark attendance for in-progress sessions.");
         if (DateTime.UtcNow < session.StartTime ||

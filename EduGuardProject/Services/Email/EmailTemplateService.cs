@@ -2,7 +2,7 @@ using System.Net;
 
 namespace EduGuardProject.Services.Email;
 
-public class EmailTemplateService
+public class EmailTemplateService : IEmailTemplateService
 {
     public string BuildExamReminderTemplate(string studentName, string examName, DateTime examTime)
     {

@@ -18,6 +18,8 @@ public class AttendanceSessionService : IAttendanceSessionService
     private readonly IRealtimeEventDispatcher _realtime;
     private readonly IStorageService _storage;
     private readonly AppDbContext _context;
+    private readonly ITransactionService _transactionService;      // MỚI
+    private readonly ILogger<AttendanceSessionService> _logger;    // MỚI
 
     public AttendanceSessionService(
         IAttendanceSessionRepository repo,
@@ -26,7 +28,9 @@ public class AttendanceSessionService : IAttendanceSessionService
         INotificationDispatcher notifications,
         IRealtimeEventDispatcher realtime,
         IStorageService storage,
-        AppDbContext context)
+        AppDbContext context,
+        ITransactionService transactionService,
+        ILogger<AttendanceSessionService> logger)
     {
         _repo = repo;
         _classRepo = classRepo;
@@ -35,6 +39,8 @@ public class AttendanceSessionService : IAttendanceSessionService
         _realtime = realtime;
         _storage = storage;
         _context = context;
+        _transactionService = transactionService;                 // MỚI
+        _logger = logger;
     }
 
     public async Task<(IEnumerable<AttendanceSessionResponseDto> Items, int TotalCount)> GetAllAsync(
@@ -208,6 +214,9 @@ public class AttendanceSessionService : IAttendanceSessionService
                 totalStudents,
                 completedAt = entity.EndTime ?? DateTime.UtcNow
             });
+
+            await TryDeductAttendanceFeeAsync(entity);
+
         }
         await PublishSessionChangedAsync(entity, "updated");
         return true;
@@ -273,6 +282,55 @@ public class AttendanceSessionService : IAttendanceSessionService
                 await _context.ExamSlots.AnyAsync(e => e.Id == entity.ExamSlotId.Value && e.ProctorId == user.Id);
             if (!isProctor)
                 throw new UnauthorizedAccessException("Access denied.");
+        }
+    }
+    private async Task TryDeductAttendanceFeeAsync(AttendanceSession entity)
+    {
+        try
+        {
+            var studentCount = await _context.AttendanceRecords.CountAsync(r =>
+                r.SessionId == entity.Id && r.Status == AttendanceStatus.Present);
+
+            if (studentCount <= 0)
+                return; // không có ai điểm danh Present -> không tính phí
+
+            var cls = await _classRepo.GetByIdAsync(entity.ClassId);
+            if (cls == null) return;
+
+            var wallet = await _context.Wallets
+                .AsNoTracking()
+                .FirstOrDefaultAsync(w => w.InstitutionId == cls.InstitutionId);
+            if (wallet == null)
+            {
+                _logger.LogWarning(
+                    "Không tìm thấy ví của institution {InstitutionId} để trừ phí điểm danh session {SessionId}.",
+                    cls.InstitutionId, entity.Id);
+                return;
+            }
+
+            await _transactionService.DeductAttendanceFeeAsync(wallet.Id, entity.Id, studentCount);
+        }
+        catch (Exception ex)
+        {
+            // Không throw ra ngoài — session đã Completed thành công rồi, lỗi billing không
+            // được phép làm request UpdateAsync trả về lỗi cho Lecturer (họ không liên quan
+            // gì tới việc ví trường có đủ tiền hay chưa).
+            _logger.LogError(ex,
+                "Trừ phí điểm danh thất bại cho session {SessionId}: {Message}",
+                entity.Id, ex.Message);
+
+            // Báo cho SchoolAdmin của trường biết để xử lý thủ công (ví dụ nạp thêm tiền).
+            var cls = await _classRepo.GetByIdAsync(entity.ClassId);
+            if (cls != null)
+            {
+                await _notifications.SendToInstitutionAdminsAsync(
+                    cls.InstitutionId,
+                    "Trừ phí điểm danh thất bại",
+                    $"Không thể trừ phí cho ca điểm danh vừa hoàn tất: {ex.Message}",
+                    NotificationType.LowBalanceAlert,
+                    ReferenceTypeEnum.AttendanceSession,
+                    entity.Id);
+            }
         }
     }
 }

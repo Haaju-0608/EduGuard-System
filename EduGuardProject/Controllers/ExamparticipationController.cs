@@ -1,11 +1,8 @@
-﻿using EduGuardProject.Controllers;
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Filters;
 using EduGuardProject.Models;
-using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
-using Microsoft.AspNetCore.Authorization;
 using Microsoft.AspNetCore.Mvc;
 
 namespace EduGuardProject.Controllers
@@ -137,7 +134,7 @@ namespace EduGuardProject.Controllers
 
         // Update Exam Participation Status
         // Truyền dữ liệu: route id, body status.
-        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Lecturer đúng class; Lecturer chỉ được chuyển Disqualified sang Submitted.
+        // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Lecturer đúng class; restore Disqualified về Joined nếu còn giờ thi, ngược lại về Submitted.
         [HttpPut("{id:guid}/status")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> UpdateExamParticipationStatus(Guid id, [FromBody] UpdateExamParticipationStatusDto dto)

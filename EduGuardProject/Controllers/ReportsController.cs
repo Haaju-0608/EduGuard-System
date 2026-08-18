@@ -13,9 +13,9 @@ namespace EduGuardProject.Controllers;
 public class ReportsController : AcademicApiControllerBase
 {
     private readonly IReportService _reports;
-    private readonly ReportExportService _exporter;
+    private readonly IReportExportService _exporter;
 
-    public ReportsController(IReportService reports, ReportExportService exporter)
+    public ReportsController(IReportService reports, IReportExportService exporter)
     {
         _reports = reports;
         _exporter = exporter;

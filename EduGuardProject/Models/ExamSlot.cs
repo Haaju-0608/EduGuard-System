@@ -44,5 +44,7 @@ public partial class ExamSlot
 
     public virtual ICollection<ExamQuestion> ExamQuestions { get; set; } = new List<ExamQuestion>();
 
+    public virtual ICollection<ReadingPassage> ReadingPassages { get; set; } = new List<ReadingPassage>();
+
     public virtual ICollection<StudentExamRecord> StudentExamRecords { get; set; } = new List<StudentExamRecord>();
 }

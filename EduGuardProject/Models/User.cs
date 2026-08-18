@@ -36,7 +36,7 @@ public partial class User
 
     public virtual ICollection<AttendanceSession> AttendanceSessions { get; set; } = new List<AttendanceSession>();
 
-    public virtual BiometricDatum? BiometricDatum { get; set; }
+    public virtual ICollection<BiometricDatum> BiometricData { get; set; } = new List<BiometricDatum>();
 
     public virtual ICollection<BiometricRequest> BiometricRequestApprovedByNavigations { get; set; } = new List<BiometricRequest>();
 

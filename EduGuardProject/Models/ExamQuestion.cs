@@ -6,6 +6,8 @@ public partial class ExamQuestion
 
     public Guid ExamSlotId { get; set; }
 
+    public Guid? PassageId { get; set; }
+
     public string QuestionType { get; set; } = null!;
 
     public string QuestionContent { get; set; } = null!;
@@ -21,6 +23,8 @@ public partial class ExamQuestion
     public DateTime CreatedAt { get; set; }
 
     public virtual ExamSlot ExamSlot { get; set; } = null!;
+
+    public virtual ReadingPassage? Passage { get; set; }
 
     public virtual ICollection<QuestionOption> QuestionOptions { get; set; } = new List<QuestionOption>();
 }

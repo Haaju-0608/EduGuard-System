@@ -10,7 +10,7 @@ namespace EduGuardProject.Services;
 
 public sealed record ReportExportFile(byte[] Content, string ContentType, string FileName);
 
-public sealed class ReportExportService
+public sealed class ReportExportService : IReportExportService
 {
     private static readonly JsonSerializerOptions JsonOptions = new(JsonSerializerDefaults.Web)
     {

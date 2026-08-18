@@ -6,6 +6,33 @@ namespace EduGuardProject.Helpers;
 
 public static class AcademicMapper
 {
+    public static ExamQuestionResponseDto ToExamQuestionResponseDto(ExamQuestion entity, bool includeAnswers) => new()
+    {
+        Id = entity.Id,
+        ExamSlotId = entity.ExamSlotId,
+        PassageId = entity.PassageId,
+        PassageText = entity.Passage?.PassageText,
+        ExamName = entity.ExamSlot?.ExamName,
+        QuestionType = entity.QuestionType,
+        QuestionContent = entity.QuestionContent,
+        AudioUrl = entity.AudioUrl,
+        ImageUrl = entity.ImageUrl,
+        Points = entity.Points,
+        DisplayOrder = entity.DisplayOrder,
+        CreatedAt = entity.CreatedAt,
+        Options = entity.QuestionOptions
+            .OrderBy(o => o.OptionLabel)
+            .Select(option => new QuestionOptionResponseDto
+            {
+                Id = option.Id,
+                QuestionId = option.QuestionId,
+                OptionLabel = option.OptionLabel,
+                OptionContent = option.OptionContent,
+                IsCorrect = includeAnswers ? option.IsCorrect : null
+            })
+            .ToList()
+    };
+
     public static UserSummaryDto ToUserSummary(User? user) =>
         user == null ? null! : new UserSummaryDto
         {

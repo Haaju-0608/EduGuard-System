@@ -1,5 +1,6 @@
 using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
+using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
@@ -27,16 +28,17 @@ public class ExamQuestionService : IExamQuestionService
         string? search, string? sort, int page, int pageSize, Guid? examSlotId = null)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        var institutionId = user.Role == AppRole.SchoolAdmin
+        var role = user.Role.ToCanonical();
+        var institutionId = role == AppRole.SchoolAdmin
             ? user.InstitutionId ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.")
             : (Guid?)null;
-        var lecturerId = user.Role == AppRole.Lecturer ? user.Id : (Guid?)null;
-        var studentId = user.Role == AppRole.Student ? user.Id : (Guid?)null;
+        var lecturerId = role == AppRole.Lecturer ? user.Id : (Guid?)null;
+        var studentId = role == AppRole.Student ? user.Id : (Guid?)null;
 
         var (items, total) = await _repo.GetAllAsync(
             search, sort, page, pageSize, examSlotId, institutionId, lecturerId, studentId);
-        var includeAnswers = user.Role != AppRole.Student;
-        return (items.Select(item => MapToResponseDto(item, includeAnswers)), total);
+        var includeAnswers = role != AppRole.Student;
+        return (items.Select(item => AcademicMapper.ToExamQuestionResponseDto(item, includeAnswers)), total);
     }
 
     public async Task<ExamQuestionResponseDto?> GetByIdAsync(Guid id)
@@ -44,7 +46,7 @@ public class ExamQuestionService : IExamQuestionService
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null) return null;
         var user = await EnsureReadAccessAsync(entity);
-        return MapToResponseDto(entity, includeAnswers: user.Role != AppRole.Student);
+        return AcademicMapper.ToExamQuestionResponseDto(entity, includeAnswers: user.Role.ToCanonical() != AppRole.Student);
     }
 
     public async Task<ExamQuestionResponseDto> CreateAsync(CreateExamQuestionDto dto)
@@ -57,11 +59,13 @@ public class ExamQuestionService : IExamQuestionService
             ?? throw new InvalidOperationException("Exam slot not found.");
         await EnsureStaffAccessAsync(examSlot.Class);
         EnsureExamQuestionsCanBeEdited(examSlot);
+        var passage = await GetPassageAsync(dto.PassageId, dto.ExamSlotId);
 
         var entity = new ExamQuestion
         {
             Id = Guid.NewGuid(),
             ExamSlotId = dto.ExamSlotId,
+            PassageId = dto.PassageId,
             QuestionType = dto.QuestionType.Trim(),
             QuestionContent = dto.QuestionContent.Trim(),
             AudioUrl = string.IsNullOrWhiteSpace(dto.AudioUrl) ? null : dto.AudioUrl.Trim(),
@@ -71,12 +75,13 @@ public class ExamQuestionService : IExamQuestionService
             CreatedAt = DateTime.UtcNow,
             QuestionOptions = (dto.Options ?? [])
                 .Select(MapOption)
-                .ToList()
+                .ToList(),
+            Passage = passage
         };
 
         await _repo.AddAsync(entity);
         entity.ExamSlot = examSlot;
-        return MapToResponseDto(entity, includeAnswers: true);
+        return AcademicMapper.ToExamQuestionResponseDto(entity, includeAnswers: true);
     }
 
     public async Task<ExamQuestionResponseDto?> UpdateAsync(Guid id, UpdateExamQuestionDto dto)
@@ -86,7 +91,10 @@ public class ExamQuestionService : IExamQuestionService
         await EnsureStaffAccessAsync(entity.ExamSlot.Class);
         EnsureExamQuestionsCanBeEdited(entity.ExamSlot);
         ValidateQuestion(entity.ExamSlotId, dto.QuestionType, dto.QuestionContent, dto.AudioUrl, dto.ImageUrl, dto.Points, entity.QuestionOptions);
+        var passage = await GetPassageAsync(dto.PassageId, entity.ExamSlotId);
 
+        entity.PassageId = dto.PassageId;
+        entity.Passage = passage;
         entity.QuestionType = dto.QuestionType.Trim();
         entity.QuestionContent = dto.QuestionContent.Trim();
         entity.AudioUrl = string.IsNullOrWhiteSpace(dto.AudioUrl) ? null : dto.AudioUrl.Trim();
@@ -95,7 +103,7 @@ public class ExamQuestionService : IExamQuestionService
         entity.DisplayOrder = dto.DisplayOrder;
 
         await _repo.UpdateAsync(entity);
-        return MapToResponseDto(entity, includeAnswers: true);
+        return AcademicMapper.ToExamQuestionResponseDto(entity, includeAnswers: true);
     }
 
     public async Task<bool> DeleteAsync(Guid id)
@@ -160,7 +168,7 @@ public class ExamQuestionService : IExamQuestionService
         if (CanAccessAsStaff(user, entity.ExamSlot.Class))
             return user;
 
-        if (user.Role == AppRole.Student)
+        if (user.Role.ToCanonical() == AppRole.Student)
         {
             var now = DateTime.UtcNow;
             if (entity.ExamSlot.Status is ExamSlotStatus.Cancelled or ExamSlotStatus.Completed ||
@@ -191,14 +199,15 @@ public class ExamQuestionService : IExamQuestionService
 
     private static bool CanAccessAsStaff(User user, Class cls)
     {
-        if (user.Role == AppRole.SuperAdmin)
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.SuperAdmin)
             return true;
 
         if (user.InstitutionId != cls.InstitutionId)
             return false;
 
-        return user.Role == AppRole.SchoolAdmin ||
-               (user.Role == AppRole.Lecturer && cls.LecturerId == user.Id);
+        return role == AppRole.SchoolAdmin ||
+               (role == AppRole.Lecturer && cls.LecturerId == user.Id);
     }
 
     private static void ValidateQuestion(
@@ -333,23 +342,17 @@ public class ExamQuestionService : IExamQuestionService
     private static bool IsEssay(string questionType) =>
         string.Equals(questionType.Trim(), "Essay", StringComparison.OrdinalIgnoreCase);
 
-    private static ExamQuestionResponseDto MapToResponseDto(ExamQuestion entity, bool includeAnswers) => new()
+    private async Task<ReadingPassage?> GetPassageAsync(Guid? passageId, Guid examSlotId)
     {
-        Id = entity.Id,
-        ExamSlotId = entity.ExamSlotId,
-        ExamName = entity.ExamSlot?.ExamName,
-        QuestionType = entity.QuestionType,
-        QuestionContent = entity.QuestionContent,
-        AudioUrl = entity.AudioUrl,
-        ImageUrl = entity.ImageUrl,
-        Points = entity.Points,
-        DisplayOrder = entity.DisplayOrder,
-        CreatedAt = entity.CreatedAt,
-        Options = entity.QuestionOptions
-            .OrderBy(o => o.OptionLabel)
-            .Select(option => MapToOptionResponseDto(option, includeAnswers))
-            .ToList()
-    };
+        if (!passageId.HasValue) return null;
+
+        var passage = await _context.ReadingPassages.FindAsync(passageId.Value)
+            ?? throw new InvalidOperationException("Reading passage not found.");
+        if (passage.ExamSlotId != examSlotId)
+            throw new InvalidOperationException("Reading passage must belong to the same exam slot as the question.");
+
+        return passage;
+    }
 
     private static QuestionOption MapOption(CreateQuestionOptionDto dto) => new()
     {

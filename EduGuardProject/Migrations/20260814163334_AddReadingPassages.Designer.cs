@@ -3,6 +3,7 @@ using System;
 using EduGuardProject.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace EduGuardProject.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260814163334_AddReadingPassages")]
+    partial class AddReadingPassages
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -41,7 +44,7 @@ namespace EduGuardProject.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "notification_channel", "notification_channel", new[] { "PUSH", "EMAIL", "DASHBOARD" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "notification_type", "notification_type", new[] { "LOW_BALANCE_ALERT", "ATTENDANCE_SESSION_STARTED", "EXAM_REMINDER", "VIOLATION_DETECTED", "BIOMETRIC_REQUEST_STATUS", "SERVICE_SUSPENDED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "participation_status", "participation_status", new[] { "JOINED", "SUBMITTED", "DISQUALIFIED", "ABSENT", "LEFT" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "pricing_service_type", "pricing_service_type", new[] { "attendance_unit", "proctoring_per_hour", "subscription_monthly", "subscription_yearly" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "pricing_service_type", "pricing_service_type", new[] { "attendance_unit", "proctoring_per_hour" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "realtime", "action", new[] { "INSERT", "UPDATE", "DELETE", "TRUNCATE", "ERROR" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "realtime", "equality_op", new[] { "eq", "neq", "lt", "lte", "gt", "gte", "in" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "reference_type_enum", "reference_type_enum", new[] { "INSTITUTION", "ATTENDANCE_SESSION", "EXAM_SLOT", "TRANSACTION" });
@@ -49,7 +52,7 @@ namespace EduGuardProject.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "storage", "buckettype", new[] { "STANDARD", "ANALYTICS", "VECTOR" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "student_exam_record_status", "student_exam_record_status", new[] { "MARKED", "COMPLETED", "DELETED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "transaction_status", "transaction_status", new[] { "PENDING", "SUCCESS", "FAILED", "pending", "success", "failed" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "transaction_type", "transaction_type", new[] { "TOP_UP", "ATTENDANCE_FEE", "PROCTORING_FEE", "top_up", "attendance_fee", "proctoring_fee", "SUBSCRIPTION_FEE" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "transaction_type", "transaction_type", new[] { "TOP_UP", "ATTENDANCE_FEE", "PROCTORING_FEE", "top_up", "attendance_fee", "proctoring_fee" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "user_status", "user_status", new[] { "ACTIVE", "BLOCKED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "violation_severity", "violation_severity", new[] { "WARNING", "SEVERE" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "violation_type", "violation_type", new[] { "IMPERSONATION", "GAZE_DIVERSION", "MULTIPLE_FACES", "ABSENCE", "HEAD_TURN", "FACE_OBSTRUCTED", "TabSwitch", "WindowBlur", "ExitFullscreen" });
@@ -150,8 +153,7 @@ namespace EduGuardProject.Migrations
                         .HasColumnName("end_time");
 
                     b.Property<Guid?>("ExamSlotId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("exam_slot_id");
+                        .HasColumnType("uuid");
 
                     b.Property<DateTime>("StartTime")
                         .HasColumnType("timestamp with time zone")
@@ -253,6 +255,7 @@ namespace EduGuardProject.Migrations
                     b.HasIndex(new[] { "FaceImageUrl" }, "idx_biometric_face_image");
 
                     b.HasIndex(new[] { "UserId" }, "ux_biometric_active")
+                        .IsUnique()
                         .HasFilter("(is_active = true)");
 
                     b.ToTable("biometric_data", (string)null);
@@ -635,10 +638,6 @@ namespace EduGuardProject.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("expected_duration_minutes");
 
-                    b.Property<Guid?>("ProctorId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("proctor_id");
-
                     b.Property<DateTime>("StartTime")
                         .HasColumnType("timestamp with time zone")
                         .HasColumnName("start_time");
@@ -657,8 +656,6 @@ namespace EduGuardProject.Migrations
                         .HasName("exam_slots_pkey");
 
                     b.HasIndex("CreatedBy");
-
-                    b.HasIndex("ProctorId");
 
                     b.HasIndex(new[] { "ClassId" }, "idx_exam_slot_class");
 
@@ -1285,9 +1282,7 @@ namespace EduGuardProject.Migrations
 
                     b.HasOne("EduGuardProject.Models.ExamSlot", "ExamSlot")
                         .WithMany()
-                        .HasForeignKey("ExamSlotId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("attendance_sessions_exam_slot_id_fkey");
+                        .HasForeignKey("ExamSlotId");
 
                     b.Navigation("BillingTrans");
 
@@ -1307,8 +1302,8 @@ namespace EduGuardProject.Migrations
                         .HasConstraintName("biometric_data_bio_request_id_fkey");
 
                     b.HasOne("EduGuardProject.Models.User", "User")
-                        .WithMany("BiometricData")
-                        .HasForeignKey("UserId")
+                        .WithOne("BiometricDatum")
+                        .HasForeignKey("EduGuardProject.Models.BiometricDatum", "UserId")
                         .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
                         .HasConstraintName("biometric_data_user_id_fkey");
@@ -1461,17 +1456,9 @@ namespace EduGuardProject.Migrations
                         .IsRequired()
                         .HasConstraintName("exam_slots_created_by_fkey");
 
-                    b.HasOne("EduGuardProject.Models.User", "ProctorNavigation")
-                        .WithMany()
-                        .HasForeignKey("ProctorId")
-                        .OnDelete(DeleteBehavior.SetNull)
-                        .HasConstraintName("exam_slots_proctor_id_fkey");
-
                     b.Navigation("Class");
 
                     b.Navigation("CreatedByNavigation");
-
-                    b.Navigation("ProctorNavigation");
                 });
 
             modelBuilder.Entity("EduGuardProject.Models.Notification", b =>
@@ -1687,7 +1674,7 @@ namespace EduGuardProject.Migrations
 
                     b.Navigation("AttendanceSessions");
 
-                    b.Navigation("BiometricData");
+                    b.Navigation("BiometricDatum");
 
                     b.Navigation("BiometricRequestApprovedByNavigations");
 
