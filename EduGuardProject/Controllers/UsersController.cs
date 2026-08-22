@@ -66,6 +66,28 @@ namespace EduGuardProject.Controllers
             return Ok(ApiResponse<UserResponseDto>.OnSuccess(item, "User details retrieved successfully."));
         }
 
+        [HttpGet("{id:guid}/detail")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        public async Task<IActionResult> GetStudentDetail(Guid id)
+        {
+            try
+            {
+                var role = (AppRole)HttpContext.Items["Role"]!;
+                var institutionId = role == AppRole.SuperAdmin
+                    ? null
+                    : HttpContext.Items["InstitutionId"] as Guid?;
+
+                var detail = await _service.GetStudentDetailAsync(id, institutionId, role == AppRole.SuperAdmin);
+                if (detail == null) return NotFound(ApiResponse<object>.OnFail("Student not found."));
+
+                return Ok(ApiResponse<StudentDetailResponseDto>.OnSuccess(detail, "Student detail retrieved successfully."));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
+            }
+        }
+
         [HttpPost]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateUserDto dto)

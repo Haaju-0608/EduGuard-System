@@ -396,6 +396,14 @@ public partial class AppDbContext : DbContext
                 .HasColumnName("status")
                 .HasColumnType("participation_status");
 
+            entity.Property(e => e.IdentityVerifiedAt).HasColumnName("identity_verified_at");
+            entity.Property(e => e.IdentityVerifiedBy).HasColumnName("identity_verified_by");
+
+            entity.HasOne(d => d.IdentityVerifiedByNavigation).WithMany()
+    .HasForeignKey(d => d.IdentityVerifiedBy)
+    .OnDelete(DeleteBehavior.SetNull)
+    .HasConstraintName("exam_participations_identity_verified_by_fkey");
+
             entity.HasOne(d => d.BillingTrans).WithOne(p => p.ExamParticipation)
                 .HasForeignKey<ExamParticipation>(d => d.BillingTransId)
                 .OnDelete(DeleteBehavior.SetNull)
@@ -406,7 +414,7 @@ public partial class AppDbContext : DbContext
                 .HasConstraintName("exam_participations_exam_slot_id_fkey");
 
             entity.HasOne(d => d.Student).WithMany(p => p.ExamParticipations)
-                .HasForeignKey(d => d.StudentId)
+                .HasForeignKey(d => d.StudentId)    
                 .HasConstraintName("exam_participations_student_id_fkey");
         });
 

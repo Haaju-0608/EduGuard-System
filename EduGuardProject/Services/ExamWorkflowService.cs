@@ -45,15 +45,20 @@ public class ExamWorkflowService : IExamWorkflowService
             throw new InvalidOperationException("This exam participation cannot join again.");
 
         var hasAttendance = await _context.AttendanceRecords
-            .AsNoTracking()
-            .AnyAsync(r =>
-                r.StudentId == participation.StudentId &&
-                r.Session.ExamSlotId == participation.ExamSlotId &&
-                r.Session.Status != SessionStatus.Cancelled &&
-                (r.Status == AttendanceStatus.Present || r.Status == AttendanceStatus.Late),
-                cancellationToken);
+     .AsNoTracking()
+     .AnyAsync(r =>
+         r.StudentId == participation.StudentId &&
+         r.Session.ExamSlotId == participation.ExamSlotId &&
+         r.Session.Status != SessionStatus.Cancelled &&
+         (r.Status == AttendanceStatus.Present || r.Status == AttendanceStatus.Late),
+         cancellationToken);
         if (!hasAttendance)
             throw new InvalidOperationException("You must be marked present or late before you can start the exam.");
+
+        if (!participation.IdentityVerifiedAt.HasValue)
+            throw new InvalidOperationException(
+                "You need to verify your face before entering the exam. If the AI ​​fails to recognize you," +
+                "Please contact the supervisor for manual approval.");
 
         participation.ExamSlot.Status = ExamSlotStatus.InProgress;
         participation.Status = ParticipationStatus.Joined;

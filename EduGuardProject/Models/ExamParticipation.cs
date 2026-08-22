@@ -12,6 +12,9 @@ public partial class ExamParticipation
 
     public Guid StudentId { get; set; }
 
+    public DateTime? IdentityVerifiedAt { get; set; }
+    public Guid? IdentityVerifiedBy { get; set; }
+
     public Guid? BillingTransId { get; set; }
 
     public DateTime? ActualStart { get; set; }
@@ -40,4 +43,7 @@ public partial class ExamParticipation
     public virtual User Student { get; set; } = null!;
 
     public virtual ICollection<ViolationLog> ViolationLogs { get; set; } = new List<ViolationLog>();
+
+    public virtual User? IdentityVerifiedByNavigation { get; set; }
+
 }

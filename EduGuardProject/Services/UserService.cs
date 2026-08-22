@@ -444,5 +444,106 @@ namespace EduGuardProject.Services
             Status = e.Status,
             CreatedAt = e.CreatedAt
         };
+
+        public async Task<StudentDetailResponseDto?> GetStudentDetailAsync(
+    Guid studentId, Guid? requesterInstitutionId, bool isSuperAdmin)
+        {
+            var student = await _context.Users
+                .AsNoTracking()
+                .FirstOrDefaultAsync(u => u.Id == studentId && u.Role == AppRole.Student);
+            if (student == null) return null;
+
+            // SchoolAdmin chỉ xem được sinh viên cùng trường mình.
+            if (!isSuperAdmin && student.InstitutionId != requesterInstitutionId)
+                return null;
+
+            var result = new StudentDetailResponseDto
+            {
+                Id = student.Id,
+                FullName = student.FullName,
+                Email = student.Email,
+                StudentCode = student.StudentCode,
+                Phone = student.Phone,
+                Status = student.Status,
+                InstitutionId = student.InstitutionId,
+                CreatedAt = student.CreatedAt
+            };
+
+            // --- Trạng thái khuôn mặt ---
+            var activeVectorCount = await _context.BiometricData
+                .AsNoTracking()
+                .CountAsync(b => b.UserId == studentId && b.IsActive);
+
+            var latestRequest = await _context.BiometricRequests
+                .AsNoTracking()
+                .Where(r => r.StudentId == studentId)
+                .OrderByDescending(r => r.CreatedAt)
+                .FirstOrDefaultAsync();
+
+            result.Biometric = new BiometricStatusDto
+            {
+                HasActiveBiometric = activeVectorCount > 0,
+                ActiveVectorCount = activeVectorCount,
+                LatestRequestStatus = latestRequest?.Status,
+                LatestRequestReviewedAt = latestRequest?.ReviewedAt,
+                LatestRequestReason = latestRequest?.Reason
+            };
+
+            // --- Kết quả các bài thi ---
+            result.ExamResults = await _context.StudentExamRecords
+                .AsNoTracking()
+                .Where(r => r.StudentId == studentId && r.Status != StudentExamRecordStatus.Deleted)
+                .OrderByDescending(r => r.CreatedAt)
+                .Select(r => new StudentExamResultDto
+                {
+                    Id = r.Id,
+                    ExamSlotId = r.ExamSlotId,
+                    ExamName = r.ExamSlot.ExamName,
+                    CourseName = r.ExamSlot.Class.CourseName,
+                    FinalScore = r.FinalScore,
+                    Status = r.Status,
+                    SubmittedAt = r.SubmittedAt,
+                    DurationSeconds = r.DurationSeconds
+                })
+                .ToListAsync();
+
+            // --- Các kỳ thi đã tham gia ---
+            result.ExamParticipations = await _context.ExamParticipations
+                .AsNoTracking()
+                .Where(p => p.StudentId == studentId)
+                .OrderByDescending(p => p.ActualStart)
+                .Select(p => new StudentExamParticipationDto
+                {
+                    Id = p.Id,
+                    ExamSlotId = p.ExamSlotId,
+                    ExamName = p.ExamSlot.ExamName,
+                    CourseName = p.ExamSlot.Class.CourseName,
+                    Status = p.Status,
+                    ActualStart = p.ActualStart,
+                    ActualEnd = p.ActualEnd,
+                    DisqualifiedReason = p.DisqualifiedReason,
+                    IdentityVerified = p.IdentityVerifiedAt.HasValue
+                })
+                .ToListAsync();
+
+            // --- Lịch sử điểm danh ---
+            result.AttendanceHistory = await _context.AttendanceRecords
+                .AsNoTracking()
+                .Where(r => r.StudentId == studentId)
+                .OrderByDescending(r => r.CheckinAt)
+                .Select(r => new StudentAttendanceHistoryDto
+                {
+                    Id = r.Id,
+                    SessionId = r.SessionId,
+                    ClassId = r.Session.ClassId,
+                    CourseName = r.Session.Class.CourseName,
+                    Status = r.Status,
+                    Method = r.Method,
+                    CheckinAt = r.CheckinAt
+                })
+                .ToListAsync();
+
+            return result;
+        }
     }
 }

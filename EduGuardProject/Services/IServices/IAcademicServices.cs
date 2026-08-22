@@ -48,7 +48,7 @@ public interface IAttendanceRecordService
     Task<bool> UpdateAsync(Guid id, UpdateAttendanceRecordDto dto);
     Task<bool> DeleteAsync(Guid id);
 
-    Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkByAiVideoAsync(Guid sessionId, Stream videoStream, string fileName);
+    Task<AiSinglePhotoAttendanceResultDto> CreateByAiSinglePhotoAsync(Guid sessionId, Stream photoStream, string fileName);
 }
 
 public interface IBiometricRequestService

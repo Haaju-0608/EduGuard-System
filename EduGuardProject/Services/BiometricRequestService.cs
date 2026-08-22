@@ -96,6 +96,51 @@ public class BiometricRequestService : IBiometricRequestService
             rightStream, dto.RightFile.FileName
         );
 
+        // MỚI: Chống trùng khuôn mặt NGAY LÚC NỘP ĐƠN — trích lại vector từ 3 ảnh vừa
+        // Sinh viên biết bị trùng ngay, không cần đợi Admin duyệt rồi mới báo lỗi.
+        const double duplicateThreshold = 0.40;
+        var uploadedUrls = new[] { aiResponse.FrontUrl, aiResponse.LeftUrl, aiResponse.RightUrl };
+        Guid? duplicateOwnerId = null;
+        try
+        {
+            foreach (var url in uploadedUrls)
+            {
+                var vector = await _aiClient.ExtractAverageVectorFromUrlsAsync(new List<string> { url });
+                var pgVector = new Pgvector.Vector(vector);
+
+                var owner = await _context.Database.SqlQueryRaw<Guid?>(@"
+                    SELECT user_id AS ""Value"" FROM biometric_data
+                    WHERE is_active = true AND user_id != {0} AND (face_vector <-> {1}) < {2}
+                    ORDER BY face_vector <-> {1}
+                    LIMIT 1", user.Id, pgVector, duplicateThreshold)
+                    .FirstOrDefaultAsync();
+
+                if (owner.HasValue)
+                {
+                    duplicateOwnerId = owner;
+                    break;
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException($"Lỗi kiểm tra trùng khuôn mặt: {ex.Message}");
+        }
+
+        if (duplicateOwnerId.HasValue)
+        {
+            // Dọn 3 ảnh vừa upload vì không dùng tới nữa — tránh để lại rác trong storage.
+            foreach (var url in uploadedUrls)
+            {
+                try { await _storage.DeleteAsync(StorageService.BiometricFacesBucket, url); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Không xoá được ảnh {Url} sau khi phát hiện trùng.", url); }
+            }
+
+            throw new InvalidOperationException(
+                "Khuôn mặt này đã được đăng ký bởi một tài khoản khác trong hệ thống. " +
+                "Vui lòng liên hệ quản trị viên nếu đây là nhầm lẫn.");
+        }
+
         // 4. Khởi tạo thực thể Request lưu link Supabase URL thu được từ AI Service
         var entity = new BiometricRequest
         {
@@ -161,6 +206,25 @@ public class BiometricRequestService : IBiometricRequestService
             throw new InvalidOperationException($"Lỗi trích xuất vector khi duyệt: {ex.Message}");
         }
 
+        const double duplicateThreshold = 0.40;
+        foreach (var (vector, label) in newVectors)
+        {
+            var pgVector = new Pgvector.Vector(vector);
+            var duplicateOwnerId = await _context.Database.SqlQueryRaw<Guid?>(@"
+                SELECT user_id AS ""Value"" FROM biometric_data
+                WHERE is_active = true AND user_id != {0} AND (face_vector <-> {1}) < {2}
+                ORDER BY face_vector <-> {1}
+                LIMIT 1", entity.StudentId, pgVector, duplicateThreshold)
+                .FirstOrDefaultAsync();
+
+            if (duplicateOwnerId.HasValue)
+            {
+                throw new InvalidOperationException(
+                    "Khuôn mặt này đã được đăng ký bởi một tài khoản khác trong hệ thống. " +
+                    "Không thể duyệt yêu cầu này.");
+            }
+        }
+
         entity.Status = BiometricReqStatus.Approved;
         entity.ApprovedBy = user.Id;
         entity.ReviewedAt = DateTime.UtcNow;
@@ -168,8 +232,34 @@ public class BiometricRequestService : IBiometricRequestService
             entity.Reason = dto.Reason;
 
         var oldActiveRecords = await _context.BiometricData
-            .Where(b => b.UserId == entity.StudentId && b.IsActive)
-            .ToListAsync();
+    .Where(b => b.UserId == entity.StudentId && b.IsActive)
+    .ToListAsync();
+
+        // MỚI: lấy ĐỦ CẢ 3 ảnh (front/left/right) của lần đăng ký TRƯỚC — không chỉ
+        // về FaceImageUrl (chỉ xoá được ảnh front trong trường hợp đó).
+        var oldRequestIds = oldActiveRecords
+            .Where(b => b.BioRequestId.HasValue)
+            .Select(b => b.BioRequestId!.Value)
+            .Distinct()
+            .ToList();
+
+        var oldRequestImageUrls = oldRequestIds.Count > 0
+            ? await _context.BiometricRequests
+                .Where(r => oldRequestIds.Contains(r.Id))
+                .SelectMany(r => new[] { r.FrontImagePath, r.LeftImagePath, r.RightImagePath })
+                .ToListAsync()
+            : new List<string?>();
+
+        var fallbackFaceImageUrls = oldActiveRecords
+            .Where(b => !b.BioRequestId.HasValue)
+            .Select(b => b.FaceImageUrl);
+
+        var oldImageUrlsToDelete = oldRequestImageUrls
+            .Concat(fallbackFaceImageUrls)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct()
+            .ToList();
+
         foreach (var old in oldActiveRecords)
         {
             old.IsActive = false;
@@ -194,6 +284,21 @@ public class BiometricRequestService : IBiometricRequestService
         }
         await _repo.UpdateAsync(entity);
         await _context.SaveChangesAsync();
+
+        foreach (var oldUrl in oldImageUrlsToDelete)
+        {
+            try
+            {
+                await _storage.DeleteAsync(StorageService.BiometricFacesBucket, oldUrl!);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(ex,
+                    "Không xoá được ảnh cũ {Url} khi duyệt đăng ký lại cho student {StudentId}.",
+                    oldUrl, entity.StudentId);
+              
+            }
+        }
 
         await _notifications.SendToUserAsync(
             entity.StudentId,

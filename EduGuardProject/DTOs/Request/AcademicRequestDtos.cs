@@ -117,11 +117,6 @@ public class UpdateAttendanceRecordDto
     public DateTime? CheckinAt { get; set; }
 }
 
-public class AiVideoAttendanceDto
-{
-    public IFormFile VideoFile { get; set; }
-}
-
 public class CreateBiometricRequestDto
 {
     [Required]

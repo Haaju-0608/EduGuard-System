@@ -390,8 +390,9 @@ public class AttendanceRecordService : IAttendanceRecordService
             throw new UnauthorizedAccessException("Access denied.");
     }
 
-    // 🌟 SỬA ĐỔI: Không ghi ổ đĩa local nữa, đẩy trực tiếp Stream sang FastAPI & Supabase
-    public async Task<IEnumerable<AttendanceRecordResponseDto>> CreateBulkByAiVideoAsync(Guid sessionId, Stream videoStream, string fileName)
+    // Sửa từ điểm danh Video sang điểm danh Single
+    public async Task<AiSinglePhotoAttendanceResultDto> CreateByAiSinglePhotoAsync(
+        Guid sessionId, Stream photoStream, string fileName)
     {
         await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var session = await _sessionRepo.GetByIdAsync(sessionId)
@@ -409,100 +410,102 @@ public class AttendanceRecordService : IAttendanceRecordService
             throw new InvalidOperationException("Attendance can only be recorded during the session time range.");
         }
 
-        // 1. Gọi trực tiếp FastAPI để upload video lên Supabase Storage và bóc tách Vector khuôn mặt
-        VideoVectorsResponse aiResult;
+        var result = new AiSinglePhotoAttendanceResultDto
+        {
+            SessionId = sessionId,
+            ClassId = session.ClassId,
+            ClassName = cls?.CourseName,
+            ExamSlotId = session.ExamSlotId
+        };
+
+        float[] liveVector;
         try
         {
-            aiResult = await _aiClient.ExtractVectorsFromVideoAsync(videoStream, fileName);
+            liveVector = await _aiClient.ExtractSingleFaceVectorAsync(photoStream, fileName);
         }
         catch (Exception aiEx)
         {
             throw new InvalidOperationException($"Lỗi xử lý AI từ Python: {aiEx.Message}");
         }
 
-        // 2. Cập nhật đường dẫn Video từ Cloud Supabase do FastAPI trả về
-        session.VideoPath = aiResult.VideoUrl;
-        //session.Status = SessionStatus.Completed;
-        await _sessionRepo.UpdateAsync(session);
+        var pgVector = new Pgvector.Vector(liveVector);
+        const double threshold = 0.40;
 
-        var presentStudentIds = new List<Guid>();
-        double threshold = 0.40;
-
-        // 3. Truy vấn Vector Khớp Diện Mạo từ pgvector
-        foreach (var vectorArray in aiResult.Vectors)
-        {
-            var pgVector = new Pgvector.Vector(vectorArray);
-
-            var matchedStudentId = await _context.Database.SqlQueryRaw<Guid?>(@"
-                SELECT user_id AS ""Value"" FROM biometric_data 
-                WHERE is_active = true AND (face_vector <-> {0}) < {1}
-                ORDER BY face_vector <-> {0} 
-                LIMIT 1", pgVector, threshold)
+        var matchedStudentId = await _context.Database.SqlQueryRaw<Guid?>(@"
+            SELECT user_id AS ""Value"" FROM biometric_data
+            WHERE is_active = true AND (face_vector <-> {0}) < {1}
+            ORDER BY face_vector <-> {0}
+            LIMIT 1", pgVector, threshold)
             .FirstOrDefaultAsync();
 
-            if (matchedStudentId.HasValue)
-            {
-                presentStudentIds.Add(matchedStudentId.Value);
-            }
+        if (!matchedStudentId.HasValue)
+        {
+            result.IsMatch = false;
+            result.Message = "Không nhận diện được khuôn mặt khớp với sinh viên nào đã đăng ký. Vui lòng điểm danh thủ công.";
+            return result;
         }
 
-        var uniqueStudentIds = presentStudentIds.Distinct().ToList();
+        var matchedStudent = await _context.Users.AsNoTracking()
+            .Where(u => u.Id == matchedStudentId.Value)
+            .Select(u => new { u.FullName, u.StudentCode })
+            .FirstOrDefaultAsync();
 
-        // 4. [TỐI ƯU] Tải trước toàn bộ Enrollment hợp lệ của lớp học
-        var activeEnrollmentIds = await _context.ClassEnrollments
-            .AsNoTracking()
-            .Where(e => e.ClassId == session.ClassId && uniqueStudentIds.Contains(e.StudentId) && e.Status == EnrollmentStatus.Active)
-            .Select(e => e.StudentId)
-            .ToListAsync();
+        result.StudentId = matchedStudentId;
+        result.StudentName = matchedStudent?.FullName;
+        result.StudentCode = matchedStudent?.StudentCode;
 
-        // 5. [TỐI ƯU] Tải trước danh sách Record đã có của phiên này
-        var existingRecords = await _context.AttendanceRecords
-            .Where(r => r.SessionId == sessionId && uniqueStudentIds.Contains(r.StudentId))
-            .ToDictionaryAsync(r => r.StudentId);
+        var isEnrolled = await _context.ClassEnrollments.AsNoTracking()
+            .AnyAsync(e => e.ClassId == session.ClassId
+                && e.StudentId == matchedStudentId.Value
+                && e.Status == EnrollmentStatus.Active);
+
+        if (!isEnrolled)
+        {
+            result.IsMatch = false;
+            result.MatchedButWrongClass = true;
+            result.Message = $"Khuôn mặt khớp với sinh viên {matchedStudent?.FullName} ({matchedStudent?.StudentCode}) " +
+                              $"nhưng người này KHÔNG thuộc lớp/ca thi hiện tại. Vui lòng điểm danh thủ công.";
+            return result;
+        }
 
         var now = DateTime.UtcNow;
-        var recordsToInsert = new List<AttendanceRecord>();
-        var results = new List<AttendanceRecordResponseDto>();
+        var existing = await _context.AttendanceRecords
+            .FirstOrDefaultAsync(r => r.SessionId == sessionId && r.StudentId == matchedStudentId.Value);
 
-        // 6. Thực hiện so khớp trực tiếp trên RAM (In-Memory)
-        foreach (var studentId in uniqueStudentIds)
+        AttendanceRecord record;
+        var action = "created";
+        if (existing != null)
         {
-            if (!activeEnrollmentIds.Contains(studentId)) continue;
-
-            if (existingRecords.TryGetValue(studentId, out var existing))
+            existing.Status = AttendanceStatus.Present;
+            existing.Method = AttendanceMethod.Ai;
+            existing.CheckinAt = now;
+            _context.AttendanceRecords.Update(existing);
+            record = existing;
+            action = "updated";
+        }
+        else
+        {
+            record = new AttendanceRecord
             {
-                existing.Status = AttendanceStatus.Present;
-                existing.Method = AttendanceMethod.Ai;
-                existing.CheckinAt = now;
-
-                _context.AttendanceRecords.Update(existing);
-                results.Add(await AcademicMapper.MapRecordAsync(_context, existing, null));
-            }
-            else
-            {
-                var record = new AttendanceRecord
-                {
-                    Id = Guid.NewGuid(),
-                    SessionId = sessionId,
-                    StudentId = studentId,
-                    Status = AttendanceStatus.Present,
-                    Method = AttendanceMethod.Ai,
-                    CheckinAt = now
-                };
-                recordsToInsert.Add(record);
-            }
+                Id = Guid.NewGuid(),
+                SessionId = sessionId,
+                StudentId = matchedStudentId.Value,
+                Status = AttendanceStatus.Present,
+                Method = AttendanceMethod.Ai,
+                CheckinAt = now
+            };
+            await _context.AttendanceRecords.AddAsync(record);
         }
 
-        if (recordsToInsert.Count > 0)
-            await _context.AttendanceRecords.AddRangeAsync(recordsToInsert);
-
         await _context.SaveChangesAsync();
-
-        foreach (var record in recordsToInsert)
-            results.Add(await AcademicMapper.MapRecordAsync(_context, record, null));
-
         await UpdateSessionRecognizedCountAsync(sessionId);
+        await DispatchAttendanceProgressAsync(record, action);
 
-        return results;
+        var dto = await AcademicMapper.MapRecordAsync(_context, record, "student,session");
+
+        result.IsMatch = true;
+        result.Record = dto;
+        result.Message = $"Điểm danh thành công cho {matchedStudent?.FullName} ({matchedStudent?.StudentCode}).";
+        return result;
     }
 }

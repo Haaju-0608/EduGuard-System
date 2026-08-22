@@ -101,24 +101,25 @@ public class AttendanceRecordsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
-    [HttpPost("~/api/attendance-sessions/{sessionId:guid}/records/ai-video")]
+    [HttpPost("~/api/attendance-sessions/{sessionId:guid}/records/ai-photo")]
     [Consumes("multipart/form-data")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
-    public async Task<IActionResult> CreateBulkByAiVideo(Guid sessionId, [FromForm] AiVideoAttendanceDto dto)
+    public async Task<IActionResult> CreateByAiSinglePhoto(Guid sessionId, [FromForm] AiPhotoAttendanceDto dto)
     {
-        // Lấy file video ra từ trong DTO
-        var videoFile = dto.VideoFile;
-
-        if (videoFile == null || videoFile.Length == 0)
-            return BadRequest(ApiResponse<object>.OnFail("File video không hợp lệ hoặc trống."));
+        var photoFile = dto.PhotoFile;
+        if (photoFile == null || photoFile.Length == 0)
+            return BadRequest(ApiResponse<object>.OnFail("File ảnh không hợp lệ hoặc trống."));
 
         try
         {
-            using var stream = videoFile.OpenReadStream();
-            var results = await _service.CreateBulkByAiVideoAsync(sessionId, stream, videoFile.FileName);
+            using var stream = photoFile.OpenReadStream();
+            var result = await _service.CreateByAiSinglePhotoAsync(sessionId, stream, photoFile.FileName);
 
-            return StatusCode(201, ApiResponse<IEnumerable<AttendanceRecordResponseDto>>.OnSuccess(
-                results, "Điểm danh bằng AI hoàn tất. Ca điểm danh vẫn đang mở để bạn kiểm tra và điểm danh bù thủ công."));
+            var message = result.IsMatch
+                ? "Điểm danh AI thành công."
+                : (result.Message ?? "Không khớp.");
+
+            return Ok(ApiResponse<AiSinglePhotoAttendanceResultDto>.OnSuccess(result, message));
         }
         catch (Exception ex)
         {

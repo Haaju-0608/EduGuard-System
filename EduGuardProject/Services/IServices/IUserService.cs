@@ -13,5 +13,7 @@ namespace EduGuardProject.Services.IServices
         Task<bool> UpdateUserAsync(Guid id, UpdateUserDto dto);
         Task<bool> UpdateMyProfileAsync(Guid id, UpdateMyProfileDto dto);
         Task<bool> DeleteUserAsync(Guid id);
+
+        Task<StudentDetailResponseDto?> GetStudentDetailAsync(Guid studentId, Guid? requesterInstitutionId, bool isSuperAdmin);
     }
 }

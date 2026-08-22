@@ -168,23 +168,32 @@ namespace EduGuardProject.Controllers
         // Truyền dữ liệu: route id là participationId.
         // Điều kiện: role Student; Student phải là chủ participation; participation không được Submitted hoặc Disqualified.
         [HttpPost("{id:guid}/join")]
-[SupabaseAuthorize(AppRole.Student)]
-public async Task<IActionResult> Join(Guid id, IFormFile liveCapture)
-{
-    try
-    {
-        var user = await _currentUser.GetRequiredUserAsync(); 
-        var verifyResult = await _identityVerification.VerifyAsync(id, user.Id, liveCapture);
+        [SupabaseAuthorize(AppRole.Student)]
+        public async Task<IActionResult> Join(Guid id, IFormFile? liveCapture)
+        {
+            try
+            {
+                var user = await _currentUser.GetRequiredUserAsync();
 
-        if (!verifyResult.IsMatch)
-            return BadRequest(ApiResponse<object>.OnFail(
-                $"Face verification failed. Please try again (distance={verifyResult.Distance:F4})."));
+                // Nếu giám thị đã duyệt tay từ trước, không cần verify lại bằng AI/ảnh nữa.
+                var alreadyVerified = await _identityVerification.IsIdentityVerifiedAsync(id);
+                if (!alreadyVerified)
+                {
+                    if (liveCapture == null || liveCapture.Length == 0)
+                        return BadRequest(ApiResponse<object>.OnFail(
+                            "You need to take a photo for facial verification or wait for manual approval by a proctor."));
 
-        var result = await _workflowService.JoinAsync(id); // GIỮ NGUYÊN signature gốc, không đổi gì
-        return Ok(ApiResponse<object>.OnSuccess(result, "Student joined exam successfully."));
-    }
-    catch (Exception ex) { return HandleException(ex); }
-}
+                    var verifyResult = await _identityVerification.VerifyAsync(id, user.Id, liveCapture);
+                    if (!verifyResult.IsMatch)
+                        return BadRequest(ApiResponse<object>.OnFail(
+                            $"Face verification failed. Please try again (distance={verifyResult.Distance:F4})."));
+                }
+
+                var result = await _workflowService.JoinAsync(id);
+                return Ok(ApiResponse<object>.OnSuccess(result, "Student joined exam successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
 
         // Send Exam Heartbeat
         // Truyền dữ liệu: route id là participationId, body clientTime.
@@ -257,6 +266,23 @@ public async Task<IActionResult> Join(Guid id, IFormFile liveCapture)
             {
                 var result = await _workflowService.VoidAsync(id, dto.Reason);
                 return Ok(ApiResponse<object>.OnSuccess(result, "Submitted exam result voided successfully."));
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        // Manual Approve Identity (dành cho giám thị khi AI verify thất bại)
+        // Truyền dữ liệu: route id là participationId.
+        // Điều kiện: giám thị được phân công ca thi (ProctorId), giáo viên phụ trách lớp,
+        // SchoolAdmin cùng trường, hoặc SuperAdmin.
+        [HttpPost("{id:guid}/manual-approve-identity")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+        public async Task<IActionResult> ManualApproveIdentity(Guid id)
+        {
+            try
+            {
+                var success = await _identityVerification.ManualApproveIdentityAsync(id);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Exam participation not found."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "After manual review, students can enter the exam."));
             }
             catch (Exception ex) { return HandleException(ex); }
         }
