@@ -3,6 +3,7 @@ using System;
 using EduGuardProject.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace EduGuardProject.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260824032519_RenameExamQuestionNameAndStageQuestionSets")]
+    partial class RenameExamQuestionNameAndStageQuestionSets
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -574,6 +577,10 @@ namespace EduGuardProject.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("exam_question_name");
 
+                    b.Property<Guid?>("ExamSlotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("exam_slot_id");
+
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
@@ -607,6 +614,8 @@ namespace EduGuardProject.Migrations
 
                     b.HasKey("Id")
                         .HasName("exam_questions_pkey");
+
+                    b.HasIndex(new[] { "ExamSlotId", "DisplayOrder" }, "idx_exam_questions_exam_slot_display_order");
 
                     b.HasIndex(new[] { "InstitutionId", "ExamQuestionName", "DisplayOrder" }, "idx_exam_questions_institution_name_order");
 
@@ -647,12 +656,6 @@ namespace EduGuardProject.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("exam_name");
 
-                    b.Property<string>("ExamQuestionName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("exam_question_name");
-
                     b.Property<int>("ExpectedDurationMinutes")
                         .HasColumnType("integer")
                         .HasColumnName("expected_duration_minutes");
@@ -683,8 +686,6 @@ namespace EduGuardProject.Migrations
                     b.HasIndex("ProctorId");
 
                     b.HasIndex(new[] { "ClassId" }, "idx_exam_slot_class");
-
-                    b.HasIndex(new[] { "ExamQuestionName" }, "idx_exam_slots_exam_question_name");
 
                     b.ToTable("exam_slots", (string)null);
                 });
@@ -1459,6 +1460,12 @@ namespace EduGuardProject.Migrations
 
             modelBuilder.Entity("EduGuardProject.Models.ExamQuestion", b =>
                 {
+                    b.HasOne("EduGuardProject.Models.ExamSlot", "ExamSlot")
+                        .WithMany("ExamQuestions")
+                        .HasForeignKey("ExamSlotId")
+                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasConstraintName("exam_questions_exam_slot_id_fkey");
+
                     b.HasOne("EduGuardProject.Models.Institution", "Institution")
                         .WithMany("ExamQuestions")
                         .HasForeignKey("InstitutionId")
@@ -1471,6 +1478,8 @@ namespace EduGuardProject.Migrations
                         .HasForeignKey("PassageId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("exam_questions_passage_id_fkey");
+
+                    b.Navigation("ExamSlot");
 
                     b.Navigation("Institution");
 
@@ -1679,6 +1688,8 @@ namespace EduGuardProject.Migrations
                     b.Navigation("AttendanceSessions");
 
                     b.Navigation("ExamParticipations");
+
+                    b.Navigation("ExamQuestions");
 
                     b.Navigation("ReadingPassages");
 

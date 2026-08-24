@@ -35,6 +35,7 @@ public class ExamSlotRepository : IExamslotRepository
             var s = search.ToLower();
             query = query.Where(es =>
                 es.ExamName.ToLower().Contains(s) ||
+                es.ExamQuestionName.ToLower().Contains(s) ||
                 _context.Classes.Any(c => c.Id == es.ClassId && c.CourseName.ToLower().Contains(s)));
         }
 
@@ -53,6 +54,7 @@ public class ExamSlotRepository : IExamslotRepository
         Id = e.Id,
         ClassId = e.ClassId,
         ExamName = e.ExamName,
+        ExamQuestionName = e.ExamQuestionName,
         StartTime = e.StartTime,
         EndTime = e.EndTime,
         ExpectedDurationMinutes = e.ExpectedDurationMinutes,

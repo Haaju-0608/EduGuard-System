@@ -260,9 +260,10 @@ public class SubmitStudentAnswerDto
 public class CreateExamQuestionDto
 {
     [Required]
-    public Guid ExamSlotId { get; set; }
+    public Guid InstitutionId { get; set; }
 
-    public Guid? PassageId { get; set; }
+    [Required, MaxLength(255)]
+    public string ExamQuestionName { get; set; } = null!;
 
     [Required, MaxLength(30)]
     public string QuestionType { get; set; } = null!;
@@ -354,7 +355,7 @@ public class CreateExamSlotDto
 
     [Required]
     [MaxLength(255)]
-    public string ExamName { get; set; } = string.Empty;
+    public string ExamQuestionName { get; set; } = string.Empty;
 
     public ExamSlotStatus Status { get; set; }
     public int ExpectedDurationMinutes { get; set; }

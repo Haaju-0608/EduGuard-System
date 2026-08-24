@@ -4,7 +4,9 @@ public partial class ExamQuestion
 {
     public Guid Id { get; set; }
 
-    public Guid ExamSlotId { get; set; }
+    public Guid InstitutionId { get; set; }
+
+    public string ExamQuestionName { get; set; } = null!;
 
     public Guid? PassageId { get; set; }
 
@@ -22,7 +24,7 @@ public partial class ExamQuestion
 
     public DateTime CreatedAt { get; set; }
 
-    public virtual ExamSlot ExamSlot { get; set; } = null!;
+    public virtual Institution Institution { get; set; } = null!;
 
     public virtual ReadingPassage? Passage { get; set; }
 

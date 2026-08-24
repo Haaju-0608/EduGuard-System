@@ -172,8 +172,10 @@ public class ExamslotServices : IExamSlotServices
     {
         await _currentUser.EnsureRoleAsync(AppRole.SchoolAdmin, AppRole.SuperAdmin);
         var user = await _currentUser.GetRequiredUserAsync();
-        if (string.IsNullOrWhiteSpace(dto.ExamName))
-            throw new InvalidOperationException("Exam name is required.");
+        if (string.IsNullOrWhiteSpace(dto.ExamQuestionName))
+            throw new InvalidOperationException("Exam question name is required.");
+        if (dto.ExamQuestionName.Trim().Length > 255)
+            throw new InvalidOperationException("Exam question name cannot exceed 255 characters.");
         if (dto.ExpectedDurationMinutes <= 0)
             throw new InvalidOperationException("Expected duration must be greater than zero.");
         if (!Enum.IsDefined(dto.Status) || dto.Status != ExamSlotStatus.Scheduled)
@@ -204,12 +206,25 @@ public class ExamslotServices : IExamSlotServices
         if (dto.ProctorId is Guid proctorId && proctorId != Guid.Empty)
             proctor = await GetClassLecturerAsync(proctorId, cls.InstitutionId);
 
+        var normalizedQuestionName = dto.ExamQuestionName.Trim().ToLower();
+        var examQuestionName = await _context.ExamQuestions
+            .AsNoTracking()
+            .Where(question =>
+                question.InstitutionId == cls.InstitutionId &&
+                question.ExamQuestionName.ToLower() == normalizedQuestionName)
+            .Select(question => question.ExamQuestionName)
+            .FirstOrDefaultAsync();
+
+        if (examQuestionName == null)
+            throw new InvalidOperationException("Exam question set not found in this institution.");
+
         var entity = new ExamSlot
         {
             Id = Guid.NewGuid(),
             ClassId = dto.ClassId,
             CreatedBy = user.Id,
-            ExamName = dto.ExamName.Trim(),
+            ExamName = examQuestionName,
+            ExamQuestionName = examQuestionName,
             StartTime = dto.StartTime,
             EndTime = dto.EndTime,
             ExpectedDurationMinutes = dto.ExpectedDurationMinutes,
@@ -365,6 +380,7 @@ public class ExamslotServices : IExamSlotServices
                 examSlotId = entity.Id,
                 entity.ClassId,
                 entity.ExamName,
+                entity.ExamQuestionName,
                 entity.StartTime,
                 entity.EndTime,
                 entity.Status
@@ -466,6 +482,7 @@ public class ExamslotServices : IExamSlotServices
         Id = entity.Id,
         ClassId = entity.ClassId,
         ExamName = entity.ExamName,
+        ExamQuestionName = entity.ExamQuestionName,
         StartTime = entity.StartTime,
         EndTime = entity.EndTime,
         ExpectedDurationMinutes = entity.ExpectedDurationMinutes,

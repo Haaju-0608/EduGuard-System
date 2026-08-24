@@ -119,10 +119,16 @@ public class StudentExamRecordService : IStudentExamRecordService
 
         var examSlot = await _context.ExamSlots
             .Include(e => e.Class)
-            .Include(e => e.ExamQuestions)
-                .ThenInclude(q => q.QuestionOptions)
             .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
             ?? throw new InvalidOperationException("Exam slot not found.");
+        var normalizedQuestionName = examSlot.ExamQuestionName.ToLower();
+        var examQuestions = await _context.ExamQuestions
+            .AsNoTracking()
+            .Include(question => question.QuestionOptions)
+            .Where(question =>
+                question.InstitutionId == examSlot.Class.InstitutionId &&
+                question.ExamQuestionName.ToLower() == normalizedQuestionName)
+            .ToListAsync();
         ValidateDuration(dto.DurationSeconds, examSlot);
 
         if (user.InstitutionId != examSlot.Class.InstitutionId)
@@ -167,7 +173,8 @@ public class StudentExamRecordService : IStudentExamRecordService
 
         var now = DateTime.UtcNow;
         ValidateRecordTimes(now, now, examSlot);
-        var (examRecord, finalScore, requiresManualMarking) = BuildSubmissionRecord(examSlot, user.Id, dto, now);
+        var (examRecord, finalScore, requiresManualMarking) = BuildSubmissionRecord(
+            examSlot, examQuestions, user.Id, dto, now);
 
         entity ??= new StudentExamRecord
         {
@@ -532,14 +539,15 @@ public class StudentExamRecordService : IStudentExamRecordService
 
     private static (string ExamRecord, decimal FinalScore, bool RequiresManualMarking) BuildSubmissionRecord(
         ExamSlot examSlot,
+        IReadOnlyCollection<ExamQuestion> examQuestions,
         Guid studentId,
         SubmitStudentExamRecordDto dto,
         DateTime submittedAt)
     {
-        if (examSlot.ExamQuestions.Count > 0 && dto.Answers.Count == 0)
+        if (examQuestions.Count > 0 && dto.Answers.Count == 0)
             throw new InvalidOperationException("Answers are required.");
 
-        var questions = examSlot.ExamQuestions.ToDictionary(q => q.Id);
+        var questions = examQuestions.ToDictionary(q => q.Id);
         var seenQuestionIds = new HashSet<Guid>();
         var answers = new List<object>();
         var rawScore = 0m;
@@ -580,7 +588,7 @@ public class StudentExamRecordService : IStudentExamRecordService
             });
         }
 
-        var rawMaxScore = examSlot.ExamQuestions.Sum(q => q.Points);
+        var rawMaxScore = examQuestions.Sum(q => q.Points);
         var finalScore = ToExamScore(rawScore, rawMaxScore);
         var examRecord = JsonSerializer.Serialize(new
         {

@@ -106,6 +106,8 @@ public interface IExamQuestionService
         string? search, string? sort, int page, int pageSize, Guid? examSlotId = null);
     Task<ExamQuestionResponseDto?> GetByIdAsync(Guid id);
     Task<ExamQuestionResponseDto> CreateAsync(CreateExamQuestionDto dto);
+    Task<ImportExamQuestionsResponseDto> ImportFromExcelAsync(
+        Guid institutionId, IFormFile file, CancellationToken cancellationToken = default);
     Task<ExamQuestionResponseDto?> UpdateAsync(Guid id, UpdateExamQuestionDto dto);
     Task<bool> DeleteAsync(Guid id);
     Task<QuestionOptionResponseDto> CreateOptionAsync(Guid questionId, CreateQuestionOptionDto dto);

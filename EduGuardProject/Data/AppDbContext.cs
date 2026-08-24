@@ -193,10 +193,10 @@ public partial class AppDbContext : DbContext
                 .OnDelete(DeleteBehavior.Restrict)
                 .HasConstraintName("attendance_sessions_created_by_fkey");
 
-            entity.HasOne(d => d.ExamSlot).WithMany()
-        .HasForeignKey(d => d.ExamSlotId)
-        .OnDelete(DeleteBehavior.SetNull)
-        .HasConstraintName("attendance_sessions_exam_slot_id_fkey");
+            entity.HasOne(d => d.ExamSlot).WithMany(p => p.AttendanceSessions)
+                .HasForeignKey(d => d.ExamSlotId)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("attendance_sessions_exam_slot_id_fkey");
         });
 
         modelBuilder.Entity<BiometricDatum>(entity =>
@@ -411,6 +411,7 @@ public partial class AppDbContext : DbContext
 
             entity.HasOne(d => d.ExamSlot).WithMany(p => p.ExamParticipations)
                 .HasForeignKey(d => d.ExamSlotId)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("exam_participations_exam_slot_id_fkey");
 
             entity.HasOne(d => d.Student).WithMany(p => p.ExamParticipations)
@@ -424,7 +425,7 @@ public partial class AppDbContext : DbContext
 
             entity.ToTable("exam_questions");
 
-            entity.HasIndex(e => e.ExamSlotId, "idx_exam_questions_exam_slot");
+            entity.HasIndex(e => new { e.InstitutionId, e.ExamQuestionName, e.DisplayOrder }, "idx_exam_questions_institution_name_order");
 
             entity.HasIndex(e => e.PassageId, "idx_exam_questions_passage");
 
@@ -438,7 +439,11 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("now()")
                 .HasColumnName("created_at");
             entity.Property(e => e.DisplayOrder).HasColumnName("display_order");
-            entity.Property(e => e.ExamSlotId).HasColumnName("exam_slot_id");
+            entity.Property(e => e.ExamQuestionName)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("exam_question_name");
+            entity.Property(e => e.InstitutionId).HasColumnName("institution_id");
             entity.Property(e => e.ImageUrl)
                 .HasMaxLength(500)
                 .HasColumnName("image_url");
@@ -452,9 +457,10 @@ public partial class AppDbContext : DbContext
                 .HasMaxLength(30)
                 .HasColumnName("question_type");
 
-            entity.HasOne(d => d.ExamSlot).WithMany(p => p.ExamQuestions)
-                .HasForeignKey(d => d.ExamSlotId)
-                .HasConstraintName("exam_questions_exam_slot_id_fkey");
+            entity.HasOne(d => d.Institution).WithMany(p => p.ExamQuestions)
+                .HasForeignKey(d => d.InstitutionId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("exam_questions_institution_id_fkey");
 
             entity.HasOne(d => d.Passage).WithMany(p => p.ExamQuestions)
                 .HasForeignKey(d => d.PassageId)
@@ -484,6 +490,7 @@ public partial class AppDbContext : DbContext
 
             entity.HasOne(d => d.ExamSlot).WithMany(p => p.ReadingPassages)
                 .HasForeignKey(d => d.ExamSlotId)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("reading_passages_exam_slot_id_fkey");
         });
 
@@ -494,6 +501,8 @@ public partial class AppDbContext : DbContext
             entity.ToTable("exam_slots");
 
             entity.HasIndex(e => e.ClassId, "idx_exam_slot_class");
+
+            entity.HasIndex(e => e.ExamQuestionName, "idx_exam_slots_exam_question_name");
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
@@ -508,6 +517,10 @@ public partial class AppDbContext : DbContext
                 .IsRequired()
                 .HasMaxLength(255)
                 .HasColumnName("exam_name");
+            entity.Property(e => e.ExamQuestionName)
+                .IsRequired()
+                .HasMaxLength(255)
+                .HasColumnName("exam_question_name");
             entity.Property(e => e.ExpectedDurationMinutes).HasColumnName("expected_duration_minutes");
             entity.Property(e => e.StartTime).HasColumnName("start_time");
             entity.Property(e => e.Status)
@@ -626,6 +639,7 @@ public partial class AppDbContext : DbContext
 
             entity.HasOne(d => d.Question).WithMany(p => p.QuestionOptions)
                 .HasForeignKey(d => d.QuestionId)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("question_options_question_id_fkey");
         });
 
@@ -665,6 +679,7 @@ public partial class AppDbContext : DbContext
 
             entity.HasOne(d => d.ExamSlot).WithMany(p => p.StudentExamRecords)
                 .HasForeignKey(d => d.ExamSlotId)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("student_exam_records_exam_slot_id_fkey");
 
             entity.HasOne(d => d.Student).WithMany(p => p.StudentExamRecords)
@@ -831,6 +846,7 @@ public partial class AppDbContext : DbContext
 
             entity.HasOne(d => d.Participation).WithMany(p => p.ViolationLogs)
                 .HasForeignKey(d => d.ParticipationId)
+                .OnDelete(DeleteBehavior.Cascade)
                 .HasConstraintName("violation_logs_participation_id_fkey");
 
             entity.HasOne(d => d.ReviewedByNavigation).WithMany(p => p.ViolationLogs)

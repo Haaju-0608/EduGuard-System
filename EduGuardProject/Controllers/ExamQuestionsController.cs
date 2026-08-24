@@ -62,6 +62,24 @@ public class ExamQuestionsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Imports a reusable question set that can be referenced by multiple ExamSlots.
+    // exam_questions.exam_question_name is the Excel file name without .xlsx.
+    [HttpPost("import-excel")]
+    [Consumes("multipart/form-data")]
+    [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]
+    public async Task<IActionResult> ImportExcel(
+        [FromForm] Guid institutionId,
+        IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.ImportFromExcelAsync(institutionId, file, cancellationToken);
+            return OkSingle(result, "Exam questions imported successfully.");
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
     // Roles: Lecturer, SchoolAdmin, SuperAdmin. Returns: updated ExamQuestionResponseDto including IsCorrect.
     [HttpPut("{id:guid}")]
     [SupabaseAuthorize(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin)]

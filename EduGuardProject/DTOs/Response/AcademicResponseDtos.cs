@@ -138,6 +138,7 @@ public class ExamslotReponseDto
     public Guid Id { get; set; }
     public Guid ClassId { get; set; }
     public string ExamName { get; set; } = null!;
+    public string ExamQuestionName { get; set; } = null!;
     public DateTime StartTime { get; set; }
     public DateTime EndTime { get; set; }
     public int ExpectedDurationMinutes { get; set; }
@@ -188,10 +189,10 @@ public class StudentExamRecordResponseDto
 public class ExamQuestionResponseDto
 {
     public Guid Id { get; set; }
-    public Guid ExamSlotId { get; set; }
+    public Guid InstitutionId { get; set; }
     public Guid? PassageId { get; set; }
     public string? PassageText { get; set; }
-    public string? ExamName { get; set; }
+    public string ExamQuestionName { get; set; } = null!;
     public string QuestionType { get; set; } = null!;
     public string QuestionContent { get; set; } = null!;
     public string? AudioUrl { get; set; }
@@ -200,6 +201,13 @@ public class ExamQuestionResponseDto
     public int DisplayOrder { get; set; }
     public DateTime CreatedAt { get; set; }
     public List<QuestionOptionResponseDto> Options { get; set; } = [];
+}
+
+public class ImportExamQuestionsResponseDto
+{
+    public Guid InstitutionId { get; set; }
+    public string ExamQuestionName { get; set; } = null!;
+    public int ImportedCount { get; set; }
 }
 
 public class ReadingPassageResponseDto

@@ -143,8 +143,10 @@ namespace EduGuardProject.Controllers
         }
 
         // Create Exam Slot
-        // Truyền dữ liệu: body classId, lecturerId, examName, status, expectedDurationMinutes, startTime, endTime.
-        // Điều kiện: SchoolAdmin hoặc SuperAdmin; class phải tồn tại và thuộc institution được phép truy cập; lecturerId nếu truyền phải là Lecturer cùng institution.
+        // Truyền dữ liệu: body classId, lecturerId, proctorId, examQuestionName, status,
+        // expectedDurationMinutes, startTime, endTime.
+        // Hệ thống tham chiếu bộ đề theo examQuestionName trong cùng institution; một bộ đề có thể dùng cho nhiều ExamSlot.
+        // Điều kiện: SchoolAdmin hoặc SuperAdmin; class và bộ đề phải thuộc institution được phép truy cập.
         [HttpPost]
         [SupabaseAuthorize(AppRole.SchoolAdmin, AppRole.SuperAdmin)]
         public async Task<IActionResult> Create([FromBody] CreateExamSlotDto dto)

@@ -12,27 +12,31 @@ public class ExamQuestionRepository : IExamQuestionRepository
 
     public async Task<(IEnumerable<ExamQuestion> Items, int TotalCount)> GetAllAsync(
         string? search, string? sort, int page, int pageSize,
-        Guid? examSlotId = null, Guid? institutionId = null, Guid? lecturerId = null, Guid? studentId = null)
+        Guid? examSlotId = null, Guid? institutionId = null, Guid? studentId = null)
     {
         var query = BaseQuery().AsNoTracking();
 
         if (examSlotId.HasValue)
-            query = query.Where(q => q.ExamSlotId == examSlotId.Value);
+            query = query.Where(q => _context.ExamSlots.Any(slot =>
+                slot.Id == examSlotId.Value &&
+                slot.Class.InstitutionId == q.InstitutionId &&
+                slot.ExamQuestionName.ToLower() == q.ExamQuestionName.ToLower()));
         if (institutionId.HasValue)
-            query = query.Where(q => q.ExamSlot.Class.InstitutionId == institutionId.Value);
-        if (lecturerId.HasValue)
-            query = query.Where(q => q.ExamSlot.Class.LecturerId == lecturerId.Value);
+            query = query.Where(q => q.InstitutionId == institutionId.Value);
         if (studentId.HasValue)
         {
             var now = DateTime.UtcNow;
-            query = query.Where(q =>
-                q.ExamSlot.Status != ExamSlotStatus.Cancelled &&
-                q.ExamSlot.Status != ExamSlotStatus.Completed &&
-                q.ExamSlot.StartTime <= now &&
-                q.ExamSlot.EndTime >= now &&
-                q.ExamSlot.ExamParticipations.Any(p =>
+            query = query.Where(q => _context.ExamSlots.Any(slot =>
+                slot.Class.InstitutionId == q.InstitutionId &&
+                slot.ExamQuestionName.ToLower() == q.ExamQuestionName.ToLower() &&
+                (!examSlotId.HasValue || slot.Id == examSlotId.Value) &&
+                slot.Status != ExamSlotStatus.Cancelled &&
+                slot.Status != ExamSlotStatus.Completed &&
+                slot.StartTime <= now &&
+                slot.EndTime >= now &&
+                slot.ExamParticipations.Any(p =>
                     p.StudentId == studentId.Value &&
-                    p.Status == ParticipationStatus.Joined));
+                    p.Status == ParticipationStatus.Joined)));
         }
 
         if (!string.IsNullOrWhiteSpace(search))
@@ -41,7 +45,7 @@ public class ExamQuestionRepository : IExamQuestionRepository
             query = query.Where(q =>
                 q.QuestionContent.ToLower().Contains(s) ||
                 q.QuestionType.ToLower().Contains(s) ||
-                q.ExamSlot.ExamName.ToLower().Contains(s));
+                q.ExamQuestionName.ToLower().Contains(s));
         }
 
         var totalCount = await query.CountAsync();
@@ -61,14 +65,19 @@ public class ExamQuestionRepository : IExamQuestionRepository
             .Include(o => o.Question)
             .ThenInclude(q => q.QuestionOptions)
             .Include(o => o.Question)
-            .ThenInclude(q => q.ExamSlot)
-            .ThenInclude(e => e.Class)
+            .ThenInclude(q => q.Institution)
             .FirstOrDefaultAsync(o => o.Id == id);
 
     public async Task AddAsync(ExamQuestion entity)
     {
         await _context.ExamQuestions.AddAsync(entity);
         await _context.SaveChangesAsync();
+    }
+
+    public async Task AddRangeAsync(IEnumerable<ExamQuestion> entities, CancellationToken cancellationToken = default)
+    {
+        await _context.ExamQuestions.AddRangeAsync(entities, cancellationToken);
+        await _context.SaveChangesAsync(cancellationToken);
     }
 
     public async Task UpdateAsync(ExamQuestion entity)
@@ -105,10 +114,7 @@ public class ExamQuestionRepository : IExamQuestionRepository
         _context.ExamQuestions
             .Include(q => q.QuestionOptions)
             .Include(q => q.Passage)
-            .Include(q => q.ExamSlot)
-            .ThenInclude(e => e.Class)
-            .Include(q => q.ExamSlot)
-            .ThenInclude(e => e.ExamParticipations);
+            .Include(q => q.Institution);
 
     private static IQueryable<ExamQuestion> ApplySort(IQueryable<ExamQuestion> query, string? sort) =>
         (sort ?? "displayorder").ToLower() switch

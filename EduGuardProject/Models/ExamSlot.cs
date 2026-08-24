@@ -13,6 +13,9 @@ public partial class ExamSlot
     [Column("exam_name")]
     public string ExamName { get; set; } = null!;
 
+    [Column("exam_question_name")]
+    public string ExamQuestionName { get; set; } = null!;
+
     public DateTime StartTime { get; set; }
 
     public DateTime EndTime { get; set; }
@@ -42,7 +45,7 @@ public partial class ExamSlot
 
     public virtual ICollection<ExamParticipation> ExamParticipations { get; set; } = new List<ExamParticipation>();
 
-    public virtual ICollection<ExamQuestion> ExamQuestions { get; set; } = new List<ExamQuestion>();
+    public virtual ICollection<AttendanceSession> AttendanceSessions { get; set; } = new List<AttendanceSession>();
 
     public virtual ICollection<ReadingPassage> ReadingPassages { get; set; } = new List<ReadingPassage>();
 

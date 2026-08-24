@@ -3,6 +3,7 @@ using System;
 using EduGuardProject.Models;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using Npgsql.EntityFrameworkCore.PostgreSQL.Metadata;
 using Pgvector;
@@ -12,9 +13,11 @@ using Pgvector;
 namespace EduGuardProject.Migrations
 {
     [DbContext(typeof(AppDbContext))]
-    partial class AppDbContextModelSnapshot : ModelSnapshot
+    [Migration("20260824022706_AddExamNameToExamQuestions")]
+    partial class AddExamNameToExamQuestions
     {
-        protected override void BuildModel(ModelBuilder modelBuilder)
+        /// <inheritdoc />
+        protected override void BuildTargetModel(ModelBuilder modelBuilder)
         {
 #pragma warning disable 612, 618
             modelBuilder
@@ -568,20 +571,20 @@ namespace EduGuardProject.Migrations
                         .HasColumnType("integer")
                         .HasColumnName("display_order");
 
-                    b.Property<string>("ExamQuestionName")
+                    b.Property<string>("ExamName")
                         .IsRequired()
                         .HasMaxLength(255)
                         .HasColumnType("character varying(255)")
-                        .HasColumnName("exam_question_name");
+                        .HasColumnName("exam_name");
+
+                    b.Property<Guid>("ExamSlotId")
+                        .HasColumnType("uuid")
+                        .HasColumnName("exam_slot_id");
 
                     b.Property<string>("ImageUrl")
                         .HasMaxLength(500)
                         .HasColumnType("character varying(500)")
                         .HasColumnName("image_url");
-
-                    b.Property<Guid>("InstitutionId")
-                        .HasColumnType("uuid")
-                        .HasColumnName("institution_id");
 
                     b.Property<Guid?>("PassageId")
                         .HasColumnType("uuid")
@@ -608,7 +611,7 @@ namespace EduGuardProject.Migrations
                     b.HasKey("Id")
                         .HasName("exam_questions_pkey");
 
-                    b.HasIndex(new[] { "InstitutionId", "ExamQuestionName", "DisplayOrder" }, "idx_exam_questions_institution_name_order");
+                    b.HasIndex(new[] { "ExamSlotId" }, "idx_exam_questions_exam_slot");
 
                     b.HasIndex(new[] { "PassageId" }, "idx_exam_questions_passage");
 
@@ -647,12 +650,6 @@ namespace EduGuardProject.Migrations
                         .HasColumnType("character varying(255)")
                         .HasColumnName("exam_name");
 
-                    b.Property<string>("ExamQuestionName")
-                        .IsRequired()
-                        .HasMaxLength(255)
-                        .HasColumnType("character varying(255)")
-                        .HasColumnName("exam_question_name");
-
                     b.Property<int>("ExpectedDurationMinutes")
                         .HasColumnType("integer")
                         .HasColumnName("expected_duration_minutes");
@@ -683,8 +680,6 @@ namespace EduGuardProject.Migrations
                     b.HasIndex("ProctorId");
 
                     b.HasIndex(new[] { "ClassId" }, "idx_exam_slot_class");
-
-                    b.HasIndex(new[] { "ExamQuestionName" }, "idx_exam_slots_exam_question_name");
 
                     b.ToTable("exam_slots", (string)null);
                 });
@@ -1308,7 +1303,7 @@ namespace EduGuardProject.Migrations
                         .HasConstraintName("attendance_sessions_created_by_fkey");
 
                     b.HasOne("EduGuardProject.Models.ExamSlot", "ExamSlot")
-                        .WithMany("AttendanceSessions")
+                        .WithMany()
                         .HasForeignKey("ExamSlotId")
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("attendance_sessions_exam_slot_id_fkey");
@@ -1459,12 +1454,12 @@ namespace EduGuardProject.Migrations
 
             modelBuilder.Entity("EduGuardProject.Models.ExamQuestion", b =>
                 {
-                    b.HasOne("EduGuardProject.Models.Institution", "Institution")
+                    b.HasOne("EduGuardProject.Models.ExamSlot", "ExamSlot")
                         .WithMany("ExamQuestions")
-                        .HasForeignKey("InstitutionId")
-                        .OnDelete(DeleteBehavior.Restrict)
+                        .HasForeignKey("ExamSlotId")
+                        .OnDelete(DeleteBehavior.Cascade)
                         .IsRequired()
-                        .HasConstraintName("exam_questions_institution_id_fkey");
+                        .HasConstraintName("exam_questions_exam_slot_id_fkey");
 
                     b.HasOne("EduGuardProject.Models.ReadingPassage", "Passage")
                         .WithMany("ExamQuestions")
@@ -1472,7 +1467,7 @@ namespace EduGuardProject.Migrations
                         .OnDelete(DeleteBehavior.SetNull)
                         .HasConstraintName("exam_questions_passage_id_fkey");
 
-                    b.Navigation("Institution");
+                    b.Navigation("ExamSlot");
 
                     b.Navigation("Passage");
                 });
@@ -1676,9 +1671,9 @@ namespace EduGuardProject.Migrations
 
             modelBuilder.Entity("EduGuardProject.Models.ExamSlot", b =>
                 {
-                    b.Navigation("AttendanceSessions");
-
                     b.Navigation("ExamParticipations");
+
+                    b.Navigation("ExamQuestions");
 
                     b.Navigation("ReadingPassages");
 
@@ -1688,8 +1683,6 @@ namespace EduGuardProject.Migrations
             modelBuilder.Entity("EduGuardProject.Models.Institution", b =>
                 {
                     b.Navigation("Classes");
-
-                    b.Navigation("ExamQuestions");
 
                     b.Navigation("Users");
 

@@ -9,10 +9,10 @@ public static class AcademicMapper
     public static ExamQuestionResponseDto ToExamQuestionResponseDto(ExamQuestion entity, bool includeAnswers) => new()
     {
         Id = entity.Id,
-        ExamSlotId = entity.ExamSlotId,
+        InstitutionId = entity.InstitutionId,
         PassageId = entity.PassageId,
         PassageText = entity.Passage?.PassageText,
-        ExamName = entity.ExamSlot?.ExamName,
+        ExamQuestionName = entity.ExamQuestionName,
         QuestionType = entity.QuestionType,
         QuestionContent = entity.QuestionContent,
         AudioUrl = entity.AudioUrl,

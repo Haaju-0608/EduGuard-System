@@ -31,6 +31,8 @@ public partial class Institution
 
     public virtual ICollection<Class> Classes { get; set; } = new List<Class>();
 
+    public virtual ICollection<ExamQuestion> ExamQuestions { get; set; } = new List<ExamQuestion>();
+
     public virtual ICollection<User> Users { get; set; } = new List<User>();
 
     public virtual Wallet? Wallet { get; set; }

@@ -4,6 +4,7 @@ using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 
 namespace EduGuardProject.Services;
@@ -29,14 +30,13 @@ public class ExamQuestionService : IExamQuestionService
     {
         var user = await _currentUser.GetRequiredUserAsync();
         var role = user.Role.ToCanonical();
-        var institutionId = role == AppRole.SchoolAdmin
-            ? user.InstitutionId ?? throw new UnauthorizedAccessException("School admin is not assigned to an institution.")
+        var institutionId = role is AppRole.SchoolAdmin or AppRole.Lecturer
+            ? user.InstitutionId ?? throw new UnauthorizedAccessException("User is not assigned to an institution.")
             : (Guid?)null;
-        var lecturerId = role == AppRole.Lecturer ? user.Id : (Guid?)null;
         var studentId = role == AppRole.Student ? user.Id : (Guid?)null;
 
         var (items, total) = await _repo.GetAllAsync(
-            search, sort, page, pageSize, examSlotId, institutionId, lecturerId, studentId);
+            search, sort, page, pageSize, examSlotId, institutionId, studentId);
         var includeAnswers = role != AppRole.Student;
         return (items.Select(item => AcademicMapper.ToExamQuestionResponseDto(item, includeAnswers)), total);
     }
@@ -51,21 +51,25 @@ public class ExamQuestionService : IExamQuestionService
 
     public async Task<ExamQuestionResponseDto> CreateAsync(CreateExamQuestionDto dto)
     {
-        ValidateQuestion(dto.ExamSlotId, dto.QuestionType, dto.QuestionContent, dto.AudioUrl, dto.ImageUrl, dto.Points, dto.Options);
-
-        var examSlot = await _context.ExamSlots
-            .Include(e => e.Class)
-            .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
-            ?? throw new InvalidOperationException("Exam slot not found.");
-        await EnsureStaffAccessAsync(examSlot.Class);
-        EnsureExamQuestionsCanBeEdited(examSlot);
-        var passage = await GetPassageAsync(dto.PassageId, dto.ExamSlotId);
+        ValidateQuestion(dto.QuestionType, dto.QuestionContent, dto.AudioUrl, dto.ImageUrl, dto.Points, dto.Options);
+        ValidateExamQuestionName(dto.ExamQuestionName);
+        if (dto.DisplayOrder <= 0)
+            throw new InvalidOperationException("Display order must be greater than zero.");
+        await EnsureQuestionBankAccessAsync(dto.InstitutionId);
+        await EnsureQuestionSetCanBeEditedAsync(dto.InstitutionId, dto.ExamQuestionName);
+        if (await _context.ExamQuestions.AsNoTracking().AnyAsync(question =>
+                question.InstitutionId == dto.InstitutionId &&
+                question.ExamQuestionName.ToLower() == dto.ExamQuestionName.Trim().ToLower() &&
+                question.DisplayOrder == dto.DisplayOrder))
+        {
+            throw new InvalidOperationException($"Display order {dto.DisplayOrder} already exists in this question set.");
+        }
 
         var entity = new ExamQuestion
         {
             Id = Guid.NewGuid(),
-            ExamSlotId = dto.ExamSlotId,
-            PassageId = dto.PassageId,
+            InstitutionId = dto.InstitutionId,
+            ExamQuestionName = dto.ExamQuestionName.Trim(),
             QuestionType = dto.QuestionType.Trim(),
             QuestionContent = dto.QuestionContent.Trim(),
             AudioUrl = string.IsNullOrWhiteSpace(dto.AudioUrl) ? null : dto.AudioUrl.Trim(),
@@ -75,23 +79,63 @@ public class ExamQuestionService : IExamQuestionService
             CreatedAt = DateTime.UtcNow,
             QuestionOptions = (dto.Options ?? [])
                 .Select(MapOption)
-                .ToList(),
-            Passage = passage
+                .ToList()
         };
 
         await _repo.AddAsync(entity);
-        entity.ExamSlot = examSlot;
         return AcademicMapper.ToExamQuestionResponseDto(entity, includeAnswers: true);
+    }
+
+    public async Task<ImportExamQuestionsResponseDto> ImportFromExcelAsync(
+        Guid institutionId, IFormFile file, CancellationToken cancellationToken = default)
+    {
+        if (institutionId == Guid.Empty)
+            throw new InvalidOperationException("Institution id is required.");
+        if (file == null || file.Length == 0)
+            throw new InvalidOperationException("Excel file is required.");
+        if (file.Length > 5 * 1024 * 1024)
+            throw new InvalidOperationException("Excel file must not exceed 5 MB.");
+        if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            throw new InvalidOperationException("Only .xlsx files are supported.");
+        var examQuestionName = GetImportedExamQuestionName(file.FileName);
+        await EnsureQuestionBankAccessAsync(institutionId);
+        await EnsureQuestionSetCanBeEditedAsync(institutionId, examQuestionName, cancellationToken);
+
+        await using var stream = file.OpenReadStream();
+        var rows = ReadExcelQuestions(stream);
+        if (rows.Count == 0)
+            throw new InvalidOperationException("The Excel file does not contain any question rows.");
+        if (rows.Count > 500)
+            throw new InvalidOperationException("A single import is limited to 500 questions.");
+
+        var importedOrders = rows.Select(row => row.Stt).ToList();
+        var duplicatedOrder = await _context.ExamQuestions.AsNoTracking()
+            .Where(question =>
+                question.InstitutionId == institutionId &&
+                question.ExamQuestionName.ToLower() == examQuestionName.ToLower() &&
+                importedOrders.Contains(question.DisplayOrder))
+            .Select(question => (int?)question.DisplayOrder)
+            .FirstOrDefaultAsync(cancellationToken);
+        if (duplicatedOrder.HasValue)
+            throw new InvalidOperationException($"Display order {duplicatedOrder.Value} already exists in this question set.");
+
+        var questions = rows.Select(row => MapImportedQuestion(row, institutionId, examQuestionName)).ToList();
+        await _repo.AddRangeAsync(questions, cancellationToken);
+        return new ImportExamQuestionsResponseDto
+        {
+            InstitutionId = institutionId,
+            ExamQuestionName = examQuestionName,
+            ImportedCount = questions.Count
+        };
     }
 
     public async Task<ExamQuestionResponseDto?> UpdateAsync(Guid id, UpdateExamQuestionDto dto)
     {
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null) return null;
-        await EnsureStaffAccessAsync(entity.ExamSlot.Class);
-        EnsureExamQuestionsCanBeEdited(entity.ExamSlot);
-        ValidateQuestion(entity.ExamSlotId, dto.QuestionType, dto.QuestionContent, dto.AudioUrl, dto.ImageUrl, dto.Points, entity.QuestionOptions);
-        var passage = await GetPassageAsync(dto.PassageId, entity.ExamSlotId);
+        await EnsureQuestionWriteAccessAsync(entity);
+        ValidateQuestion(dto.QuestionType, dto.QuestionContent, dto.AudioUrl, dto.ImageUrl, dto.Points, entity.QuestionOptions);
+        var passage = await GetPassageAsync(dto.PassageId, entity);
 
         entity.PassageId = dto.PassageId;
         entity.Passage = passage;
@@ -110,8 +154,7 @@ public class ExamQuestionService : IExamQuestionService
     {
         var entity = await _repo.GetByIdAsync(id);
         if (entity == null) return false;
-        await EnsureStaffAccessAsync(entity.ExamSlot.Class);
-        EnsureExamQuestionsCanBeEdited(entity.ExamSlot);
+        await EnsureQuestionWriteAccessAsync(entity);
         await _repo.DeleteAsync(entity);
         return true;
     }
@@ -120,8 +163,7 @@ public class ExamQuestionService : IExamQuestionService
     {
         var question = await _repo.GetByIdAsync(questionId)
             ?? throw new InvalidOperationException("Exam question not found.");
-        await EnsureStaffAccessAsync(question.ExamSlot.Class);
-        EnsureExamQuestionsCanBeEdited(question.ExamSlot);
+        await EnsureQuestionWriteAccessAsync(question);
         EnsureQuestionAcceptsOptions(question);
         ValidateOption(dto);
         EnsureOptionLabelIsUnique(question.QuestionOptions, dto.OptionLabel);
@@ -137,8 +179,7 @@ public class ExamQuestionService : IExamQuestionService
     {
         var entity = await _repo.GetOptionByIdAsync(optionId);
         if (entity == null) return null;
-        await EnsureStaffAccessAsync(entity.Question.ExamSlot.Class);
-        EnsureExamQuestionsCanBeEdited(entity.Question.ExamSlot);
+        await EnsureQuestionWriteAccessAsync(entity.Question);
         ValidateOption(dto);
         EnsureOptionLabelIsUnique(entity.Question.QuestionOptions.Where(o => o.Id != optionId), dto.OptionLabel);
         EnsureSingleCorrectOption(entity.Question.QuestionOptions.Where(o => o.Id != optionId), dto.IsCorrect);
@@ -154,8 +195,7 @@ public class ExamQuestionService : IExamQuestionService
     {
         var entity = await _repo.GetOptionByIdAsync(optionId);
         if (entity == null) return false;
-        await EnsureStaffAccessAsync(entity.Question.ExamSlot.Class);
-        EnsureExamQuestionsCanBeEdited(entity.Question.ExamSlot);
+        await EnsureQuestionWriteAccessAsync(entity.Question);
         if (entity.IsCorrect && entity.Question.QuestionOptions.Any(o => o.Id != optionId))
             throw new InvalidOperationException("Choice questions must have exactly one correct option.");
         await _repo.DeleteOptionAsync(entity);
@@ -165,22 +205,23 @@ public class ExamQuestionService : IExamQuestionService
     private async Task<User> EnsureReadAccessAsync(ExamQuestion entity)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (CanAccessAsStaff(user, entity.ExamSlot.Class))
+        if (CanAccessAsStaff(user, entity))
             return user;
 
         if (user.Role.ToCanonical() == AppRole.Student)
         {
             var now = DateTime.UtcNow;
-            if (entity.ExamSlot.Status is ExamSlotStatus.Cancelled or ExamSlotStatus.Completed ||
-                now < entity.ExamSlot.StartTime || now > entity.ExamSlot.EndTime)
-            {
-                throw new InvalidOperationException("Exam questions are only available during the exam slot.");
-            }
-
-            var hasParticipation = await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
-                p.ExamSlotId == entity.ExamSlotId &&
-                p.StudentId == user.Id &&
-                p.Status == ParticipationStatus.Joined);
+            var normalizedName = entity.ExamQuestionName.ToLower();
+            var hasParticipation = await _context.ExamSlots.AsNoTracking().AnyAsync(slot =>
+                slot.Class.InstitutionId == entity.InstitutionId &&
+                slot.ExamQuestionName.ToLower() == normalizedName &&
+                slot.Status != ExamSlotStatus.Cancelled &&
+                slot.Status != ExamSlotStatus.Completed &&
+                slot.StartTime <= now &&
+                slot.EndTime >= now &&
+                slot.ExamParticipations.Any(participation =>
+                    participation.StudentId == user.Id &&
+                    participation.Status == ParticipationStatus.Joined));
             if (hasParticipation)
                 return user;
         }
@@ -188,30 +229,66 @@ public class ExamQuestionService : IExamQuestionService
         throw new UnauthorizedAccessException("Access denied.");
     }
 
-    private async Task EnsureStaffAccessAsync(Class cls)
+    private async Task EnsureQuestionWriteAccessAsync(ExamQuestion question)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (CanAccessAsStaff(user, cls))
-            return;
-
-        throw new UnauthorizedAccessException("Access denied.");
+        if (!CanAccessAsStaff(user, question))
+            throw new UnauthorizedAccessException("Access denied.");
+        await EnsureQuestionSetCanBeEditedAsync(question.InstitutionId, question.ExamQuestionName);
     }
 
-    private static bool CanAccessAsStaff(User user, Class cls)
+    private static bool CanAccessAsStaff(User user, ExamQuestion question)
     {
         var role = user.Role.ToCanonical();
         if (role == AppRole.SuperAdmin)
             return true;
 
-        if (user.InstitutionId != cls.InstitutionId)
+        if (user.InstitutionId != question.InstitutionId)
             return false;
 
-        return role == AppRole.SchoolAdmin ||
-               (role == AppRole.Lecturer && cls.LecturerId == user.Id);
+        if (role == AppRole.SchoolAdmin)
+            return true;
+
+        return role == AppRole.Lecturer;
+    }
+
+    private async Task EnsureQuestionBankAccessAsync(Guid institutionId)
+    {
+        if (institutionId == Guid.Empty || !await _context.Institutions.AsNoTracking().AnyAsync(institution =>
+                institution.Id == institutionId && institution.DeletedAt == null))
+        {
+            throw new InvalidOperationException("Institution not found.");
+        }
+
+        var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.SuperAdmin)
+            return;
+        if (role is AppRole.SchoolAdmin or AppRole.Lecturer && user.InstitutionId == institutionId)
+            return;
+
+        throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private async Task EnsureQuestionSetCanBeEditedAsync(
+        Guid institutionId,
+        string examQuestionName,
+        CancellationToken cancellationToken = default)
+    {
+        var normalizedName = examQuestionName.Trim().ToLower();
+        var now = DateTime.UtcNow;
+        if (await _context.ExamSlots.AsNoTracking().AnyAsync(slot =>
+                slot.Class.InstitutionId == institutionId &&
+                slot.ExamQuestionName.ToLower() == normalizedName &&
+                slot.Status != ExamSlotStatus.Cancelled &&
+                (slot.Status != ExamSlotStatus.Scheduled || slot.StartTime <= now),
+                cancellationToken))
+        {
+            throw new InvalidOperationException("This question set cannot be changed after a linked exam has started.");
+        }
     }
 
     private static void ValidateQuestion(
-        Guid examSlotId,
         string? questionType,
         string? questionContent,
         string? audioUrl,
@@ -219,14 +296,11 @@ public class ExamQuestionService : IExamQuestionService
         decimal points,
         IEnumerable<CreateQuestionOptionDto>? options)
     {
-        if (examSlotId == Guid.Empty)
-            throw new InvalidOperationException("Exam slot id is required.");
         ValidateQuestionCore(questionType, questionContent, audioUrl, imageUrl, points);
         ValidateOptions(questionType!, options);
     }
 
     private static void ValidateQuestion(
-        Guid examSlotId,
         string? questionType,
         string? questionContent,
         string? audioUrl,
@@ -234,8 +308,6 @@ public class ExamQuestionService : IExamQuestionService
         decimal points,
         IEnumerable<QuestionOption> options)
     {
-        if (examSlotId == Guid.Empty)
-            throw new InvalidOperationException("Exam slot id is required.");
         ValidateQuestionCore(questionType, questionContent, audioUrl, imageUrl, points);
         ValidateOptions(questionType!, options.Select(o => new CreateQuestionOptionDto
         {
@@ -264,6 +336,14 @@ public class ExamQuestionService : IExamQuestionService
             throw new InvalidOperationException("Audio url cannot exceed 500 characters.");
         if (imageUrl?.Trim().Length > 500)
             throw new InvalidOperationException("Image url cannot exceed 500 characters.");
+    }
+
+    private static void ValidateExamQuestionName(string? examQuestionName)
+    {
+        if (string.IsNullOrWhiteSpace(examQuestionName))
+            throw new InvalidOperationException("Exam question name is required.");
+        if (examQuestionName.Trim().Length > 255)
+            throw new InvalidOperationException("Exam question name cannot exceed 255 characters.");
     }
 
     private static void ValidateOptions(string questionType, IEnumerable<CreateQuestionOptionDto>? options)
@@ -316,14 +396,6 @@ public class ExamQuestionService : IExamQuestionService
             throw new InvalidOperationException("Essay questions cannot have options.");
     }
 
-    private static void EnsureExamQuestionsCanBeEdited(ExamSlot examSlot)
-    {
-        if (examSlot.Status != ExamSlotStatus.Scheduled)
-            throw new InvalidOperationException("Exam questions can only be edited while the exam slot is scheduled.");
-        if (examSlot.StartTime <= DateTime.UtcNow)
-            throw new InvalidOperationException("Exam questions cannot be edited after the exam has started.");
-    }
-
     private static void EnsureOptionLabelIsUnique(IEnumerable<QuestionOption> options, string optionLabel)
     {
         var label = optionLabel.Trim();
@@ -342,14 +414,113 @@ public class ExamQuestionService : IExamQuestionService
     private static bool IsEssay(string questionType) =>
         string.Equals(questionType.Trim(), "Essay", StringComparison.OrdinalIgnoreCase);
 
-    private async Task<ReadingPassage?> GetPassageAsync(Guid? passageId, Guid examSlotId)
+    private static List<ImportedQuestionRow> ReadExcelQuestions(Stream stream)
+    {
+        try
+        {
+            using var workbook = new XLWorkbook(stream);
+            var sheet = workbook.Worksheets.FirstOrDefault()
+                ?? throw new InvalidOperationException("The workbook does not contain a worksheet.");
+            var headerRow = sheet.FirstRowUsed()
+                ?? throw new InvalidOperationException("The workbook is empty.");
+            var headers = headerRow.CellsUsed()
+                .GroupBy(cell => NormalizeHeader(cell.GetString()))
+                .ToDictionary(group => group.Key, group => group.First().Address.ColumnNumber);
+            var requiredHeaders = new[] { "stt", "question", "a", "b", "c", "d", "answers" };
+            var missingHeaders = requiredHeaders.Where(header => !headers.ContainsKey(header)).ToList();
+            if (missingHeaders.Count > 0)
+                throw new InvalidOperationException($"Missing required columns: {string.Join(", ", missingHeaders)}.");
+
+            var questions = new List<ImportedQuestionRow>();
+            var displayOrders = new HashSet<int>();
+            foreach (var row in sheet.RowsUsed().Where(row => row.RowNumber() > headerRow.RowNumber()))
+            {
+                string Value(string header) => row.Cell(headers[header]).GetFormattedString().Trim();
+                var values = requiredHeaders.ToDictionary(header => header, Value);
+                if (values.Values.All(string.IsNullOrWhiteSpace))
+                    continue;
+
+                var rowNumber = row.RowNumber();
+                if (!int.TryParse(values["stt"], out var displayOrder) || displayOrder <= 0)
+                    throw new InvalidOperationException($"Row {rowNumber}: Stt must be a positive integer.");
+                if (!displayOrders.Add(displayOrder))
+                    throw new InvalidOperationException($"Row {rowNumber}: Stt {displayOrder} is duplicated.");
+                if (string.IsNullOrWhiteSpace(values["question"]))
+                    throw new InvalidOperationException($"Row {rowNumber}: Question is required.");
+
+                var answer = values["answers"].ToUpperInvariant();
+                if (answer is not ("A" or "B" or "C" or "D"))
+                    throw new InvalidOperationException($"Row {rowNumber}: Answers must be A, B, C, or D.");
+
+                foreach (var label in new[] { "A", "B", "C", "D" })
+                    if (string.IsNullOrWhiteSpace(values[label.ToLowerInvariant()]))
+                        throw new InvalidOperationException($"Row {rowNumber}: option {label} is required.");
+
+                questions.Add(new ImportedQuestionRow(
+                    displayOrder, values["question"], values["a"], values["b"],
+                    values["c"], values["d"], answer));
+            }
+
+            return questions;
+        }
+        catch (InvalidOperationException)
+        {
+            throw;
+        }
+        catch (Exception ex)
+        {
+            throw new InvalidOperationException("The Excel file is invalid or cannot be read.", ex);
+        }
+    }
+
+    private static string NormalizeHeader(string value) =>
+        value.Trim().Replace("_", "").Replace(" ", "").ToLowerInvariant();
+
+    private static string GetImportedExamQuestionName(string fileName)
+    {
+        var examQuestionName = Path.GetFileNameWithoutExtension(fileName.Replace('\\', '/')).Trim();
+        if (string.IsNullOrWhiteSpace(examQuestionName))
+            throw new InvalidOperationException("The Excel file name must contain an exam name.");
+        if (examQuestionName.Length > 255)
+            throw new InvalidOperationException("The Excel file name cannot exceed 255 characters.");
+        return examQuestionName;
+    }
+
+    private static ExamQuestion MapImportedQuestion(ImportedQuestionRow row, Guid institutionId, string examQuestionName) => new()
+    {
+        Id = Guid.NewGuid(),
+        InstitutionId = institutionId,
+        ExamQuestionName = examQuestionName,
+        QuestionType = "MultipleChoice",
+        QuestionContent = row.Question,
+        Points = 1,
+        DisplayOrder = row.Stt,
+        CreatedAt = DateTime.UtcNow,
+        QuestionOptions = new[] { ("A", row.A), ("B", row.B), ("C", row.C), ("D", row.D) }
+            .Select(option => new QuestionOption
+            {
+                Id = Guid.NewGuid(),
+                OptionLabel = option.Item1,
+                OptionContent = option.Item2,
+                IsCorrect = option.Item1 == row.Answers
+            })
+            .ToList()
+    };
+
+    private async Task<ReadingPassage?> GetPassageAsync(Guid? passageId, ExamQuestion question)
     {
         if (!passageId.HasValue) return null;
 
-        var passage = await _context.ReadingPassages.FindAsync(passageId.Value)
+        var passage = await _context.ReadingPassages
+            .Include(item => item.ExamSlot)
+            .ThenInclude(slot => slot.Class)
+            .FirstOrDefaultAsync(item => item.Id == passageId.Value)
             ?? throw new InvalidOperationException("Reading passage not found.");
-        if (passage.ExamSlotId != examSlotId)
-            throw new InvalidOperationException("Reading passage must belong to the same exam slot as the question.");
+        if (passage.ExamSlot.Class.InstitutionId != question.InstitutionId ||
+            !string.Equals(passage.ExamSlot.ExamQuestionName, question.ExamQuestionName, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new InvalidOperationException("Reading passage must belong to an exam slot using the same question set.");
+        }
 
         return passage;
     }
@@ -370,4 +541,7 @@ public class ExamQuestionService : IExamQuestionService
         OptionContent = entity.OptionContent,
         IsCorrect = includeAnswer ? entity.IsCorrect : null
     };
+
+    private sealed record ImportedQuestionRow(
+        int Stt, string Question, string A, string B, string C, string D, string Answers);
 }
