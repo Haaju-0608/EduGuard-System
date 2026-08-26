@@ -33,6 +33,8 @@ public partial class Institution
 
     public virtual ICollection<ExamQuestion> ExamQuestions { get; set; } = new List<ExamQuestion>();
 
+    public virtual ICollection<ReadingPassage> ReadingPassages { get; set; } = new List<ReadingPassage>();
+
     public virtual ICollection<User> Users { get; set; } = new List<User>();
 
     public virtual Wallet? Wallet { get; set; }

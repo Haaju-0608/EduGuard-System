@@ -308,7 +308,10 @@ public class UpdateExamQuestionDto
 public class CreateReadingPassageDto
 {
     [Required]
-    public Guid ExamSlotId { get; set; }
+    public Guid InstitutionId { get; set; }
+
+    [Required, MaxLength(255)]
+    public string ExamQuestionName { get; set; } = null!;
 
     [Required]
     public string PassageText { get; set; } = null!;

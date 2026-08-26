@@ -474,12 +474,15 @@ public partial class AppDbContext : DbContext
 
             entity.ToTable("reading_passages");
 
-            entity.HasIndex(e => e.ExamSlotId, "idx_reading_passages_exam_slot");
+            entity.HasIndex(e => new { e.InstitutionId, e.ExamQuestionName }, "idx_reading_passages_institution_name");
 
             entity.Property(e => e.Id)
                 .HasDefaultValueSql("gen_random_uuid()")
                 .HasColumnName("id");
-            entity.Property(e => e.ExamSlotId).HasColumnName("exam_slot_id");
+            entity.Property(e => e.ExamQuestionName)
+                .HasMaxLength(255)
+                .HasColumnName("exam_question_name");
+            entity.Property(e => e.InstitutionId).HasColumnName("institution_id");
             entity.Property(e => e.PassageText).HasColumnName("passage_text");
             entity.Property(e => e.CreatedAt)
                 .HasDefaultValueSql("now()")
@@ -488,10 +491,10 @@ public partial class AppDbContext : DbContext
                 .HasDefaultValueSql("now()")
                 .HasColumnName("updated_at");
 
-            entity.HasOne(d => d.ExamSlot).WithMany(p => p.ReadingPassages)
-                .HasForeignKey(d => d.ExamSlotId)
-                .OnDelete(DeleteBehavior.Cascade)
-                .HasConstraintName("reading_passages_exam_slot_id_fkey");
+            entity.HasOne(d => d.Institution).WithMany(p => p.ReadingPassages)
+                .HasForeignKey(d => d.InstitutionId)
+                .OnDelete(DeleteBehavior.Restrict)
+                .HasConstraintName("reading_passages_institution_id_fkey");
         });
 
         modelBuilder.Entity<ExamSlot>(entity =>

@@ -47,7 +47,5 @@ public partial class ExamSlot
 
     public virtual ICollection<AttendanceSession> AttendanceSessions { get; set; } = new List<AttendanceSession>();
 
-    public virtual ICollection<ReadingPassage> ReadingPassages { get; set; } = new List<ReadingPassage>();
-
     public virtual ICollection<StudentExamRecord> StudentExamRecords { get; set; } = new List<StudentExamRecord>();
 }

@@ -213,7 +213,8 @@ public class ImportExamQuestionsResponseDto
 public class ReadingPassageResponseDto
 {
     public Guid Id { get; set; }
-    public Guid ExamSlotId { get; set; }
+    public Guid InstitutionId { get; set; }
+    public string ExamQuestionName { get; set; } = null!;
     public string PassageText { get; set; } = null!;
     public DateTime CreatedAt { get; set; }
     public DateTime UpdatedAt { get; set; }

@@ -29,25 +29,19 @@ public class ReadingPassageService : IReadingPassageService
 
     public async Task<ReadingPassageResponseDto> CreateAsync(CreateReadingPassageDto dto)
     {
-        if (dto.ExamSlotId == Guid.Empty)
-            throw new InvalidOperationException("Exam slot id is required.");
-
-        var examSlot = await _context.ExamSlots
-            .Include(e => e.Class)
-            .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
-            ?? throw new InvalidOperationException("Exam slot not found.");
-        await EnsureStaffAccessAsync(examSlot.Class);
-        await EnsureQuestionSetCanBeEditedAsync(examSlot);
+        ValidateExamQuestionName(dto.ExamQuestionName);
+        await EnsureQuestionBankAccessAsync(dto.InstitutionId);
+        await EnsureQuestionSetCanBeEditedAsync(dto.InstitutionId, dto.ExamQuestionName);
 
         var now = DateTime.UtcNow;
         var entity = new ReadingPassage
         {
             Id = Guid.NewGuid(),
-            ExamSlotId = dto.ExamSlotId,
+            InstitutionId = dto.InstitutionId,
+            ExamQuestionName = dto.ExamQuestionName.Trim(),
             PassageText = ValidatePassageText(dto.PassageText),
             CreatedAt = now,
-            UpdatedAt = now,
-            ExamSlot = examSlot
+            UpdatedAt = now
         };
 
         _context.ReadingPassages.Add(entity);
@@ -60,9 +54,7 @@ public class ReadingPassageService : IReadingPassageService
         var entity = await BaseQuery().FirstOrDefaultAsync(p => p.Id == id);
         if (entity == null) return null;
 
-        await EnsureStaffAccessAsync(entity.ExamSlot.Class);
-        await EnsureQuestionSetCanBeEditedAsync(entity.ExamSlot);
-
+        await EnsurePassageWriteAccessAsync(entity);
         entity.PassageText = ValidatePassageText(dto.PassageText);
         entity.UpdatedAt = DateTime.UtcNow;
         await _context.SaveChangesAsync();
@@ -72,16 +64,11 @@ public class ReadingPassageService : IReadingPassageService
 
     public async Task<bool> DeleteAsync(Guid id)
     {
-        var entity = await _context.ReadingPassages
-            .Include(p => p.ExamSlot)
-            .ThenInclude(e => e.Class)
-            .FirstOrDefaultAsync(p => p.Id == id);
+        var entity = await BaseQuery().FirstOrDefaultAsync(p => p.Id == id);
         if (entity == null) return false;
 
-        await EnsureStaffAccessAsync(entity.ExamSlot.Class);
-        await EnsureQuestionSetCanBeEditedAsync(entity.ExamSlot);
-
-        if (await _context.ExamQuestions.AnyAsync(q => q.PassageId == id))
+        await EnsurePassageWriteAccessAsync(entity);
+        if (entity.ExamQuestions.Count > 0)
             throw new InvalidOperationException("Reading passage cannot be deleted while exam questions reference it.");
 
         _context.ReadingPassages.Remove(entity);
@@ -91,24 +78,21 @@ public class ReadingPassageService : IReadingPassageService
 
     private IQueryable<ReadingPassage> BaseQuery() =>
         _context.ReadingPassages
-            .Include(p => p.ExamSlot)
-            .ThenInclude(e => e.Class)
             .Include(p => p.ExamQuestions)
             .ThenInclude(q => q.QuestionOptions);
 
     private async Task<User> EnsureReadAccessAsync(ReadingPassage passage)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        var examSlot = passage.ExamSlot;
-        if (CanAccessAsStaff(user, examSlot.Class))
+        if (CanAccessAsStaff(user, passage))
             return user;
 
         if (user.Role.ToCanonical() == AppRole.Student)
         {
             var now = DateTime.UtcNow;
-            var normalizedName = examSlot.ExamQuestionName.ToLower();
+            var normalizedName = passage.ExamQuestionName.ToLower();
             var hasParticipation = await _context.ExamSlots.AsNoTracking().AnyAsync(slot =>
-                slot.Class.InstitutionId == examSlot.Class.InstitutionId &&
+                slot.Class.InstitutionId == passage.InstitutionId &&
                 slot.ExamQuestionName.ToLower() == normalizedName &&
                 slot.Status != ExamSlotStatus.Cancelled &&
                 slot.Status != ExamSlotStatus.Completed &&
@@ -124,37 +108,64 @@ public class ReadingPassageService : IReadingPassageService
         throw new UnauthorizedAccessException("Access denied.");
     }
 
-    private async Task EnsureStaffAccessAsync(Class cls)
+    private async Task EnsurePassageWriteAccessAsync(ReadingPassage passage)
     {
         var user = await _currentUser.GetRequiredUserAsync();
-        if (!CanAccessAsStaff(user, cls))
+        if (!CanAccessAsStaff(user, passage))
             throw new UnauthorizedAccessException("Access denied.");
+        await EnsureQuestionSetCanBeEditedAsync(passage.InstitutionId, passage.ExamQuestionName);
     }
 
-    private static bool CanAccessAsStaff(User user, Class cls)
+    private static bool CanAccessAsStaff(User user, ReadingPassage passage)
     {
         var role = user.Role.ToCanonical();
         if (role == AppRole.SuperAdmin)
             return true;
-        if (user.InstitutionId != cls.InstitutionId)
+        if (user.InstitutionId != passage.InstitutionId)
             return false;
 
-        return role == AppRole.SchoolAdmin ||
-               (role == AppRole.Lecturer && cls.LecturerId == user.Id);
+        return role == AppRole.SchoolAdmin || role == AppRole.Lecturer;
     }
 
-    private async Task EnsureQuestionSetCanBeEditedAsync(ExamSlot examSlot)
+    private async Task EnsureQuestionBankAccessAsync(Guid institutionId)
     {
-        var normalizedName = examSlot.ExamQuestionName.ToLower();
+        if (institutionId == Guid.Empty || !await _context.Institutions.AsNoTracking().AnyAsync(institution =>
+                institution.Id == institutionId && institution.DeletedAt == null))
+        {
+            throw new InvalidOperationException("Institution not found.");
+        }
+
+        var user = await _currentUser.GetRequiredUserAsync();
+        var role = user.Role.ToCanonical();
+        if (role == AppRole.SuperAdmin)
+            return;
+        if ((role is AppRole.SchoolAdmin or AppRole.Lecturer) && user.InstitutionId == institutionId)
+            return;
+
+        throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private async Task EnsureQuestionSetCanBeEditedAsync(Guid institutionId, string examQuestionName)
+    {
+        var normalizedName = examQuestionName.Trim().ToLower();
         var now = DateTime.UtcNow;
         if (await _context.ExamSlots.AsNoTracking().AnyAsync(slot =>
-                slot.Class.InstitutionId == examSlot.Class.InstitutionId &&
+                slot.Class.DeletedAt == null &&
+                slot.Class.InstitutionId == institutionId &&
                 slot.ExamQuestionName.ToLower() == normalizedName &&
                 slot.Status != ExamSlotStatus.Cancelled &&
                 (slot.Status != ExamSlotStatus.Scheduled || slot.StartTime <= now)))
         {
             throw new InvalidOperationException("Reading passages cannot be changed after a linked exam has started.");
         }
+    }
+
+    private static void ValidateExamQuestionName(string? examQuestionName)
+    {
+        if (string.IsNullOrWhiteSpace(examQuestionName))
+            throw new InvalidOperationException("Exam question name is required.");
+        if (examQuestionName.Trim().Length > 255)
+            throw new InvalidOperationException("Exam question name cannot exceed 255 characters.");
     }
 
     private static string ValidatePassageText(string? passageText)
@@ -167,7 +178,8 @@ public class ReadingPassageService : IReadingPassageService
     private static ReadingPassageResponseDto MapToResponseDto(ReadingPassage entity, bool includeAnswers) => new()
     {
         Id = entity.Id,
-        ExamSlotId = entity.ExamSlotId,
+        InstitutionId = entity.InstitutionId,
+        ExamQuestionName = entity.ExamQuestionName,
         PassageText = entity.PassageText,
         CreatedAt = entity.CreatedAt,
         UpdatedAt = entity.UpdatedAt,

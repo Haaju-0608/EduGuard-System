@@ -926,9 +926,15 @@ namespace EduGuardProject.Migrations
                         .HasColumnName("created_at")
                         .HasDefaultValueSql("now()");
 
-                    b.Property<Guid>("ExamSlotId")
+                    b.Property<string>("ExamQuestionName")
+                        .IsRequired()
+                        .HasMaxLength(255)
+                        .HasColumnType("character varying(255)")
+                        .HasColumnName("exam_question_name");
+
+                    b.Property<Guid>("InstitutionId")
                         .HasColumnType("uuid")
-                        .HasColumnName("exam_slot_id");
+                        .HasColumnName("institution_id");
 
                     b.Property<string>("PassageText")
                         .IsRequired()
@@ -944,7 +950,7 @@ namespace EduGuardProject.Migrations
                     b.HasKey("Id")
                         .HasName("reading_passages_pkey");
 
-                    b.HasIndex(new[] { "ExamSlotId" }, "idx_reading_passages_exam_slot");
+                    b.HasIndex(new[] { "InstitutionId", "ExamQuestionName" }, "idx_reading_passages_institution_name");
 
                     b.ToTable("reading_passages", (string)null);
                 });
@@ -1551,14 +1557,14 @@ namespace EduGuardProject.Migrations
 
             modelBuilder.Entity("EduGuardProject.Models.ReadingPassage", b =>
                 {
-                    b.HasOne("EduGuardProject.Models.ExamSlot", "ExamSlot")
+                    b.HasOne("EduGuardProject.Models.Institution", "Institution")
                         .WithMany("ReadingPassages")
-                        .HasForeignKey("ExamSlotId")
-                        .OnDelete(DeleteBehavior.Cascade)
+                        .HasForeignKey("InstitutionId")
+                        .OnDelete(DeleteBehavior.Restrict)
                         .IsRequired()
-                        .HasConstraintName("reading_passages_exam_slot_id_fkey");
+                        .HasConstraintName("reading_passages_institution_id_fkey");
 
-                    b.Navigation("ExamSlot");
+                    b.Navigation("Institution");
                 });
 
             modelBuilder.Entity("EduGuardProject.Models.StudentExamRecord", b =>
@@ -1680,8 +1686,6 @@ namespace EduGuardProject.Migrations
 
                     b.Navigation("ExamParticipations");
 
-                    b.Navigation("ReadingPassages");
-
                     b.Navigation("StudentExamRecords");
                 });
 
@@ -1690,6 +1694,8 @@ namespace EduGuardProject.Migrations
                     b.Navigation("Classes");
 
                     b.Navigation("ExamQuestions");
+
+                    b.Navigation("ReadingPassages");
 
                     b.Navigation("Users");
 

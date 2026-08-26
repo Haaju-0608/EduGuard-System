@@ -278,6 +278,7 @@ public class ExamQuestionService : IExamQuestionService
         var normalizedName = examQuestionName.Trim().ToLower();
         var now = DateTime.UtcNow;
         if (await _context.ExamSlots.AsNoTracking().AnyAsync(slot =>
+                slot.Class.DeletedAt == null &&
                 slot.Class.InstitutionId == institutionId &&
                 slot.ExamQuestionName.ToLower() == normalizedName &&
                 slot.Status != ExamSlotStatus.Cancelled &&
@@ -512,14 +513,12 @@ public class ExamQuestionService : IExamQuestionService
         if (!passageId.HasValue) return null;
 
         var passage = await _context.ReadingPassages
-            .Include(item => item.ExamSlot)
-            .ThenInclude(slot => slot.Class)
             .FirstOrDefaultAsync(item => item.Id == passageId.Value)
             ?? throw new InvalidOperationException("Reading passage not found.");
-        if (passage.ExamSlot.Class.InstitutionId != question.InstitutionId ||
-            !string.Equals(passage.ExamSlot.ExamQuestionName, question.ExamQuestionName, StringComparison.OrdinalIgnoreCase))
+        if (passage.InstitutionId != question.InstitutionId ||
+            !string.Equals(passage.ExamQuestionName, question.ExamQuestionName, StringComparison.OrdinalIgnoreCase))
         {
-            throw new InvalidOperationException("Reading passage must belong to an exam slot using the same question set.");
+            throw new InvalidOperationException("Reading passage must belong to the same question set.");
         }
 
         return passage;
