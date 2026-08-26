@@ -192,6 +192,7 @@ public class ExamslotServices : IExamSlotServices
         ValidateClassEndDate(cls.EndDate, dto.EndTime);
         await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
         await EnsureClassHasNoOverlappingExamAsync(dto.ClassId, dto.StartTime, dto.EndTime);
+        await EnsureEnrolledStudentsHaveNoOverlappingExamAsync(dto.ClassId, dto.StartTime, dto.EndTime);
         if (dto.LecturerId is Guid lecturerId && lecturerId != Guid.Empty && lecturerId != cls.LecturerId)
         {
             cls.Lecturer = await GetClassLecturerAsync(lecturerId, cls.InstitutionId);
@@ -269,7 +270,7 @@ public class ExamslotServices : IExamSlotServices
         {
             ValidateUpdatedExamTimes(startTime, endTime, dto.StartTime.HasValue, dto.EndTime.HasValue);
             await EnsureClassHasNoOverlappingExamAsync(entity.ClassId, startTime, endTime, entity.Id);
-            await EnsureParticipantsHaveNoOverlappingExamAsync(entity.Id, startTime, endTime);
+            await EnsureEnrolledStudentsHaveNoOverlappingExamAsync(entity.ClassId, startTime, endTime, entity.Id);
             entity.StartTime = startTime;
             entity.EndTime = endTime;
         }
@@ -420,19 +421,34 @@ public class ExamslotServices : IExamSlotServices
             throw new InvalidOperationException("Class already has an exam in this time range.");
     }
 
-    private async Task EnsureParticipantsHaveNoOverlappingExamAsync(Guid examSlotId, DateTime startTime, DateTime endTime)
+    private async Task EnsureEnrolledStudentsHaveNoOverlappingExamAsync(
+        Guid classId,
+        DateTime startTime,
+        DateTime endTime,
+        Guid? ignoredExamSlotId = null)
     {
-        var hasOverlap = await _context.ExamParticipations.AsNoTracking().AnyAsync(p =>
-            p.ExamSlotId == examSlotId &&
-            _context.ExamParticipations.Any(other =>
-                other.StudentId == p.StudentId &&
-                other.ExamSlotId != examSlotId &&
-                other.ExamSlot.Status != ExamSlotStatus.Cancelled &&
-                other.ExamSlot.StartTime < endTime &&
-                other.ExamSlot.EndTime > startTime));
+        var overlappingStudentCount = await _context.ClassEnrollments
+            .AsNoTracking()
+            .Where(enrollment =>
+                enrollment.ClassId == classId &&
+                enrollment.Status == EnrollmentStatus.Active &&
+                _context.ClassEnrollments.Any(otherEnrollment =>
+                    otherEnrollment.StudentId == enrollment.StudentId &&
+                    otherEnrollment.ClassId != classId &&
+                    otherEnrollment.Status == EnrollmentStatus.Active &&
+                    _context.ExamSlots.Any(otherExamSlot =>
+                        otherExamSlot.ClassId == otherEnrollment.ClassId &&
+                        (!ignoredExamSlotId.HasValue || otherExamSlot.Id != ignoredExamSlotId.Value) &&
+                        otherExamSlot.Status != ExamSlotStatus.Cancelled &&
+                        otherExamSlot.StartTime < endTime &&
+                        otherExamSlot.EndTime > startTime)))
+            .Select(enrollment => enrollment.StudentId)
+            .Distinct()
+            .CountAsync();
 
-        if (hasOverlap)
-            throw new InvalidOperationException("One or more students already have another exam in this time range.");
+        if (overlappingStudentCount > 0)
+            throw new InvalidOperationException(
+                $"{overlappingStudentCount} student(s) are already scheduled in this time window.");
     }
 
     private static void ValidateNewExamTimes(DateTime startTime, DateTime endTime)
