@@ -6,7 +6,9 @@ namespace EduGuardProject.Services.IServices
 {
     public interface IUserService
     {
-        Task<(IEnumerable<UserResponseDto> Items, int TotalCount)> GetUsersAsync(Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize);
+        Task<(IEnumerable<UserResponseDto> Items, int TotalCount)> GetUsersAsync(
+            Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize,
+            AppRole? onlyRole = null, string? studentMajorCode = null, string? studentAcademicYear = null);
         Task<UserResponseDto?> GetUserByIdAsync(Guid id);
         Task<UserResponseDto> CreateUserAsync(CreateUserDto dto);
         Task<BulkImportUsersResponseDto> BulkImportUsersAsync(IFormFile file, Guid? forcedInstitutionId = null, CancellationToken cancellationToken = default);

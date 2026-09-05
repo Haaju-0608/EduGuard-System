@@ -8,7 +8,9 @@ namespace EduGuardProject.Repositories.IRepositories
         Task<User?> GetUserByEmailAsync(string email);
 
         //Cho User
-        Task<(IEnumerable<User> Items, int TotalCount)> GetAllAsync(Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize);
+        Task<(IEnumerable<User> Items, int TotalCount)> GetAllAsync(
+            Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize,
+            AppRole? onlyRole = null, string? studentMajorCode = null, string? studentAcademicYear = null);
         Task<User?> GetByIdAsync(Guid id);
         Task AddAsync(User user);
         Task UpdateAsync(User user);

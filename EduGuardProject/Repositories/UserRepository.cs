@@ -44,7 +44,8 @@ namespace EduGuardProject.Repositories
 
 
         public async Task<(IEnumerable<User> Items, int TotalCount)> GetAllAsync(
-    Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize)
+    Guid? institutionId, AppRole? excludeRole, string? search, string? sort, int page, int pageSize,
+    AppRole? onlyRole = null, string? studentMajorCode = null, string? studentAcademicYear = null)
         {
             var query = _context.Users.AsQueryable();
             query = query.Where(u => u.DeletedAt == null);
@@ -56,6 +57,16 @@ namespace EduGuardProject.Repositories
             // Lecturer không được thấy School Admin trong danh sách
             if (excludeRole.HasValue)
                 query = query.Where(u => u.Role != excludeRole.Value);
+
+            if (onlyRole.HasValue)
+                query = query.Where(u => u.Role == onlyRole.Value);
+
+            if (!string.IsNullOrWhiteSpace(studentMajorCode))
+                query = query.Where(u => u.StudentCode != null && u.StudentCode.StartsWith(studentMajorCode));
+
+            if (!string.IsNullOrWhiteSpace(studentAcademicYear))
+                query = query.Where(u => u.StudentCode != null && u.StudentCode.Length >= 4 &&
+                    u.StudentCode.Substring(2, 2) == studentAcademicYear);
 
             if (!string.IsNullOrWhiteSpace(search))
             {
