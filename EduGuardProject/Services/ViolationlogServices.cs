@@ -247,7 +247,7 @@ public class ViolationLogServices : IViolationLogService
         {
             var thresholdPayload = new
             {
-                participation.Id,
+                participationId = participation.Id,
                 participation.ExamSlotId,
                 participation.StudentId,
                 participation.Student.FullName,
