@@ -1,4 +1,4 @@
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Helpers;
 using EduGuardProject.Models;
@@ -229,5 +229,46 @@ public class BiometricDatumService : IBiometricDatumService
         {
             throw new UnauthorizedAccessException("Access denied.");
         }
+    }
+
+    //School Admin xóa dữ liệu khuon mặt của hs đó 
+    public async Task<bool> RevokeAllForStudentAsync(Guid studentId)
+    {
+        var actor = await _currentUser.GetRequiredUserAsync();
+        if (actor.Role != AppRole.SuperAdmin)
+        {
+            await EnsureSameInstitutionAsync(actor, studentId);
+        }
+
+        var activeRecords = await _context.BiometricData
+            .Where(b => b.UserId == studentId && b.IsActive)
+            .ToListAsync();
+
+        if (activeRecords.Count == 0) return false;
+
+        var imageUrlsToDelete = activeRecords
+            .Select(b => b.FaceImageUrl)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct()
+            .ToList();
+
+        foreach (var record in activeRecords)
+        {
+            record.IsActive = false;
+            record.UpdatedAt = DateTime.UtcNow;
+        }
+        await _context.SaveChangesAsync();
+
+        foreach (var url in imageUrlsToDelete)
+        {
+            try { await _storage.DeleteAsync(StorageService.BiometricFacesBucket, url!); }
+            catch (Exception ex)
+            {
+
+            }
+        }
+
+        await PublishBiometricDatumChangedAsync(activeRecords[0], "revoked-all");
+        return true;
     }
 }

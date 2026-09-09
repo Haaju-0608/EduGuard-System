@@ -70,6 +70,8 @@ public interface IBiometricDatumService
     Task<BiometricDatumResponseDto> CreateAsync(CreateBiometricDatumDto dto);
     Task<bool> UpdateAsync(Guid id, UpdateBiometricDatumDto dto);
     Task<bool> DeleteAsync(Guid id);
+
+    Task<bool> RevokeAllForStudentAsync(Guid studentId);
 }
 
 public interface IExamParticipationService
