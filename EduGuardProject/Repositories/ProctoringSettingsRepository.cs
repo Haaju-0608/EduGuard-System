@@ -51,15 +51,21 @@ namespace EduGuardProject.Repositories
 
         public async Task ReplaceViolationTypeThresholdsAsync(Guid proctoringSettingsId, IEnumerable<ProctoringViolationTypeSetting> thresholds)
         {
+            // Materialize once: `thresholds` is typically a deferred LINQ Select() from the caller.
+            // Enumerating it twice (once to stamp ProctoringSettingsId, once in AddRangeAsync) would
+            // re-run the projection and add a SECOND, freshly-constructed set of instances whose
+            // ProctoringSettingsId was never set (defaults to Guid.Empty) -> FK violation on insert.
+            var newThresholds = thresholds.ToList();
+
             var existing = await _context.ProctoringViolationTypeSettings
                 .Where(t => t.ProctoringSettingsId == proctoringSettingsId)
                 .ToListAsync();
             _context.ProctoringViolationTypeSettings.RemoveRange(existing);
 
-            foreach (var threshold in thresholds)
+            foreach (var threshold in newThresholds)
                 threshold.ProctoringSettingsId = proctoringSettingsId;
 
-            await _context.ProctoringViolationTypeSettings.AddRangeAsync(thresholds);
+            await _context.ProctoringViolationTypeSettings.AddRangeAsync(newThresholds);
             await _context.SaveChangesAsync();
         }
     }
