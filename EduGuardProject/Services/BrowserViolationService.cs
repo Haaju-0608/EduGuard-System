@@ -85,7 +85,13 @@ public class BrowserViolationService : IBrowserViolationService
         };
 
         var cls = participation.ExamSlot.Class;
-        var settings = await _proctoringSettings.GetEffectiveAsync(cls.InstitutionId);
+
+        // Use the threshold snapshotted at exam start (ExamParticipationServices.CreateAsync) so a
+        // SchoolAdmin changing settings mid-exam only affects students who join afterward. Fall back
+        // to the currently-effective settings only for participations created before this snapshot
+        // feature existed (snapshot columns NULL).
+        var browserNotifyThreshold = participation.BrowserNotifyThresholdSnapshot
+            ?? (await _proctoringSettings.GetEffectiveAsync(cls.InstitutionId)).BrowserNotifyThreshold;
 
         _context.ViolationLogs.Add(log);
         await _context.SaveChangesAsync();
@@ -94,7 +100,7 @@ public class BrowserViolationService : IBrowserViolationService
             .CountAsync(v => v.ParticipationId == participation.Id && BrowserViolationTypes.Contains(v.violationType));
 
         // No auto-disqualify: reaching the notify threshold only alerts the lecturer, who decides.
-        var thresholdReached = currentCount >= settings.BrowserNotifyThreshold;
+        var thresholdReached = currentCount >= browserNotifyThreshold;
 
         _logger.LogInformation(
             "BrowserViolation recorded. StudentId={StudentId} ParticipationId={ParticipationId} ViolationType={ViolationType} CurrentCount={CurrentCount} ThresholdReached={ThresholdReached}",
@@ -120,7 +126,7 @@ public class BrowserViolationService : IBrowserViolationService
             data: payload);
 
         // Fire exactly once, when the count first reaches the threshold.
-        if (currentCount == settings.BrowserNotifyThreshold)
+        if (currentCount == browserNotifyThreshold)
         {
             var thresholdPayload = new
             {
@@ -129,7 +135,7 @@ public class BrowserViolationService : IBrowserViolationService
                 participation.StudentId,
                 participation.Student.FullName,
                 currentBrowserViolationCount = currentCount,
-                threshold = settings.BrowserNotifyThreshold,
+                threshold = browserNotifyThreshold,
                 kind = "browser"
             };
             await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.ViolationThresholdReached, thresholdPayload);

@@ -403,6 +403,12 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.IdentityVerifiedAt).HasColumnName("identity_verified_at");
             entity.Property(e => e.IdentityVerifiedBy).HasColumnName("identity_verified_by");
 
+            entity.Property(e => e.MaxAiViolationCountSnapshot).HasColumnName("max_ai_violation_count_snapshot");
+            entity.Property(e => e.CooldownSecondsSnapshot).HasColumnName("cooldown_seconds_snapshot");
+            entity.Property(e => e.AllowConsecutiveSameTypeSnapshot).HasColumnName("allow_consecutive_same_type_snapshot");
+            entity.Property(e => e.AiNotifyThresholdSnapshot).HasColumnName("ai_notify_threshold_snapshot");
+            entity.Property(e => e.BrowserNotifyThresholdSnapshot).HasColumnName("browser_notify_threshold_snapshot");
+
             entity.HasOne(d => d.IdentityVerifiedByNavigation).WithMany()
     .HasForeignKey(d => d.IdentityVerifiedBy)
     .OnDelete(DeleteBehavior.SetNull)

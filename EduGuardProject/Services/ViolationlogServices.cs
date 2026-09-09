@@ -162,7 +162,30 @@ public class ViolationLogServices : IViolationLogService
         await EnsureViolationAccessAsync(participation);
         var recordedAt = ValidateCreateInput(dto, participation, user);
 
-        var settings = await _proctoringSettings.GetEffectiveAsync(participation.ExamSlot.Class.InstitutionId);
+        // Use the rules snapshotted at exam start (ExamParticipationServices.CreateAsync) so a
+        // SchoolAdmin changing settings mid-exam only affects students who join afterward.
+        // Fall back to the currently-effective settings only for participations created before
+        // this snapshot feature existed (all 5 snapshot columns NULL).
+        int maxAiViolationCount, cooldownSeconds, aiNotifyThreshold;
+        bool allowConsecutiveSameType;
+        if (participation.MaxAiViolationCountSnapshot.HasValue &&
+            participation.CooldownSecondsSnapshot.HasValue &&
+            participation.AllowConsecutiveSameTypeSnapshot.HasValue &&
+            participation.AiNotifyThresholdSnapshot.HasValue)
+        {
+            maxAiViolationCount = participation.MaxAiViolationCountSnapshot.Value;
+            cooldownSeconds = participation.CooldownSecondsSnapshot.Value;
+            allowConsecutiveSameType = participation.AllowConsecutiveSameTypeSnapshot.Value;
+            aiNotifyThreshold = participation.AiNotifyThresholdSnapshot.Value;
+        }
+        else
+        {
+            var settings = await _proctoringSettings.GetEffectiveAsync(participation.ExamSlot.Class.InstitutionId);
+            maxAiViolationCount = settings.MaxAiViolationCount;
+            cooldownSeconds = settings.CooldownSeconds;
+            allowConsecutiveSameType = settings.AllowConsecutiveSameType;
+            aiNotifyThreshold = settings.AiNotifyThreshold;
+        }
 
         var lastAiViolation = await _context.ViolationLogs
             .Where(v => v.ParticipationId == dto.ParticipationId && !IsBrowserViolation(v.violationType))
@@ -176,18 +199,18 @@ public class ViolationLogServices : IViolationLogService
 
         // Max AI violation cap reached: stop recording new AI violations for this participation.
         // The lecturer already has everything they need to decide (via the notify-threshold event below).
-        if (aiViolationCountBefore >= settings.MaxAiViolationCount)
+        if (aiViolationCountBefore >= maxAiViolationCount)
             return MapToResponseDto(lastAiViolation!);
 
         if (lastAiViolation != null)
         {
             var secondsSinceLast = (recordedAt - lastAiViolation.RecordedAt).TotalSeconds;
             // Cooldown: don't record another AI violation too soon after the last one.
-            if (secondsSinceLast < settings.CooldownSeconds)
+            if (secondsSinceLast < cooldownSeconds)
                 return MapToResponseDto(lastAiViolation);
 
             // Consecutive-same-type toggle: when disabled, collapse two same-type violations in a row into one.
-            if (!settings.AllowConsecutiveSameType && lastAiViolation.violationType == dto.violationType)
+            if (!allowConsecutiveSameType && lastAiViolation.violationType == dto.violationType)
                 return MapToResponseDto(lastAiViolation);
         }
 
@@ -243,7 +266,7 @@ public class ViolationLogServices : IViolationLogService
             participation.ExamSlotId);
 
         // Reached the notify threshold: tell the lecturer to decide (does NOT auto-disqualify).
-        if (aiViolationCount == settings.AiNotifyThreshold)
+        if (aiViolationCount == aiNotifyThreshold)
         {
             var thresholdPayload = new
             {
@@ -252,8 +275,8 @@ public class ViolationLogServices : IViolationLogService
                 participation.StudentId,
                 participation.Student.FullName,
                 currentAiViolationCount = aiViolationCount,
-                threshold = settings.AiNotifyThreshold,
-                maxAiViolationCount = settings.MaxAiViolationCount,
+                threshold = aiNotifyThreshold,
+                maxAiViolationCount,
                 kind = "ai"
             };
             await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.ViolationThresholdReached, thresholdPayload);

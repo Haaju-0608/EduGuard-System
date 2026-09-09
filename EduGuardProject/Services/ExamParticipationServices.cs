@@ -16,19 +16,22 @@ public class ExamParticipationServices : IExamParticipationService
     private readonly ICurrentUserService _currentUser;
     private readonly IRealtimeEventDispatcher _realtime;
     private readonly IStorageService _storage;
+    private readonly IProctoringSettingsService _proctoringSettings;
 
     public ExamParticipationServices(
         IExamParticipationRepository repo,
         AppDbContext context,
         ICurrentUserService currentUser,
         IRealtimeEventDispatcher realtime,
-        IStorageService storage)
+        IStorageService storage,
+        IProctoringSettingsService proctoringSettings)
     {
         _repo = repo;
         _context = context;
         _currentUser = currentUser;
         _realtime = realtime;
         _storage = storage;
+        _proctoringSettings = proctoringSettings;
     }
 
     public async Task<(IEnumerable<ExamParticipationResponseDto> Items, int TotalCount)> GetAllExamparticipationsAsync(
@@ -93,6 +96,10 @@ public class ExamParticipationServices : IExamParticipationService
             .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
             ?? throw new InvalidOperationException("Exam slot not found.");
 
+        // Snapshot the proctoring rules in effect right now, once, so they stay fixed for this
+        // participation's whole exam even if a SchoolAdmin changes the settings mid-exam.
+        var proctoringSettings = await _proctoringSettings.GetEffectiveAsync(examSlot.Class.InstitutionId);
+
         await EnsureStudentCanTakeExamAsync(dto.StudentId, examSlot);
 
         if (user.Role == AppRole.SchoolAdmin && user.InstitutionId != examSlot.Class.InstitutionId)
@@ -117,6 +124,11 @@ public class ExamParticipationServices : IExamParticipationService
             DisqualifiedReason = null,
             RecordingVideoPath = null,
             IdentitySnapshotPath = null,
+            MaxAiViolationCountSnapshot = proctoringSettings.MaxAiViolationCount,
+            CooldownSecondsSnapshot = proctoringSettings.CooldownSeconds,
+            AllowConsecutiveSameTypeSnapshot = proctoringSettings.AllowConsecutiveSameType,
+            AiNotifyThresholdSnapshot = proctoringSettings.AiNotifyThreshold,
+            BrowserNotifyThresholdSnapshot = proctoringSettings.BrowserNotifyThreshold,
         };
 
         await _repo.AddAsync(entity);
