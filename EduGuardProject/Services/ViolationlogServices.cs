@@ -16,6 +16,7 @@ public class ViolationLogServices : IViolationLogService
     private readonly IRealtimeEventDispatcher _realtime;
     private readonly INotificationDispatcher _notifications;
     private readonly IStorageService _storage;
+    private readonly IProctoringSettingsService _proctoringSettings;
 
     public ViolationLogServices(
         IViolationLogRepository repo,
@@ -23,7 +24,8 @@ public class ViolationLogServices : IViolationLogService
         ICurrentUserService currentUser,
         IRealtimeEventDispatcher realtime,
         INotificationDispatcher notifications,
-        IStorageService storage)
+        IStorageService storage,
+        IProctoringSettingsService proctoringSettings)
     {
         _repo = repo;
         _context = context;
@@ -31,6 +33,7 @@ public class ViolationLogServices : IViolationLogService
         _realtime = realtime;
         _notifications = notifications;
         _storage = storage;
+        _proctoringSettings = proctoringSettings;
     }
 
     public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
@@ -159,6 +162,35 @@ public class ViolationLogServices : IViolationLogService
         await EnsureViolationAccessAsync(participation);
         var recordedAt = ValidateCreateInput(dto, participation, user);
 
+        var settings = await _proctoringSettings.GetEffectiveAsync(participation.ExamSlot.Class.InstitutionId);
+
+        var lastAiViolation = await _context.ViolationLogs
+            .Where(v => v.ParticipationId == dto.ParticipationId && !IsBrowserViolation(v.violationType))
+            .OrderByDescending(v => v.RecordedAt)
+            .FirstOrDefaultAsync();
+
+        var aiViolationCountBefore = lastAiViolation == null
+            ? 0
+            : await _context.ViolationLogs.CountAsync(v =>
+                v.ParticipationId == dto.ParticipationId && !IsBrowserViolation(v.violationType));
+
+        // Max AI violation cap reached: stop recording new AI violations for this participation.
+        // The lecturer already has everything they need to decide (via the notify-threshold event below).
+        if (aiViolationCountBefore >= settings.MaxAiViolationCount)
+            return MapToResponseDto(lastAiViolation!);
+
+        if (lastAiViolation != null)
+        {
+            var secondsSinceLast = (recordedAt - lastAiViolation.RecordedAt).TotalSeconds;
+            // Cooldown: don't record another AI violation too soon after the last one.
+            if (secondsSinceLast < settings.CooldownSeconds)
+                return MapToResponseDto(lastAiViolation);
+
+            // Consecutive-same-type toggle: when disabled, collapse two same-type violations in a row into one.
+            if (!settings.AllowConsecutiveSameType && lastAiViolation.violationType == dto.violationType)
+                return MapToResponseDto(lastAiViolation);
+        }
+
         var entity = new ViolationLog
         {
             Id = Guid.NewGuid(),
@@ -173,6 +205,8 @@ public class ViolationLogServices : IViolationLogService
         };
 
         await _repo.CreateAsync(entity);
+        var aiViolationCount = aiViolationCountBefore + 1;
+
         var payload = new
         {
             violationId = entity.Id,
@@ -185,9 +219,13 @@ public class ViolationLogServices : IViolationLogService
             severity = entity.severity,
             confidence = entity.AiConfidence,
             entity.EvidencePath,
-            entity.RecordedAt
+            entity.RecordedAt,
+            currentAiViolationCount = aiViolationCount
         };
 
+        // Push to BOTH sides with the same server-computed count, so the student screen and the
+        // lecturer dashboard never disagree — neither side should keep its own local tally.
+        await _realtime.PushExamStudentAsync(participation.ExamSlotId, participation.StudentId, HubEvents.ViolationDetected, payload);
         await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.ViolationDetected, payload);
         await _realtime.PublishDataChangedAsync(
             "violations",
@@ -203,6 +241,31 @@ public class ViolationLogServices : IViolationLogService
             NotificationType.ViolationDetected,
             ReferenceTypeEnum.ExamSlot,
             participation.ExamSlotId);
+
+        // Reached the notify threshold: tell the lecturer to decide (does NOT auto-disqualify).
+        if (aiViolationCount == settings.AiNotifyThreshold)
+        {
+            var thresholdPayload = new
+            {
+                participation.Id,
+                participation.ExamSlotId,
+                participation.StudentId,
+                participation.Student.FullName,
+                currentAiViolationCount = aiViolationCount,
+                threshold = settings.AiNotifyThreshold,
+                maxAiViolationCount = settings.MaxAiViolationCount,
+                kind = "ai"
+            };
+            await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.ViolationThresholdReached, thresholdPayload);
+            await _notifications.SendToUserAsync(
+                participation.ExamSlot.Class.LecturerId,
+                "Sinh viên đạt ngưỡng cảnh báo vi phạm",
+                $"Sinh viên {participation.Student.FullName} đã đạt {aiViolationCount} vi phạm AI. Vui lòng xem xét và quyết định có đánh dấu vi phạm quy chế (disqualify) hay không.",
+                NotificationType.ViolationDetected,
+                ReferenceTypeEnum.ExamSlot,
+                participation.ExamSlotId);
+        }
+
         return MapToResponseDto(entity);
     }
 

@@ -41,6 +41,10 @@ public partial class AppDbContext : DbContext
 
     public virtual DbSet<PricingConfig> PricingConfigs { get; set; }
 
+    public virtual DbSet<ProctoringSettings> ProctoringSettings { get; set; }
+
+    public virtual DbSet<ProctoringViolationTypeSetting> ProctoringViolationTypeSettings { get; set; }
+
     public virtual DbSet<Transaction> Transactions { get; set; }
 
     public virtual DbSet<User> Users { get; set; }
@@ -738,6 +742,78 @@ public partial class AppDbContext : DbContext
                 .HasForeignKey(d => d.UpdatedBy)
                 .OnDelete(DeleteBehavior.SetNull)
                 .HasConstraintName("pricing_configs_updated_by_fkey");
+        });
+
+        modelBuilder.Entity<ProctoringSettings>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("proctoring_settings_pkey");
+
+            entity.ToTable("proctoring_settings");
+
+            entity.HasIndex(e => e.InstitutionId, "idx_proctoring_settings_institution");
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.InstitutionId).HasColumnName("institution_id");
+            entity.Property(e => e.MaxAiViolationCount).HasColumnName("max_ai_violation_count");
+            entity.Property(e => e.CooldownSeconds).HasColumnName("cooldown_seconds");
+            entity.Property(e => e.AllowConsecutiveSameType).HasColumnName("allow_consecutive_same_type");
+            entity.Property(e => e.AiNotifyThreshold).HasColumnName("ai_notify_threshold");
+            entity.Property(e => e.BrowserNotifyThreshold).HasColumnName("browser_notify_threshold");
+
+            entity.Property(e => e.IsActive)
+                .HasDefaultValue(true)
+                .HasColumnName("is_active");
+
+            entity.Property(e => e.CreatedBy).HasColumnName("created_by");
+            entity.Property(e => e.UpdatedBy).HasColumnName("updated_by");
+
+            entity.Property(e => e.CreatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("created_at");
+
+            entity.Property(e => e.UpdatedAt)
+                .HasDefaultValueSql("now()")
+                .HasColumnName("updated_at");
+
+            entity.HasOne(d => d.Institution).WithMany()
+                .HasForeignKey(d => d.InstitutionId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("proctoring_settings_institution_id_fkey");
+
+            entity.HasOne(d => d.CreatedByNavigation).WithMany()
+                .HasForeignKey(d => d.CreatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("proctoring_settings_created_by_fkey");
+
+            entity.HasOne(d => d.UpdatedByNavigation).WithMany()
+                .HasForeignKey(d => d.UpdatedBy)
+                .OnDelete(DeleteBehavior.SetNull)
+                .HasConstraintName("proctoring_settings_updated_by_fkey");
+        });
+
+        modelBuilder.Entity<ProctoringViolationTypeSetting>(entity =>
+        {
+            entity.HasKey(e => e.Id).HasName("proctoring_violation_type_settings_pkey");
+
+            entity.ToTable("proctoring_violation_type_settings");
+
+            entity.HasIndex(e => new { e.ProctoringSettingsId, e.ViolationType }, "proctoring_violation_type_settings_unique").IsUnique();
+
+            entity.Property(e => e.Id)
+                .HasDefaultValueSql("gen_random_uuid()")
+                .HasColumnName("id");
+            entity.Property(e => e.ProctoringSettingsId).HasColumnName("proctoring_settings_id");
+            entity.Property(e => e.ViolationType)
+                .HasColumnName("violation_type")
+                .HasColumnType("violation_type");
+            entity.Property(e => e.DetectionThresholdSeconds).HasColumnName("detection_threshold_seconds");
+
+            entity.HasOne(d => d.ProctoringSettings).WithMany(p => p.ViolationTypeSettings)
+                .HasForeignKey(d => d.ProctoringSettingsId)
+                .OnDelete(DeleteBehavior.Cascade)
+                .HasConstraintName("proctoring_violation_type_settings_settings_id_fkey");
         });
 
         modelBuilder.Entity<Transaction>(entity =>

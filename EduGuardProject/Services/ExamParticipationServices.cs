@@ -216,6 +216,12 @@ public class ExamParticipationServices : IExamParticipationService
              v.violationType == ViolationType.WindowBlur ||
              v.violationType == ViolationType.ExitFullscreen));
 
+        var aiViolationCount = await _context.ViolationLogs.CountAsync(v =>
+            v.ParticipationId == participationId &&
+            v.violationType != ViolationType.TabSwitch &&
+            v.violationType != ViolationType.WindowBlur &&
+            v.violationType != ViolationType.ExitFullscreen);
+
         var isTerminated = entity.Status == ParticipationStatus.Disqualified;
 
         return new ExamParticipationStatusResponseDto
@@ -224,7 +230,8 @@ public class ExamParticipationServices : IExamParticipationService
             Status = MapStatusName(entity.Status),
             IsTerminated = isTerminated,
             TerminationReason = isTerminated ? entity.DisqualifiedReason : null,
-            BrowserViolationCount = browserViolationCount
+            BrowserViolationCount = browserViolationCount,
+            AiViolationCount = aiViolationCount
         };
     }
 

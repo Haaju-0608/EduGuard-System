@@ -265,4 +265,7 @@ public class ExamParticipationStatusResponseDto
     public bool IsTerminated { get; set; }
     public string? TerminationReason { get; set; }
     public int BrowserViolationCount { get; set; }
+
+    /// <summary>AI-detected violations (gaze/head-turn/absence/...). Excludes browser violations.</summary>
+    public int AiViolationCount { get; set; }
 }
