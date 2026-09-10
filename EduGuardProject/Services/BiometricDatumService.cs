@@ -246,8 +246,29 @@ public class BiometricDatumService : IBiometricDatumService
 
         if (activeRecords.Count == 0) return false;
 
-        var imageUrlsToDelete = activeRecords
-            .Select(b => b.FaceImageUrl)
+        // Lấy ĐỦ CẢ 3 ảnh (front/left/right) qua BioRequestId — không chỉ FaceImageUrl
+        // (chỉ có ảnh front), y hệt cách đã sửa trong ApproveAsync.
+        var bioRequestIds = activeRecords
+            .Where(b => b.BioRequestId.HasValue)
+            .Select(b => b.BioRequestId!.Value)
+            .Distinct()
+            .ToList();
+
+        var relatedRequests = bioRequestIds.Count > 0
+            ? await _context.BiometricRequests
+                .Where(r => bioRequestIds.Contains(r.Id))
+                .ToListAsync()
+            : new List<BiometricRequest>();
+
+        var requestImageUrls = relatedRequests
+            .SelectMany(r => new[] { r.FrontImagePath, r.LeftImagePath, r.RightImagePath });
+
+        var fallbackFaceImageUrls = activeRecords
+            .Where(b => !b.BioRequestId.HasValue)
+            .Select(b => b.FaceImageUrl);
+
+        var imageUrlsToDelete = requestImageUrls
+            .Concat(fallbackFaceImageUrls)
             .Where(url => !string.IsNullOrWhiteSpace(url))
             .Distinct()
             .ToList();
@@ -257,6 +278,12 @@ public class BiometricDatumService : IBiometricDatumService
             record.IsActive = false;
             record.UpdatedAt = DateTime.UtcNow;
         }
+
+        foreach (var req in relatedRequests)
+        {
+            req.DeletedAt = DateTime.UtcNow;
+        }
+
         await _context.SaveChangesAsync();
 
         foreach (var url in imageUrlsToDelete)

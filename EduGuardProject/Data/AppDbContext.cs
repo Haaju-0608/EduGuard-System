@@ -273,6 +273,7 @@ public partial class AppDbContext : DbContext
             entity.Property(e => e.FrontImagePath).HasColumnName("front_image_path");
             entity.Property(e => e.LeftImagePath).HasColumnName("left_image_path");
             entity.Property(e => e.RightImagePath).HasColumnName("right_image_path");
+            entity.Property(e => e.DeletedAt).HasColumnName("deleted_at");
 
             entity.HasOne(d => d.ApprovedByNavigation).WithMany(p => p.BiometricRequestApprovedByNavigations)
                 .HasForeignKey(d => d.ApprovedBy)
