@@ -1,4 +1,4 @@
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Helpers;
 using EduGuardProject.Models;
@@ -229,5 +229,73 @@ public class BiometricDatumService : IBiometricDatumService
         {
             throw new UnauthorizedAccessException("Access denied.");
         }
+    }
+
+    //School Admin xóa dữ liệu khuon mặt của hs đó 
+    public async Task<bool> RevokeAllForStudentAsync(Guid studentId)
+    {
+        var actor = await _currentUser.GetRequiredUserAsync();
+        if (actor.Role != AppRole.SuperAdmin)
+        {
+            await EnsureSameInstitutionAsync(actor, studentId);
+        }
+
+        var activeRecords = await _context.BiometricData
+            .Where(b => b.UserId == studentId && b.IsActive)
+            .ToListAsync();
+
+        if (activeRecords.Count == 0) return false;
+
+        // Lấy ĐỦ CẢ 3 ảnh (front/left/right) qua BioRequestId — không chỉ FaceImageUrl
+        // (chỉ có ảnh front), y hệt cách đã sửa trong ApproveAsync.
+        var bioRequestIds = activeRecords
+            .Where(b => b.BioRequestId.HasValue)
+            .Select(b => b.BioRequestId!.Value)
+            .Distinct()
+            .ToList();
+
+        var relatedRequests = bioRequestIds.Count > 0
+            ? await _context.BiometricRequests
+                .Where(r => bioRequestIds.Contains(r.Id))
+                .ToListAsync()
+            : new List<BiometricRequest>();
+
+        var requestImageUrls = relatedRequests
+            .SelectMany(r => new[] { r.FrontImagePath, r.LeftImagePath, r.RightImagePath });
+
+        var fallbackFaceImageUrls = activeRecords
+            .Where(b => !b.BioRequestId.HasValue)
+            .Select(b => b.FaceImageUrl);
+
+        var imageUrlsToDelete = requestImageUrls
+            .Concat(fallbackFaceImageUrls)
+            .Where(url => !string.IsNullOrWhiteSpace(url))
+            .Distinct()
+            .ToList();
+
+        foreach (var record in activeRecords)
+        {
+            record.IsActive = false;
+            record.UpdatedAt = DateTime.UtcNow;
+        }
+
+        foreach (var req in relatedRequests)
+        {
+            req.DeletedAt = DateTime.UtcNow;
+        }
+
+        await _context.SaveChangesAsync();
+
+        foreach (var url in imageUrlsToDelete)
+        {
+            try { await _storage.DeleteAsync(StorageService.BiometricFacesBucket, url!); }
+            catch (Exception ex)
+            {
+
+            }
+        }
+
+        await PublishBiometricDatumChangedAsync(activeRecords[0], "revoked-all");
+        return true;
     }
 }

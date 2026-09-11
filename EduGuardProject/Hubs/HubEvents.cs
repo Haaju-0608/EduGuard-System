@@ -30,6 +30,7 @@ public static class HubEvents
     public const string Disqualified = nameof(Disqualified);
     public const string BrowserViolationDetected = nameof(BrowserViolationDetected);
     public const string ExamTerminated = nameof(ExamTerminated);
+    public const string ViolationThresholdReached = nameof(ViolationThresholdReached);
 
     public const string AttendanceSessionJoined = nameof(AttendanceSessionJoined);
     public const string AttendanceSessionLeft = nameof(AttendanceSessionLeft);

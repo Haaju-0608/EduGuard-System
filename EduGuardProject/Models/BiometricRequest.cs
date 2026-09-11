@@ -30,6 +30,7 @@ public partial class BiometricRequest
     public DateTime? ReviewedAt { get; set; }
 
     public DateTime CreatedAt { get; set; }
+    public DateTime? DeletedAt { get; set; }
 
     public virtual User? ApprovedByNavigation { get; set; }
 

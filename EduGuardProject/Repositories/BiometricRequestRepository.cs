@@ -15,7 +15,7 @@ public class BiometricRequestRepository : IBiometricRequestRepository
         Guid? studentId = null, BiometricReqStatus? status = null)
     {
         var query = _context.BiometricRequests.AsNoTracking().AsQueryable(); // Sửa để font end có thể lấy dữ liệu đưa vào lịch với hạn chế fix cứng nhá 
-
+        query = query.Where(r => r.DeletedAt == null);
 
         if (studentId.HasValue)
             query = query.Where(r => r.StudentId == studentId.Value);
@@ -40,7 +40,7 @@ public class BiometricRequestRepository : IBiometricRequestRepository
     }
 
     public Task<BiometricRequest?> GetByIdAsync(Guid id) =>
-        _context.BiometricRequests.FirstOrDefaultAsync(r => r.Id == id);
+    _context.BiometricRequests.FirstOrDefaultAsync(r => r.Id == id && r.DeletedAt == null);
 
     public async Task AddAsync(BiometricRequest entity)
     {

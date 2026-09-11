@@ -117,6 +117,7 @@ builder.Services.AddScoped<IExamslotRepository, ExamSlotRepository>();
 builder.Services.AddScoped<IExamQuestionRepository, ExamQuestionRepository>();
 builder.Services.AddScoped<IStudentExamRecordRepository, StudentExamRecordRepository>();
 builder.Services.AddScoped<IViolationLogRepository, ViolationLogRepository>();
+builder.Services.AddScoped<IProctoringSettingsRepository, ProctoringSettingsRepository>();
 
 // Services
 builder.Services.Configure<EmailSettings>(builder.Configuration.GetSection("EmailSettings"));
@@ -141,6 +142,7 @@ builder.Services.AddScoped<IReadingPassageService, ReadingPassageService>();
 builder.Services.AddScoped<IStudentExamRecordService, StudentExamRecordService>();
 builder.Services.AddScoped<IViolationLogService, ViolationLogServices>();
 builder.Services.AddScoped<IBrowserViolationService, BrowserViolationService>();
+builder.Services.AddScoped<IProctoringSettingsService, ProctoringSettingsService>();
 builder.Services.AddScoped<INotificationDispatcher, NotificationDispatcher>();
 builder.Services.AddScoped<IRealtimeEventDispatcher, RealtimeEventDispatcher>();
 builder.Services.AddScoped<IExamWorkflowService, ExamWorkflowService>();

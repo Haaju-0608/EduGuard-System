@@ -36,6 +36,16 @@ public partial class ExamParticipation
     /// </summary>
     public string? IdentitySnapshotPath { get; set; }
 
+    // Snapshot of ProctoringSettings taken once at CreateAsync (exam start), so the rules in
+    // force for a participation stay fixed for its whole exam even if a SchoolAdmin changes the
+    // institution's settings mid-exam. Null only for participations created before this feature
+    // existed — callers must fall back to ProctoringSettingsService.GetEffectiveAsync in that case.
+    public int? MaxAiViolationCountSnapshot { get; set; }
+    public int? CooldownSecondsSnapshot { get; set; }
+    public bool? AllowConsecutiveSameTypeSnapshot { get; set; }
+    public int? AiNotifyThresholdSnapshot { get; set; }
+    public int? BrowserNotifyThresholdSnapshot { get; set; }
+
     public virtual Transaction? BillingTrans { get; set; }
 
     public virtual ExamSlot ExamSlot { get; set; } = null!;

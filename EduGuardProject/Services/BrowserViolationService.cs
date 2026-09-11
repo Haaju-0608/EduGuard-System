@@ -16,22 +16,26 @@ public class BrowserViolationService : IBrowserViolationService
         ViolationType.ExitFullscreen
     };
 
-    private const int TerminationThreshold = 3;
-
     private readonly AppDbContext _context;
     private readonly ICurrentUserService _currentUser;
     private readonly IRealtimeEventDispatcher _realtime;
+    private readonly INotificationDispatcher _notifications;
+    private readonly IProctoringSettingsService _proctoringSettings;
     private readonly ILogger<BrowserViolationService> _logger;
 
     public BrowserViolationService(
         AppDbContext context,
         ICurrentUserService currentUser,
         IRealtimeEventDispatcher realtime,
+        INotificationDispatcher notifications,
+        IProctoringSettingsService proctoringSettings,
         ILogger<BrowserViolationService> logger)
     {
         _context = context;
         _currentUser = currentUser;
         _realtime = realtime;
+        _notifications = notifications;
+        _proctoringSettings = proctoringSettings;
         _logger = logger;
     }
 
@@ -80,35 +84,37 @@ public class BrowserViolationService : IBrowserViolationService
             RecordedAt = now
         };
 
+        var cls = participation.ExamSlot.Class;
+
+        // Use the threshold snapshotted at exam start (ExamParticipationServices.CreateAsync) so a
+        // SchoolAdmin changing settings mid-exam only affects students who join afterward. Fall back
+        // to the currently-effective settings only for participations created before this snapshot
+        // feature existed (snapshot columns NULL).
+        var browserNotifyThreshold = participation.BrowserNotifyThresholdSnapshot
+            ?? (await _proctoringSettings.GetEffectiveAsync(cls.InstitutionId)).BrowserNotifyThreshold;
+
         _context.ViolationLogs.Add(log);
         await _context.SaveChangesAsync();
 
         var currentCount = await _context.ViolationLogs
             .CountAsync(v => v.ParticipationId == participation.Id && BrowserViolationTypes.Contains(v.violationType));
 
-        var examTerminated = currentCount >= TerminationThreshold;
-        if (examTerminated)
-        {
-            participation.Status = ParticipationStatus.Disqualified;
-            participation.DisqualifiedReason = $"Terminated automatically after {currentCount} browser violations.";
-            participation.ActualEnd ??= now;
-            await _context.SaveChangesAsync();
-        }
+        // No auto-disqualify: reaching the notify threshold only alerts the lecturer, who decides.
+        var thresholdReached = currentCount >= browserNotifyThreshold;
 
         _logger.LogInformation(
-            "BrowserViolation recorded. StudentId={StudentId} ParticipationId={ParticipationId} ViolationType={ViolationType} CurrentCount={CurrentCount} ExamTerminated={ExamTerminated}",
-            user.Id, participation.Id, dto.ViolationType, currentCount, examTerminated);
+            "BrowserViolation recorded. StudentId={StudentId} ParticipationId={ParticipationId} ViolationType={ViolationType} CurrentCount={CurrentCount} ThresholdReached={ThresholdReached}",
+            user.Id, participation.Id, dto.ViolationType, currentCount, thresholdReached);
 
         var payload = new
         {
             participationId = participation.Id,
             violationType = dto.ViolationType,
             currentViolationCount = currentCount,
-            examTerminated,
+            examTerminated = false,
             recordedAt = now
         };
 
-        var cls = participation.ExamSlot.Class;
         await _realtime.PushExamStudentAsync(participation.ExamSlotId, participation.StudentId, HubEvents.BrowserViolationDetected, payload);
         await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.BrowserViolationDetected, payload);
         await _realtime.PublishDataChangedAsync(
@@ -119,24 +125,34 @@ public class BrowserViolationService : IBrowserViolationService
             userId: participation.StudentId,
             data: payload);
 
-        if (examTerminated)
+        // Fire exactly once, when the count first reaches the threshold.
+        if (currentCount == browserNotifyThreshold)
         {
-            var terminatedPayload = new
+            var thresholdPayload = new
             {
                 participationId = participation.Id,
                 participation.ExamSlotId,
-                reason = participation.DisqualifiedReason,
-                terminatedAt = now
+                participation.StudentId,
+                participation.Student.FullName,
+                currentBrowserViolationCount = currentCount,
+                threshold = browserNotifyThreshold,
+                kind = "browser"
             };
-
-            await _realtime.PushExamStudentAsync(participation.ExamSlotId, participation.StudentId, HubEvents.ExamTerminated, terminatedPayload);
+            await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.ViolationThresholdReached, thresholdPayload);
+            await _notifications.SendToUserAsync(
+                cls.LecturerId,
+                "Sinh viên đạt ngưỡng cảnh báo vi phạm trình duyệt",
+                $"Sinh viên {participation.Student.FullName} đã đạt {currentCount} vi phạm trình duyệt (chuyển tab/thoát fullscreen/mất focus). Vui lòng xem xét và quyết định có đánh dấu vi phạm quy chế (disqualify) hay không.",
+                NotificationType.ViolationDetected,
+                ReferenceTypeEnum.ExamSlot,
+                participation.ExamSlotId);
         }
 
         return new BrowserViolationResponseDto
         {
             Success = true,
             CurrentViolationCount = currentCount,
-            ExamTerminated = examTerminated
+            ExamTerminated = false
         };
     }
 }

@@ -1,4 +1,4 @@
-using EduGuardProject.DTOs.Request;
+﻿using EduGuardProject.DTOs.Request;
 using EduGuardProject.DTOs.Response;
 using EduGuardProject.Filters;
 using EduGuardProject.Models;
@@ -83,6 +83,19 @@ public class BiometricDataController : AcademicApiControllerBase
             var success = await _service.DeleteAsync(id);
             if (!success) return NotFound(ApiResponse<object>.OnFail("Biometric data not found."));
             return Ok(ApiResponse<object>.OnSuccess(null!, "Biometric data deleted successfully."));
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
+    [HttpDelete("student/{studentId:guid}/revoke-all")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+    public async Task<IActionResult> RevokeAllForStudent(Guid studentId)
+    {
+        try
+        {
+            var success = await _service.RevokeAllForStudentAsync(studentId);
+            if (!success) return NotFound(ApiResponse<object>.OnFail("No active biometric data found for this student."));
+            return Ok(ApiResponse<object>.OnSuccess(null!, "Đã thu hồi toàn bộ dữ liệu khuôn mặt của sinh viên."));
         }
         catch (Exception ex) { return HandleException(ex); }
     }
