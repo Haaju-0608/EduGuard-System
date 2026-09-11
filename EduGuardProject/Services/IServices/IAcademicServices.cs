@@ -78,6 +78,8 @@ public interface IExamParticipationService
         string? search, string? sort, int page, int pageSize, Guid? examSlotId = null);
     Task<ExamParticipationResponseDto?> GetByIdAsync(Guid id);
     Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto);
+    Task<ImportExamParticipantsResponseDto> ImportFromExcelAsync(
+        Guid examSlotId, IFormFile file, CancellationToken cancellationToken = default);
 
     Task<bool> UpdateAsync(Guid id, UpdateExamParticipationDto dto);
     Task<bool> UpdateAsyncOnlyExamPartipationStatus(Guid examSlotId, UpdateExamParticipationStatusDto dto);

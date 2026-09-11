@@ -169,6 +169,23 @@ public class ExamParticipationResponseDto
 
 }
 
+public class ImportExamParticipantsResponseDto
+{
+    public int Total { get; set; }
+    public int Succeeded { get; set; }
+    public int Failed { get; set; }
+    public List<ImportExamParticipantRowResultDto> Results { get; set; } = [];
+}
+
+public class ImportExamParticipantRowResultDto
+{
+    public int Row { get; set; }
+    public string? StudentCode { get; set; }
+    public string? FullName { get; set; }
+    public bool Success { get; set; }
+    public string? Error { get; set; }
+}
+
 public class StudentExamRecordResponseDto
 {
     public Guid Id { get; set; }

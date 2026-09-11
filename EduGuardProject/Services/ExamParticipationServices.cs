@@ -3,6 +3,7 @@ using EduGuardProject.DTOs.Response;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 using System;
 using System.Collections.Generic;
@@ -92,6 +93,7 @@ public class ExamParticipationServices : IExamParticipationService
             .Include(e => e.Class)
             .FirstOrDefaultAsync(e => e.Id == dto.ExamSlotId)
             ?? throw new InvalidOperationException("Exam slot not found.");
+        EnsureExamCanAcceptParticipants(examSlot);
 
         await EnsureStudentCanTakeExamAsync(dto.StudentId, examSlot);
 
@@ -122,6 +124,120 @@ public class ExamParticipationServices : IExamParticipationService
         await _repo.AddAsync(entity);
         await PublishParticipationChangedAsync(entity.Id, "created");
         return entity;
+    }
+
+    public async Task<ImportExamParticipantsResponseDto> ImportFromExcelAsync(
+        Guid examSlotId,
+        IFormFile file,
+        CancellationToken cancellationToken = default)
+    {
+        if (file == null || file.Length == 0)
+            throw new ArgumentException("Excel file is required.");
+        if (file.Length > 5 * 1024 * 1024)
+            throw new ArgumentException("Excel file must not exceed 5 MB.");
+        if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Only .xlsx files are supported.");
+
+        var examSlot = await _context.ExamSlots.AsNoTracking()
+            .Include(e => e.Class)
+            .FirstOrDefaultAsync(e => e.Id == examSlotId, cancellationToken)
+            ?? throw new InvalidOperationException("Exam slot not found.");
+        EnsureExamCanAcceptParticipants(examSlot);
+        await EnsureCanManageExamAsync(examSlot);
+
+        await using var stream = file.OpenReadStream();
+        var rows = ReadExamParticipantRows(stream);
+        if (rows.Count == 0)
+            throw new ArgumentException("The Excel file does not contain any student rows.");
+        if (rows.Count > 500)
+            throw new ArgumentException("A single import is limited to 500 student rows.");
+
+        var studentCodes = rows.Select(r => r.StudentCode).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var students = await _context.Users.AsNoTracking()
+            .Where(u => u.InstitutionId == examSlot.Class.InstitutionId &&
+                        u.Role == AppRole.Student &&
+                        u.Status == UserStatus.Active &&
+                        u.DeletedAt == null &&
+                        u.StudentCode != null &&
+                        studentCodes.Contains(u.StudentCode))
+            .ToListAsync(cancellationToken);
+        var studentsByCode = students.ToDictionary(u => u.StudentCode!, StringComparer.OrdinalIgnoreCase);
+        var studentIds = students.Select(u => u.Id).ToList();
+        var enrolledStudentIds = (await _context.ClassEnrollments.AsNoTracking()
+            .Where(e => e.ClassId == examSlot.ClassId &&
+                        e.Status == EnrollmentStatus.Active &&
+                        studentIds.Contains(e.StudentId))
+            .Select(e => e.StudentId)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+        var existingStudentIds = (await _context.ExamParticipations.AsNoTracking()
+            .Where(p => p.ExamSlotId == examSlotId && studentIds.Contains(p.StudentId))
+            .Select(p => p.StudentId)
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+        var conflictingStudentIds = (await _context.ExamParticipations.AsNoTracking()
+            .Where(p => studentIds.Contains(p.StudentId) &&
+                        p.ExamSlotId != examSlotId &&
+                        p.ExamSlot.Status != ExamSlotStatus.Cancelled &&
+                        p.ExamSlot.StartTime < examSlot.EndTime &&
+                        p.ExamSlot.EndTime > examSlot.StartTime)
+            .Select(p => p.StudentId)
+            .Distinct()
+            .ToListAsync(cancellationToken))
+            .ToHashSet();
+
+        var result = new ImportExamParticipantsResponseDto { Total = rows.Count };
+        var importedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var participants = new List<ExamParticipation>();
+        foreach (var row in rows)
+        {
+            var rowResult = new ImportExamParticipantRowResultDto
+            {
+                Row = row.Row,
+                StudentCode = row.StudentCode,
+                FullName = row.FullName
+            };
+
+            if (!importedCodes.Add(row.StudentCode))
+                rowResult.Error = "StudentCode is duplicated in the Excel file.";
+            else if (!studentsByCode.TryGetValue(row.StudentCode, out var student))
+                rowResult.Error = "Active student was not found in this institution.";
+            else if (!string.Equals(student.FullName.Trim(), row.FullName, StringComparison.OrdinalIgnoreCase))
+                rowResult.Error = "FullName does not match the student code.";
+            else if (!enrolledStudentIds.Contains(student.Id))
+                rowResult.Error = "Student is not actively enrolled in this exam's class.";
+            else if (existingStudentIds.Contains(student.Id))
+                rowResult.Error = "Student already has an exam participation.";
+            else if (conflictingStudentIds.Contains(student.Id))
+                rowResult.Error = "Student has another exam in the same time range.";
+            else
+            {
+                participants.Add(new ExamParticipation
+                {
+                    Id = Guid.NewGuid(),
+                    ExamSlotId = examSlotId,
+                    StudentId = student.Id,
+                    Status = ParticipationStatus.Absent
+                });
+                rowResult.Success = true;
+                result.Succeeded++;
+            }
+
+            if (!rowResult.Success) result.Failed++;
+            result.Results.Add(rowResult);
+        }
+
+        if (participants.Count > 0)
+        {
+            await _repo.AddRangeAsync(participants);
+            await _realtime.PublishDataChangedAsync(
+                "exam-participations", "bulk-imported",
+                institutionId: examSlot.Class.InstitutionId,
+                lecturerId: examSlot.Class.LecturerId,
+                data: new { examSlotId, result.Succeeded, result.Failed });
+        }
+
+        return result;
     }
 
     public async Task<bool> UpdateAsync(Guid id, UpdateExamParticipationDto dto)
@@ -261,6 +377,60 @@ public class ExamParticipationServices : IExamParticipationService
         if (hasOverlap)
             throw new InvalidOperationException("Student already has another exam in this time range.");
     }
+
+    private static void EnsureExamCanAcceptParticipants(ExamSlot examSlot)
+    {
+        if (examSlot.Status == ExamSlotStatus.Cancelled)
+            throw new InvalidOperationException("Cannot add students to a cancelled exam.");
+    }
+
+    private async Task EnsureCanManageExamAsync(ExamSlot examSlot)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        var canManage = user.Role == AppRole.SuperAdmin ||
+            (user.Role == AppRole.SchoolAdmin && user.InstitutionId == examSlot.Class.InstitutionId) ||
+            (user.Role == AppRole.Lecturer &&
+             user.InstitutionId == examSlot.Class.InstitutionId &&
+             user.Id == examSlot.Class.LecturerId);
+        if (!canManage)
+            throw new UnauthorizedAccessException("Access denied.");
+    }
+
+    private static List<ImportExamParticipantRow> ReadExamParticipantRows(Stream stream)
+    {
+        using var workbook = new XLWorkbook(stream);
+        var sheet = workbook.Worksheets.FirstOrDefault()
+            ?? throw new ArgumentException("The workbook does not contain a worksheet.");
+        var headerRow = sheet.FirstRowUsed()
+            ?? throw new ArgumentException("The workbook is empty.");
+        var headers = headerRow.CellsUsed().ToDictionary(
+            cell => NormalizeExcelHeader(cell.GetString()),
+            cell => cell.Address.ColumnNumber);
+        var requiredHeaders = new[] { "studentcode", "fullname" };
+        var missingHeaders = requiredHeaders.Where(header => !headers.ContainsKey(header)).ToList();
+        if (missingHeaders.Count > 0)
+            throw new ArgumentException($"Missing required columns: {string.Join(", ", missingHeaders)}.");
+
+        var rows = new List<ImportExamParticipantRow>();
+        foreach (var row in sheet.RowsUsed().Where(r => r.RowNumber() > headerRow.RowNumber()))
+        {
+            var studentCode = row.Cell(headers["studentcode"]).GetFormattedString().Trim();
+            var fullName = row.Cell(headers["fullname"]).GetFormattedString().Trim();
+            if (string.IsNullOrWhiteSpace(studentCode) && string.IsNullOrWhiteSpace(fullName))
+                continue;
+            if (string.IsNullOrWhiteSpace(studentCode) || string.IsNullOrWhiteSpace(fullName))
+                throw new ArgumentException($"Row {row.RowNumber()} must include StudentCode and FullName.");
+
+            rows.Add(new ImportExamParticipantRow(row.RowNumber(), studentCode, fullName));
+        }
+
+        return rows;
+    }
+
+    private static string NormalizeExcelHeader(string value) =>
+        value.Trim().Replace("_", "").Replace(" ", "").ToLowerInvariant();
+
+    private sealed record ImportExamParticipantRow(int Row, string StudentCode, string FullName);
 
     private static void ValidateParticipationTimes(DateTime? actualStart, DateTime? actualEnd)
     {

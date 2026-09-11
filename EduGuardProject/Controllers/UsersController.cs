@@ -45,53 +45,6 @@ namespace EduGuardProject.Controllers
             }
         }
 
-        // Student code format: SE151214 => major SE, intake year 15, serial 1214.
-        [HttpGet("students")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
-        public async Task<IActionResult> StudentsByCodeorMajor(
-            [FromQuery] string? majorCode,
-            [FromQuery] string? academicYear,
-            [FromQuery] string? search,
-            [FromQuery] string? sort,
-            [FromQuery] int page = 1,
-            [FromQuery] int pageSize = 10)
-        {
-            if (page < 1 || pageSize is < 1 or > 100)
-                return BadRequest(ApiResponse<object>.OnFail("Page must be greater than 0 and pageSize must be between 1 and 100."));
-
-            var major = string.IsNullOrWhiteSpace(majorCode) ? null : majorCode.Trim().ToUpperInvariant();
-            var year = string.IsNullOrWhiteSpace(academicYear) ? null : academicYear.Trim();
-            if (major is null && year is null)
-            {
-                return BadRequest(ApiResponse<object>.OnFail(
-                    "Provide majorCode (e.g. SE), academicYear (e.g. 15), or both."));
-            }
-            if ((major is not null && (major.Length != 2 || !major.All(char.IsLetter))) ||
-                (year is not null && (year.Length != 2 || !year.All(char.IsDigit))))
-                return BadRequest(ApiResponse<object>.OnFail(
-                    "majorCode must contain two letters and academicYear two digits."));
-
-            try
-            {
-                var role = (AppRole)HttpContext.Items["Role"]!;
-                var institutionId = role == AppRole.SuperAdmin
-                    ? null
-                    : HttpContext.Items["InstitutionId"] as Guid?;
-                var (items, totalCount) = await _service.GetUsersAsync(
-                    institutionId, null, search, sort, page, pageSize,
-                    onlyRole: AppRole.Student,
-                    studentMajorCode: major,
-                    studentAcademicYear: year);
-
-                return Ok(ApiPagedResponse<UserResponseDto>.OnPagedSuccess(
-                    items, page, pageSize, totalCount, "Students retrieved successfully."));
-            }
-            catch (Exception ex)
-            {
-                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
-            }
-        }
-
         [HttpGet("{id:guid}")]
         [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
         public async Task<IActionResult> GetById(Guid id)

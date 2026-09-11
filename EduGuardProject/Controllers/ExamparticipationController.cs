@@ -15,13 +15,15 @@ namespace EduGuardProject.Controllers
         private readonly IExamWorkflowService _workflowService;
         private readonly IExamIdentityVerificationService _identityVerification;
         private readonly ICurrentUserService _currentUser;
+        private readonly IUserService _userService;
 
-        public ExamParticipationController(IExamParticipationService service, IExamWorkflowService workflowService, IExamIdentityVerificationService identityVerification, ICurrentUserService currentUser)
+        public ExamParticipationController(IExamParticipationService service, IExamWorkflowService workflowService, IExamIdentityVerificationService identityVerification, ICurrentUserService currentUser, IUserService userService)
         {
             _service = service;
             _workflowService = workflowService;
             _identityVerification = identityVerification;
             _currentUser = currentUser;
+            _userService = userService;
         }
 
 
@@ -64,6 +66,45 @@ namespace EduGuardProject.Controllers
                 var (items, total) = await _service.GetAllExamparticipationsAsync(search, sort, page, pageSize, examSlotId);
                 var response = ApiPagedResponse<ExamParticipationResponseDto>.OnPagedSuccess(items, page, pageSize, total, "Exam participations retrieved successfully.");
                 return Ok(response);
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        // Student code format: SE151214 => major SE, intake year 15, serial 1214.
+        [HttpGet("students")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+        public async Task<IActionResult> GetStudentsByCode(
+            [FromQuery] string? majorCode,
+            [FromQuery] string? academicYear,
+            [FromQuery] string? search,
+            [FromQuery] string? sort,
+            [FromQuery] int page = 1,
+            [FromQuery] int pageSize = 10,
+            [FromQuery] string? fields = null)
+        {
+            if (!ValidatePaging(page, pageSize)) return BadPagedRequest("Page and pageSize must be greater than 0.");
+
+            var major = string.IsNullOrWhiteSpace(majorCode) ? null : majorCode.Trim().ToUpperInvariant();
+            var year = string.IsNullOrWhiteSpace(academicYear) ? null : academicYear.Trim();
+            if (major is null && year is null)
+                return BadRequest(ApiResponse<object>.OnFail("Provide majorCode (e.g. SE), academicYear (e.g. 15), or both."));
+            if ((major is not null && (major.Length != 2 || !major.All(char.IsLetter))) ||
+                (year is not null && (year.Length != 2 || !year.All(char.IsDigit))))
+            {
+                return BadRequest(ApiResponse<object>.OnFail(
+                    "majorCode must contain two letters and academicYear two digits."));
+            }
+
+            try
+            {
+                var user = await _currentUser.GetRequiredUserAsync();
+                var institutionId = user.Role == AppRole.SuperAdmin ? null : user.InstitutionId;
+                var (items, total) = await _userService.GetUsersAsync(
+                    institutionId, null, search, sort, page, pageSize,
+                    onlyRole: AppRole.Student,
+                    studentMajorCode: major,
+                    studentAcademicYear: year);
+                return OkPaged(items, page, pageSize, total, "Students retrieved successfully.", fields);
             }
             catch (Exception ex) { return HandleException(ex); }
         }
@@ -112,6 +153,23 @@ namespace EduGuardProject.Controllers
             {
                 var result = await _service.CreateAsync(dto);
                 return CreatedSingle(result, "Exam participation created successfully.");
+            }
+            catch (Exception ex) { return HandleException(ex); }
+        }
+
+        // Excel columns required: StudentCode, FullName. Students must already be actively enrolled in the exam's class.
+        [HttpPost("exam-slots/{examSlotId:guid}/import-excel")]
+        [Consumes("multipart/form-data")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+        public async Task<IActionResult> ImportStudentsFromExcel(
+            Guid examSlotId,
+            [FromForm] IFormFile file,
+            CancellationToken cancellationToken)
+        {
+            try
+            {
+                var result = await _service.ImportFromExcelAsync(examSlotId, file, cancellationToken);
+                return OkSingle(result, $"Import completed: {result.Succeeded} succeeded, {result.Failed} failed.");
             }
             catch (Exception ex) { return HandleException(ex); }
         }
