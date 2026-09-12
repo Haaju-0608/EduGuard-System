@@ -15,7 +15,7 @@ public partial class ProctoringViolationTypeSetting
 
     public ViolationType ViolationType { get; set; }
 
-    public int DetectionThresholdSeconds { get; set; }
+    public double DetectionThresholdSeconds { get; set; }
 
     [JsonIgnore]
     public virtual ProctoringSettings ProctoringSettings { get; set; } = null!;

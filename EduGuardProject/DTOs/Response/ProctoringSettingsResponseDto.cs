@@ -20,6 +20,6 @@ namespace EduGuardProject.DTOs.Response
     public class ViolationTypeThresholdResponseDto
     {
         public ViolationType ViolationType { get; set; }
-        public int DetectionThresholdSeconds { get; set; }
+        public double DetectionThresholdSeconds { get; set; }
     }
 }

@@ -8,8 +8,8 @@ namespace EduGuardProject.DTOs.Request
         [Required]
         public ViolationType ViolationType { get; set; }
 
-        [Range(1, 3600, ErrorMessage = "Detection threshold seconds must be between 1 and 3600.")]
-        public int DetectionThresholdSeconds { get; set; }
+        [Range(0.1, 3600, ErrorMessage = "Detection threshold seconds must be between 0.1 and 3600.")]
+        public double DetectionThresholdSeconds { get; set; }
     }
 
     public class CreateProctoringSettingsDto
