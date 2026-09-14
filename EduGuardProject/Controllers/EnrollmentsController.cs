@@ -65,6 +65,23 @@ public class EnrollmentsController : AcademicApiControllerBase
         catch (Exception ex) { return HandleException(ex); }
     }
 
+    // Excel columns required: StudentCode, FullName.
+    [HttpPost("classes/{classId:guid}/import-excel")]
+    [Consumes("multipart/form-data")]
+    [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
+    public async Task<IActionResult> ImportStudentsFromExcel(
+        Guid classId,
+        [FromForm] IFormFile file,
+        CancellationToken cancellationToken)
+    {
+        try
+        {
+            var result = await _service.ImportFromExcelAsync(classId, file, cancellationToken);
+            return OkSingle(result, $"Import completed: {result.Succeeded} succeeded, {result.Failed} failed.");
+        }
+        catch (Exception ex) { return HandleException(ex); }
+    }
+
     [HttpPut("{classId:guid}/{studentId:guid}")]
     [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
     public async Task<IActionResult> Update(Guid classId, Guid studentId, [FromBody] UpdateClassEnrollmentDto dto)

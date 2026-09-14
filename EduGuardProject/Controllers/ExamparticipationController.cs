@@ -157,23 +157,6 @@ namespace EduGuardProject.Controllers
             catch (Exception ex) { return HandleException(ex); }
         }
 
-        // Excel columns required: StudentCode, FullName. Students must already be actively enrolled in the exam's class.
-        [HttpPost("exam-slots/{examSlotId:guid}/import-excel")]
-        [Consumes("multipart/form-data")]
-        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin, AppRole.Lecturer)]
-        public async Task<IActionResult> ImportStudentsFromExcel(
-            Guid examSlotId,
-            [FromForm] IFormFile file,
-            CancellationToken cancellationToken)
-        {
-            try
-            {
-                var result = await _service.ImportFromExcelAsync(examSlotId, file, cancellationToken);
-                return OkSingle(result, $"Import completed: {result.Succeeded} succeeded, {result.Failed} failed.");
-            }
-            catch (Exception ex) { return HandleException(ex); }
-        }
-
         // Update Exam Participation
         // Truyền dữ liệu: route id, body actualStart, actualEnd, status, disqualifiedReason, recordingVideoPath, identitySnapshotPath.
         // Điều kiện: SuperAdmin, SchoolAdmin cùng institution hoặc Student chính chủ; Student không được sửa sau khi Submitted/Disqualified.

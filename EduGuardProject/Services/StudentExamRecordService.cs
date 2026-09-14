@@ -544,9 +544,6 @@ public class StudentExamRecordService : IStudentExamRecordService
         SubmitStudentExamRecordDto dto,
         DateTime submittedAt)
     {
-        if (examQuestions.Count > 0 && dto.Answers.Count == 0)
-            throw new InvalidOperationException("Answers are required.");
-
         var questions = examQuestions.ToDictionary(q => q.Id);
         var seenQuestionIds = new HashSet<Guid>();
         var answers = new List<object>();

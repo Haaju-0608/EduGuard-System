@@ -169,15 +169,15 @@ public class ExamParticipationResponseDto
 
 }
 
-public class ImportExamParticipantsResponseDto
+public class ImportClassEnrollmentsResponseDto
 {
     public int Total { get; set; }
     public int Succeeded { get; set; }
     public int Failed { get; set; }
-    public List<ImportExamParticipantRowResultDto> Results { get; set; } = [];
+    public List<ImportClassEnrollmentRowResultDto> Results { get; set; } = [];
 }
 
-public class ImportExamParticipantRowResultDto
+public class ImportClassEnrollmentRowResultDto
 {
     public int Row { get; set; }
     public string? StudentCode { get; set; }

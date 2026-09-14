@@ -4,6 +4,7 @@ using EduGuardProject.Helpers;
 using EduGuardProject.Models;
 using EduGuardProject.Repositories.IRepositories;
 using EduGuardProject.Services.IServices;
+using ClosedXML.Excel;
 using Microsoft.EntityFrameworkCore;
 
 namespace EduGuardProject.Services;
@@ -125,6 +126,86 @@ public class ClassEnrollmentService : IClassEnrollmentService
         return await AcademicMapper.MapEnrollmentAsync(_context, entity, null);
     }
 
+    public async Task<ImportClassEnrollmentsResponseDto> ImportFromExcelAsync(
+        Guid classId,
+        IFormFile file,
+        CancellationToken cancellationToken = default)
+    {
+        if (file == null || file.Length == 0)
+            throw new ArgumentException("Excel file is required.");
+        if (file.Length > 5 * 1024 * 1024)
+            throw new ArgumentException("Excel file must not exceed 5 MB.");
+        if (!string.Equals(Path.GetExtension(file.FileName), ".xlsx", StringComparison.OrdinalIgnoreCase))
+            throw new ArgumentException("Only .xlsx files are supported.");
+
+        await _currentUser.EnsureRoleAsync(AppRole.Lecturer, AppRole.SchoolAdmin, AppRole.SuperAdmin);
+        var cls = await _classRepo.GetByIdAsync(classId)
+            ?? throw new InvalidOperationException("Class not found.");
+        var currentUser = await _currentUser.GetRequiredUserAsync();
+        if (currentUser.Role == AppRole.Lecturer && cls.LecturerId != currentUser.Id)
+            throw new UnauthorizedAccessException("You can only enroll students in your own classes.");
+        await _currentUser.EnsureInstitutionAccessAsync(cls.InstitutionId);
+
+        await using var stream = file.OpenReadStream();
+        var rows = ReadClassEnrollmentRows(stream);
+        if (rows.Count == 0)
+            throw new ArgumentException("The Excel file does not contain any student rows.");
+        if (rows.Count > 500)
+            throw new ArgumentException("A single import is limited to 500 student rows.");
+
+        var studentCodes = rows.Select(row => row.StudentCode).Distinct(StringComparer.OrdinalIgnoreCase).ToList();
+        var studentsByCode = (await _context.Users.AsNoTracking()
+            .Where(user => user.InstitutionId == cls.InstitutionId &&
+                           user.Role == AppRole.Student &&
+                           user.DeletedAt == null &&
+                           user.StudentCode != null &&
+                           studentCodes.Contains(user.StudentCode))
+            .ToListAsync(cancellationToken))
+            .ToDictionary(user => user.StudentCode!, StringComparer.OrdinalIgnoreCase);
+
+        var result = new ImportClassEnrollmentsResponseDto { Total = rows.Count };
+        var importedCodes = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        foreach (var row in rows)
+        {
+            var rowResult = new ImportClassEnrollmentRowResultDto
+            {
+                Row = row.Row,
+                StudentCode = row.StudentCode,
+                FullName = row.FullName
+            };
+
+            if (!importedCodes.Add(row.StudentCode))
+                rowResult.Error = "StudentCode is duplicated in the Excel file.";
+            else if (!studentsByCode.TryGetValue(row.StudentCode, out var student))
+                rowResult.Error = "Student was not found in this institution.";
+            else if (!string.Equals(student.FullName.Trim(), row.FullName, StringComparison.OrdinalIgnoreCase))
+                rowResult.Error = "FullName does not match the student code.";
+            else
+            {
+                try
+                {
+                    await CreateAsync(new CreateClassEnrollmentDto
+                    {
+                        ClassId = classId,
+                        StudentId = student.Id,
+                        Status = EnrollmentStatus.Active
+                    });
+                    rowResult.Success = true;
+                    result.Succeeded++;
+                }
+                catch (Exception ex)
+                {
+                    rowResult.Error = ex.Message;
+                }
+            }
+
+            if (!rowResult.Success) result.Failed++;
+            result.Results.Add(rowResult);
+        }
+
+        return result;
+    }
+
     public async Task<bool> UpdateAsync(Guid classId, Guid studentId, UpdateClassEnrollmentDto dto)
     {
         var entity = await _repo.GetByKeyAsync(classId, studentId);
@@ -172,6 +253,42 @@ public class ClassEnrollmentService : IClassEnrollmentService
                 entity.EnrolledAt
             });
     }
+
+    private static List<ImportClassEnrollmentRow> ReadClassEnrollmentRows(Stream stream)
+    {
+        using var workbook = new XLWorkbook(stream);
+        var sheet = workbook.Worksheets.FirstOrDefault()
+            ?? throw new ArgumentException("The workbook does not contain a worksheet.");
+        var headerRow = sheet.FirstRowUsed()
+            ?? throw new ArgumentException("The workbook is empty.");
+        var headers = headerRow.CellsUsed().ToDictionary(
+            cell => NormalizeExcelHeader(cell.GetString()),
+            cell => cell.Address.ColumnNumber);
+        var requiredHeaders = new[] { "studentcode", "fullname" };
+        var missingHeaders = requiredHeaders.Where(header => !headers.ContainsKey(header)).ToList();
+        if (missingHeaders.Count > 0)
+            throw new ArgumentException($"Missing required columns: {string.Join(", ", missingHeaders)}.");
+
+        var rows = new List<ImportClassEnrollmentRow>();
+        foreach (var row in sheet.RowsUsed().Where(row => row.RowNumber() > headerRow.RowNumber()))
+        {
+            var studentCode = row.Cell(headers["studentcode"]).GetFormattedString().Trim();
+            var fullName = row.Cell(headers["fullname"]).GetFormattedString().Trim();
+            if (string.IsNullOrWhiteSpace(studentCode) && string.IsNullOrWhiteSpace(fullName))
+                continue;
+            if (string.IsNullOrWhiteSpace(studentCode) || string.IsNullOrWhiteSpace(fullName))
+                throw new ArgumentException($"Row {row.RowNumber()} must include StudentCode and FullName.");
+
+            rows.Add(new ImportClassEnrollmentRow(row.RowNumber(), studentCode, fullName));
+        }
+
+        return rows;
+    }
+
+    private static string NormalizeExcelHeader(string value) =>
+        value.Trim().Replace("_", "").Replace(" ", "").ToLowerInvariant();
+
+    private sealed record ImportClassEnrollmentRow(int Row, string StudentCode, string FullName);
 
     private async Task EnsureEnrollmentAccessAsync(ClassEnrollment entity)
     {

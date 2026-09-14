@@ -23,6 +23,8 @@ public interface IClassEnrollmentService
         Guid? classId = null, Guid? studentId = null);
     Task<ClassEnrollmentResponseDto?> GetByKeyAsync(Guid classId, Guid studentId, string? expand);
     Task<ClassEnrollmentResponseDto> CreateAsync(CreateClassEnrollmentDto dto);
+    Task<ImportClassEnrollmentsResponseDto> ImportFromExcelAsync(
+        Guid classId, IFormFile file, CancellationToken cancellationToken = default);
     Task<bool> UpdateAsync(Guid classId, Guid studentId, UpdateClassEnrollmentDto dto);
     Task<bool> DeleteAsync(Guid classId, Guid studentId);
 }
@@ -80,8 +82,6 @@ public interface IExamParticipationService
         string? search, string? sort, int page, int pageSize, Guid? examSlotId = null);
     Task<ExamParticipationResponseDto?> GetByIdAsync(Guid id);
     Task<ExamParticipation> CreateAsync(CreateExamParticipationDto dto);
-    Task<ImportExamParticipantsResponseDto> ImportFromExcelAsync(
-        Guid examSlotId, IFormFile file, CancellationToken cancellationToken = default);
 
     Task<bool> UpdateAsync(Guid id, UpdateExamParticipationDto dto);
     Task<bool> UpdateAsyncOnlyExamPartipationStatus(Guid examSlotId, UpdateExamParticipationStatusDto dto);
