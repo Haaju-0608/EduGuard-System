@@ -262,8 +262,8 @@ public class ViolationLogServices : IViolationLogService
             "Phát hiện vi phạm trong kỳ thi",
             $"Sinh viên {participation.Student.FullName}. {DescribeViolation(entity.violationType)}.",
             NotificationType.ViolationDetected,
-            ReferenceTypeEnum.ExamSlot,
-            participation.ExamSlotId);
+            ReferenceTypeEnum.ExamParticipation,
+            participation.Id);
 
         // Reached the notify threshold: tell the lecturer to decide (does NOT auto-disqualify).
         if (aiViolationCount == aiNotifyThreshold)
@@ -285,8 +285,8 @@ public class ViolationLogServices : IViolationLogService
                 "Sinh viên đạt ngưỡng cảnh báo vi phạm",
                 $"Sinh viên {participation.Student.FullName} đã đạt {aiViolationCount} vi phạm AI. Vui lòng xem xét và quyết định có đánh dấu vi phạm quy chế (disqualify) hay không.",
                 NotificationType.ViolationDetected,
-                ReferenceTypeEnum.ExamSlot,
-                participation.ExamSlotId);
+                ReferenceTypeEnum.ExamParticipation,
+                participation.Id);
         }
 
         return MapToResponseDto(entity);

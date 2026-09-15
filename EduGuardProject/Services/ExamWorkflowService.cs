@@ -201,8 +201,8 @@ public class ExamWorkflowService : IExamWorkflowService
             "Bạn đã bị loại khỏi kỳ thi",
             reason,
             NotificationType.ViolationDetected,
-            ReferenceTypeEnum.ExamSlot,
-            participation.ExamSlotId,
+            ReferenceTypeEnum.ExamParticipation,
+            participation.Id,
             cancellationToken);
 
         return payload;
@@ -254,8 +254,8 @@ public class ExamWorkflowService : IExamWorkflowService
             "Kết quả bài thi đã bị hủy",
             participation.DisqualifiedReason,
             NotificationType.ViolationDetected,
-            ReferenceTypeEnum.ExamSlot,
-            participation.ExamSlotId,
+            ReferenceTypeEnum.ExamParticipation,
+            participation.Id,
             cancellationToken);
 
         return payload;

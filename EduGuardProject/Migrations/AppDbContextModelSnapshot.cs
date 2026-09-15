@@ -44,7 +44,7 @@ namespace EduGuardProject.Migrations
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "pricing_service_type", "pricing_service_type", new[] { "attendance_unit", "proctoring_per_hour", "subscription_monthly", "subscription_yearly" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "realtime", "action", new[] { "INSERT", "UPDATE", "DELETE", "TRUNCATE", "ERROR" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "realtime", "equality_op", new[] { "eq", "neq", "lt", "lte", "gt", "gte", "in" });
-            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "reference_type_enum", "reference_type_enum", new[] { "INSTITUTION", "ATTENDANCE_SESSION", "EXAM_SLOT", "TRANSACTION" });
+            NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "reference_type_enum", "reference_type_enum", new[] { "INSTITUTION", "ATTENDANCE_SESSION", "EXAM_SLOT", "EXAM_PARTICIPATION", "TRANSACTION" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "session_status", "session_status", new[] { "IN_PROGRESS", "COMPLETED", "CANCELLED" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "storage", "buckettype", new[] { "STANDARD", "ANALYTICS", "VECTOR" });
             NpgsqlModelBuilderExtensions.HasPostgresEnum(modelBuilder, "student_exam_record_status", "student_exam_record_status", new[] { "MARKED", "COMPLETED", "DELETED" });

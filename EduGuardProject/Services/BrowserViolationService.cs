@@ -39,6 +39,44 @@ public class BrowserViolationService : IBrowserViolationService
         _logger = logger;
     }
 
+    public async Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
+        Guid participationId, int page, int pageSize)
+    {
+        var participation = await _context.ExamParticipations
+            .AsNoTracking()
+            .Include(p => p.ExamSlot)
+            .ThenInclude(e => e.Class)
+            .FirstOrDefaultAsync(p => p.Id == participationId)
+            ?? throw new InvalidOperationException("Exam participation not found.");
+
+        await EnsureAccessAsync(participation);
+
+        var query = _context.ViolationLogs
+            .AsNoTracking()
+            .Where(v => v.ParticipationId == participationId && BrowserViolationTypes.Contains(v.violationType));
+
+        var totalCount = await query.CountAsync();
+        var items = await query
+            .OrderByDescending(v => v.RecordedAt)
+            .Skip((page - 1) * pageSize)
+            .Take(pageSize)
+            .Select(v => new ViolationlogResponeDto
+            {
+                Id = v.Id,
+                ParticipationId = v.ParticipationId,
+                EvidencePath = v.EvidencePath,
+                Severity = v.severity,
+                ViolationType = v.violationType,
+                AiConfidence = v.AiConfidence,
+                IsReviewed = v.IsReviewed,
+                ReviewedBy = v.ReviewedBy,
+                RecordedAt = v.RecordedAt
+            })
+            .ToListAsync();
+
+        return (items, totalCount);
+    }
+
     public async Task<BrowserViolationResponseDto> RecordAsync(BrowserViolationRequestDto dto)
     {
         if (dto.ParticipationId == Guid.Empty)
@@ -144,8 +182,8 @@ public class BrowserViolationService : IBrowserViolationService
                 "Sinh viên đạt ngưỡng cảnh báo vi phạm trình duyệt",
                 $"Sinh viên {participation.Student.FullName} đã đạt {currentCount} vi phạm trình duyệt (chuyển tab/thoát fullscreen/mất focus). Vui lòng xem xét và quyết định có đánh dấu vi phạm quy chế (disqualify) hay không.",
                 NotificationType.ViolationDetected,
-                ReferenceTypeEnum.ExamSlot,
-                participation.ExamSlotId);
+                ReferenceTypeEnum.ExamParticipation,
+                participation.Id);
         }
 
         return new BrowserViolationResponseDto
@@ -154,5 +192,18 @@ public class BrowserViolationService : IBrowserViolationService
             CurrentViolationCount = currentCount,
             ExamTerminated = false
         };
+    }
+
+    private async Task EnsureAccessAsync(ExamParticipation participation)
+    {
+        var user = await _currentUser.GetRequiredUserAsync();
+        var cls = participation.ExamSlot.Class;
+        if (user.Role == AppRole.SuperAdmin ||
+            (user.Role == AppRole.SchoolAdmin && user.InstitutionId == cls.InstitutionId) ||
+            (user.Role == AppRole.Student && user.Id == participation.StudentId) ||
+            (user.Role == AppRole.Lecturer && user.InstitutionId == cls.InstitutionId && user.Id == cls.LecturerId))
+            return;
+
+        throw new UnauthorizedAccessException("Access denied.");
     }
 }

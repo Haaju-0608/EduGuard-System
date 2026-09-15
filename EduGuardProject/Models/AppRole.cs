@@ -225,6 +225,9 @@ public enum ReferenceTypeEnum
     [PgName("EXAM_SLOT")]
     ExamSlot,
 
+    [PgName("EXAM_PARTICIPATION")]
+    ExamParticipation,
+
     [PgName("TRANSACTION")]
     Transaction
 }

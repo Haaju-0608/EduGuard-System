@@ -170,5 +170,7 @@ public interface IViolationLogService
 
 public interface IBrowserViolationService
 {
+    Task<(IEnumerable<ViolationlogResponeDto> Items, int TotalCount)> GetAllAsync(
+        Guid participationId, int page, int pageSize);
     Task<BrowserViolationResponseDto> RecordAsync(BrowserViolationRequestDto dto);
 }
