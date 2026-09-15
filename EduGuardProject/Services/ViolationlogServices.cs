@@ -188,14 +188,14 @@ public class ViolationLogServices : IViolationLogService
         }
 
         var lastAiViolation = await _context.ViolationLogs
-            .Where(v => v.ParticipationId == dto.ParticipationId && !IsBrowserViolation(v.violationType))
+            .Where(v => v.ParticipationId == dto.ParticipationId && !BrowserViolationTypes.Contains(v.violationType))
             .OrderByDescending(v => v.RecordedAt)
             .FirstOrDefaultAsync();
 
         var aiViolationCountBefore = lastAiViolation == null
             ? 0
             : await _context.ViolationLogs.CountAsync(v =>
-                v.ParticipationId == dto.ParticipationId && !IsBrowserViolation(v.violationType));
+                v.ParticipationId == dto.ParticipationId && !BrowserViolationTypes.Contains(v.violationType));
 
         // Max AI violation cap reached: stop recording new AI violations for this participation.
         // The lecturer already has everything they need to decide (via the notify-threshold event below).
@@ -436,8 +436,19 @@ public class ViolationLogServices : IViolationLogService
         return recordedAt;
     }
 
+    // EF Core cannot translate an arbitrary method call (like the old pattern-matching
+    // IsBrowserViolation) into SQL when used inside a LINQ-to-entities query — it only
+    // translates direct comparison expressions. HashSet<T>.Contains() IS translated (to a
+    // SQL IN/NOT IN), so LINQ queries against DbSet must use BrowserViolationTypes.Contains(...)
+    // instead of calling IsBrowserViolation(...). Keep IsBrowserViolation for plain C# checks
+    // (e.g. ValidateCreateInput below), where it runs in-memory and works fine.
+    private static readonly HashSet<ViolationType> BrowserViolationTypes = new()
+    {
+        ViolationType.TabSwitch, ViolationType.WindowBlur, ViolationType.ExitFullscreen,
+    };
+
     private static bool IsBrowserViolation(ViolationType type) =>
-        type is ViolationType.TabSwitch or ViolationType.WindowBlur or ViolationType.ExitFullscreen;
+        BrowserViolationTypes.Contains(type);
 
     private static string DescribeViolation(ViolationType type) => type switch
     {
