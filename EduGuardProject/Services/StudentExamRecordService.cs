@@ -172,8 +172,9 @@ public class StudentExamRecordService : IStudentExamRecordService
         }
 
         var now = DateTime.UtcNow;
-        if (now < examSlot.StartTime || now > examSlot.EndTime.AddMinutes(5))
-            throw new InvalidOperationException("Submission must be within five minutes after the exam slot ends.");
+        var graceEnd = examSlot.EndTime.AddMinutes(5);
+        if (now < examSlot.StartTime || now > graceEnd)
+            throw new InvalidOperationException("Submission must be within the exam slot or its five-minute grace period.");
         var (examRecord, finalScore, requiresManualMarking) = BuildSubmissionRecord(
             examSlot, examQuestions, user.Id, dto, now);
 
