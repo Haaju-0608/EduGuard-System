@@ -49,4 +49,10 @@ namespace EduGuardProject.DTOs.Request
         public InstitutionStatus Status { get; set; }
     }
 
+    public class UpdateInstitutionStatusDto
+    {
+        [Required(ErrorMessage = "Status is required.")]
+        public InstitutionStatus Status { get; set; }
+    }
+
 }

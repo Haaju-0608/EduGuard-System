@@ -12,7 +12,7 @@ namespace EduGuardProject.Services
         private readonly IInstitutionRepository _repo;
         private readonly IRealtimeEventDispatcher _realtime;
         private readonly ICurrentUserService _currentUser;
-        private readonly IPricingConfigService _pricingConfigService;   
+        private readonly IPricingConfigService _pricingConfigService;
         private readonly AppDbContext _context;
 
         public InstitutionService(IInstitutionRepository repo, IRealtimeEventDispatcher realtime, ICurrentUserService currentUser, IPricingConfigService pricingConfigService, AppDbContext context)
@@ -158,7 +158,10 @@ namespace EduGuardProject.Services
             var entity = await _repo.GetByIdAsync(id);
             if (entity == null) return false;
 
+            await EnsureSchoolAdminOwnsInstitutionAsync(id);
+
             var normalizedName = dto.Name.Trim();
+
             var nameExists = await _context.Institutions
                 .AnyAsync(i => i.Id != id && i.DeletedAt == null && i.Name.ToLower() == normalizedName.ToLower());
             if (nameExists)
@@ -174,6 +177,38 @@ namespace EduGuardProject.Services
             await _repo.UpdateAsync(entity);
             await PublishInstitutionChangedAsync(entity, "updated");
             return true;
+        }
+
+        // MỚI: đổi status ĐƠN LẺ (Activate/Suspend) — không đòi hỏi gửi lại Name/SubDomain/...
+        public async Task<bool> UpdateInstitutionStatusAsync(Guid id, UpdateInstitutionStatusDto dto)
+        {
+            var entity = await _repo.GetByIdAsync(id);
+            if (entity == null) return false;
+
+            await EnsureSchoolAdminOwnsInstitutionAsync(id);
+
+            entity.Status = dto.Status;
+            entity.UpdatedAt = DateTime.UtcNow;
+
+            await _repo.UpdateAsync(entity);
+            await PublishInstitutionChangedAsync(entity, "status-updated");
+            return true;
+        }
+
+        // MỚI: SuperAdmin sửa được mọi trường; SchoolAdmin CHỈ sửa được đúng trường của mình.
+        private async Task EnsureSchoolAdminOwnsInstitutionAsync(Guid institutionId)
+        {
+            var user = await _currentUser.GetRequiredUserAsync();
+            if (user.Role == AppRole.SuperAdmin) return;
+
+            if (user.Role == AppRole.SchoolAdmin &&
+                user.InstitutionId.HasValue &&
+                user.InstitutionId.Value == institutionId)
+            {
+                return;
+            }
+
+            throw new UnauthorizedAccessException("You do not have permission to modify this institution.");
         }
 
         public async Task<bool> DeleteInstitutionAsync(Guid id)
