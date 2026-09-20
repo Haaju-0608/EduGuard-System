@@ -238,8 +238,8 @@ public class ExamslotServices : IExamSlotServices
         await _repo.AddAsync(entity);
         await _notifications.SendToClassStudentsAsync(
             entity.ClassId,
-            "Bạn có lịch thi mới",
-            $"Lịch thi {entity.ExamName} bắt đầu lúc {entity.StartTime:yyyy-MM-dd HH:mm}.",
+            "New exam scheduled",
+            $"The exam {entity.ExamName} starts at {entity.StartTime:yyyy-MM-dd HH:mm}.",
             NotificationType.ExamReminder,
             ReferenceTypeEnum.ExamSlot,
             entity.Id);

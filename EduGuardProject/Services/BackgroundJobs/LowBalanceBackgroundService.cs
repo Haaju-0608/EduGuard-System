@@ -50,11 +50,11 @@ public class LowBalanceBackgroundService : BackgroundService
 
         foreach (var wallet in wallets)
         {
-            var threshold = wallet.LowBalanceThreshold.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
+            var threshold = wallet.LowBalanceThreshold.ToString("N0", CultureInfo.GetCultureInfo("en-US"));
             await notifications.SendToInstitutionAdminsAsync(
                 wallet.InstitutionId,
-                "Số dư ví thấp",
-                $"Số dư ví còn dưới {threshold} VNĐ.",
+                "Low wallet balance",
+                $"Your wallet balance is below {threshold} VND.",
                 NotificationType.LowBalanceAlert,
                 ReferenceTypeEnum.Institution,
                 wallet.InstitutionId,

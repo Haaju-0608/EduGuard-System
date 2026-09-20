@@ -44,30 +44,30 @@ namespace EduGuardProject.Services
         public async Task<TransactionResponseDto> DeductAttendanceFeeAsync(Guid walletId, Guid attendanceSessionId, int studentCount)
         {
             if (studentCount <= 0)
-                throw new InvalidOperationException("Số lượng học sinh phải lớn hơn 0.");
+                throw new InvalidOperationException("The number of students must be greater than 0.");
 
             var session = await _context.AttendanceSessions.FindAsync(attendanceSessionId);
-            if (session == null) throw new InvalidOperationException("Không tìm thấy ca điểm danh.");
+            if (session == null) throw new InvalidOperationException("Attendance session not found.");
 
             // Prevent duplicate billing for the same attendance session.
             if (session.BillingTransId != null)
-                throw new InvalidOperationException("Ca điểm danh này ĐÃ ĐƯỢC THANH TOÁN, không thể trừ tiền lại.");
+                throw new InvalidOperationException("This attendance session has already been paid for and cannot be charged again.");
 
             if (session.Status != SessionStatus.Completed)
-                throw new InvalidOperationException("Ca điểm danh chưa hoàn tất (COMPLETED), chưa thể tính phí.");
+                throw new InvalidOperationException("The attendance session is not completed yet and cannot be charged.");
 
             var wallet = await _context.Wallets.FindAsync(walletId);
-            if (wallet == null) throw new InvalidOperationException("Không tìm thấy ví của trường học.");
+            if (wallet == null) throw new InvalidOperationException("School wallet not found.");
 
             var activePricing = await _context.PricingConfigs
                 .Where(p => p.ServiceType == PricingServiceType.ATTENDANCE_UNIT && p.IsActive)
                 .OrderByDescending(p => p.CreatedAt)
                 .FirstOrDefaultAsync();
 
-            if (activePricing == null) throw new InvalidOperationException("Chưa cấu hình đơn giá điểm danh.");
+            if (activePricing == null) throw new InvalidOperationException("Attendance pricing has not been configured.");
 
             decimal totalFee = studentCount * activePricing.UnitPrice;
-            if (wallet.Balance < totalFee) throw new InvalidOperationException("Số dư ví không đủ để thanh toán.");
+            if (wallet.Balance < totalFee) throw new InvalidOperationException("Insufficient wallet balance to complete the payment.");
 
             wallet.Balance -= totalFee;
             wallet.UpdatedAt = DateTime.UtcNow;
@@ -114,7 +114,7 @@ namespace EduGuardProject.Services
                 throw new InvalidOperationException("Học sinh đang thi, chưa thể chốt phí.");
 
             var wallet = await _context.Wallets.FindAsync(walletId);
-            if (wallet == null) throw new InvalidOperationException("Không tìm thấy ví của trường học.");
+            if (wallet == null) throw new InvalidOperationException("School wallet not found.");
 
             var activePricing = await _context.PricingConfigs
                 .Where(p => p.ServiceType == PricingServiceType.PROCTORING_PER_HOUR && p.IsActive)
@@ -124,7 +124,7 @@ namespace EduGuardProject.Services
             if (activePricing == null) throw new InvalidOperationException("Chưa cấu hình đơn giá giám thị.");
 
             decimal totalFee = hours * activePricing.UnitPrice;
-            if (wallet.Balance < totalFee) throw new InvalidOperationException("Số dư ví không đủ để thanh toán.");
+            if (wallet.Balance < totalFee) throw new InvalidOperationException("Insufficient wallet balance to complete the payment.");
 
             wallet.Balance -= totalFee;
             wallet.UpdatedAt = DateTime.UtcNow;
@@ -183,11 +183,11 @@ namespace EduGuardProject.Services
 
             if (wallet.Balance < wallet.LowBalanceThreshold)
             {
-                var threshold = wallet.LowBalanceThreshold.ToString("N0", CultureInfo.GetCultureInfo("vi-VN"));
+                var threshold = wallet.LowBalanceThreshold.ToString("N0", CultureInfo.GetCultureInfo("en-US"));
                 await _notifications.SendToInstitutionAdminsAsync(
                     wallet.InstitutionId,
-                    "Số dư ví thấp",
-                    $"Số dư ví còn dưới {threshold} VNĐ.",
+                    "Low wallet balance",
+                    $"Your wallet balance is below {threshold} VND.",
                     NotificationType.LowBalanceAlert,
                     ReferenceTypeEnum.Transaction,
                     transaction.Id);

@@ -179,8 +179,8 @@ public class BrowserViolationService : IBrowserViolationService
             await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.ViolationThresholdReached, thresholdPayload);
             await _notifications.SendToUserAsync(
                 cls.LecturerId,
-                "Sinh viên đạt ngưỡng cảnh báo vi phạm trình duyệt",
-                $"Sinh viên {participation.Student.FullName} đã đạt {currentCount} vi phạm trình duyệt (chuyển tab/thoát fullscreen/mất focus). Vui lòng xem xét và quyết định có đánh dấu vi phạm quy chế (disqualify) hay không.",
+                "Student reached the violation warning limit ",
+                $"Student {participation.Student.FullName} has reached {currentCount} browser violations (switching tabs, exiting fullscreen, or losing focus). Please review and decide whether to disqualify the student.",
                 NotificationType.ViolationDetected,
                 ReferenceTypeEnum.ExamParticipation,
                 participation.Id);

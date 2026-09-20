@@ -71,8 +71,8 @@ public class ExamWorkflowService : IExamWorkflowService
         await PublishParticipationChangedAsync(participation, "joined", payload, cancellationToken);
         await _notifications.SendToUserAsync(
             participation.ExamSlot.Class.LecturerId,
-            "Sinh viên đã tham gia kỳ thi",
-            $"{participation.Student.FullName} đã tham gia kỳ thi.",
+            "Student joined the exam",
+            $"{participation.Student.FullName} has joined the exam.",
             NotificationType.ExamReminder,
             ReferenceTypeEnum.ExamSlot,
             participation.ExamSlotId,
@@ -198,7 +198,7 @@ public class ExamWorkflowService : IExamWorkflowService
         await PublishParticipationChangedAsync(participation, "disqualified", payload, cancellationToken);
         await _notifications.SendToUserAsync(
             participation.StudentId,
-            "Bạn đã bị loại khỏi kỳ thi",
+            "You have been disqualified from the exam",
             reason,
             NotificationType.ViolationDetected,
             ReferenceTypeEnum.ExamParticipation,
@@ -251,7 +251,7 @@ public class ExamWorkflowService : IExamWorkflowService
         await PublishParticipationChangedAsync(participation, "voided", payload, cancellationToken);
         await _notifications.SendToUserAsync(
             participation.StudentId,
-            "Kết quả bài thi đã bị hủy",
+            "Your exam result has been voided",
             participation.DisqualifiedReason,
             NotificationType.ViolationDetected,
             ReferenceTypeEnum.ExamParticipation,

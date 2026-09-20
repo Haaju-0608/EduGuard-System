@@ -302,8 +302,8 @@ public class BiometricRequestService : IBiometricRequestService
 
         await _notifications.SendToUserAsync(
             entity.StudentId,
-            "Khuôn mặt đã được phê duyệt",
-            "Đăng ký khuôn mặt của bạn đã được phê duyệt.",
+            "Face registration approved",
+            "Your face registration has been approved.",
             NotificationType.BiometricRequestStatus,
             null,
             entity.Id);
@@ -331,7 +331,7 @@ public class BiometricRequestService : IBiometricRequestService
 
         await _notifications.SendToUserAsync(
             entity.StudentId,
-            "Đăng ký khuôn mặt bị từ chối",
+            "Face registration rejected",
             entity.Reason,
             NotificationType.BiometricRequestStatus,
             null,
