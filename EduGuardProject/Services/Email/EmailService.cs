@@ -37,6 +37,9 @@ public class EmailService : IEmailService
         using var client = new SmtpClient(_settings.SmtpHost, _settings.SmtpPort)
         {
             EnableSsl = _settings.EnableSsl,
+            // Default is 100s. If the host blocks outbound SMTP (e.g. Render free tier) the request
+            // would hang for that long; fail fast so the API answers with a clear error instead.
+            Timeout = 15_000,
             Credentials = new NetworkCredential(_settings.Username, _settings.AppPassword)
         };
 
