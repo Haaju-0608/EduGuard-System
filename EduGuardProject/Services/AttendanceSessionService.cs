@@ -150,8 +150,8 @@ public class AttendanceSessionService : IAttendanceSessionService
         await _realtime.PushAttendanceSessionAsync(entity.Id, HubEvents.AttendanceSessionOpened, payload);
         await _notifications.SendToClassStudentsAsync(
             entity.ClassId,
-            "Điểm danh đã bắt đầu",
-            "Giảng viên đã mở ca điểm danh cho lớp của bạn.",
+            "Attendance session started",
+            "Your lecturer has opened an attendance session for your class.",
             NotificationType.AttendanceSessionStarted,
             ReferenceTypeEnum.AttendanceSession,
             entity.Id);
@@ -325,8 +325,8 @@ public class AttendanceSessionService : IAttendanceSessionService
             {
                 await _notifications.SendToInstitutionAdminsAsync(
                     cls.InstitutionId,
-                    "Trừ phí điểm danh thất bại",
-                    $"Không thể trừ phí cho ca điểm danh vừa hoàn tất: {ex.Message}",
+                    "Attendance fee deduction failed",
+                    $"Unable to deduct the fee for the completed attendance session: {ex.Message}",
                     NotificationType.LowBalanceAlert,
                     ReferenceTypeEnum.AttendanceSession,
                     entity.Id);

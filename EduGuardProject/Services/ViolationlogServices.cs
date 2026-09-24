@@ -259,8 +259,8 @@ public class ViolationLogServices : IViolationLogService
             data: payload);
         await _notifications.SendToUserAsync(
             participation.ExamSlot.Class.LecturerId,
-            "Phát hiện vi phạm trong kỳ thi",
-            $"Sinh viên {participation.Student.FullName}. {DescribeViolation(entity.violationType)}.",
+            "Exam violation detected",
+            $"Student {participation.Student.FullName}. {DescribeViolation(entity.violationType)}.",
             NotificationType.ViolationDetected,
             ReferenceTypeEnum.ExamParticipation,
             participation.Id);
@@ -282,8 +282,8 @@ public class ViolationLogServices : IViolationLogService
             await _realtime.PushExamLecturersAsync(participation.ExamSlotId, HubEvents.ViolationThresholdReached, thresholdPayload);
             await _notifications.SendToUserAsync(
                 participation.ExamSlot.Class.LecturerId,
-                "Sinh viên đạt ngưỡng cảnh báo vi phạm",
-                $"Sinh viên {participation.Student.FullName} đã đạt {aiViolationCount} vi phạm AI. Vui lòng xem xét và quyết định có đánh dấu vi phạm quy chế (disqualify) hay không.",
+                "Student reached the violation warning threshold",
+                $"Student {participation.Student.FullName} has reached {aiViolationCount} AI-detected violations. Please review and decide whether to disqualify the student.",
                 NotificationType.ViolationDetected,
                 ReferenceTypeEnum.ExamParticipation,
                 participation.Id);
@@ -452,11 +452,11 @@ public class ViolationLogServices : IViolationLogService
 
     private static string DescribeViolation(ViolationType type) => type switch
     {
-        ViolationType.GazeDiversion => "Phát hiện quay đầu nhiều lần",
-        ViolationType.MultipleFaces => "Phát hiện nhiều khuôn mặt",
-        ViolationType.Absence => "Không phát hiện khuôn mặt",
-        ViolationType.Impersonation => "Nghi ngờ mạo danh",
-        _ => $"Phát hiện vi phạm {type}"
+        ViolationType.GazeDiversion => "Repeated head turning detected",
+        ViolationType.MultipleFaces => "Multiple faces detected",
+        ViolationType.Absence => "No face detected",
+        ViolationType.Impersonation => "Suspected impersonation",
+        _ => $"Violation detected: {type}"
     };
 
     private static ViolationlogResponeDto MapToResponseDto(ViolationLog entity) => new()

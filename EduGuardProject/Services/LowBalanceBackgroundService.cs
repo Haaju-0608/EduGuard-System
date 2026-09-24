@@ -26,10 +26,11 @@ public class SubscriptionExpiryBackgroundService : BackgroundService
                 var context = scope.ServiceProvider.GetRequiredService<AppDbContext>();
 
                 var now = DateTime.UtcNow;
+                var today = now.Date;
                 var expiredInstitutions = await context.Institutions
                     .Where(i => i.Status == InstitutionStatus.Active
                         && i.SubscriptionExpiresAt.HasValue
-                        && i.SubscriptionExpiresAt.Value < now)
+                        && i.SubscriptionExpiresAt.Value.Date < today)
                     .ToListAsync(stoppingToken);
 
                 foreach (var institution in expiredInstitutions)

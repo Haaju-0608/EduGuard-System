@@ -85,6 +85,10 @@ namespace EduGuardProject.Controllers
             {
                 return BadRequest(ApiResponse<object>.OnFail(ex.Message));
             }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.OnFail(ex.Message));
+            }
         }
 
         // 5. API XÓA TRƯỜNG HỌC
@@ -111,6 +115,27 @@ namespace EduGuardProject.Controllers
             catch (InvalidOperationException ex)
             {
                 return BadRequest(ApiResponse<object>.OnFail(ex.Message));
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                return StatusCode(StatusCodes.Status403Forbidden, ApiResponse<object>.OnFail(ex.Message));
+            }
+            catch (Exception ex)
+            {
+                return StatusCode(StatusCodes.Status500InternalServerError, ApiResponse<object>.OnFail($"System error: {ex.Message}"));
+            }
+        }
+
+        // MỚI: đổi status đơn lẻ (Activate/Suspend) — không cần gửi lại Name/SubDomain/...
+        [HttpPut("{id:guid}/status")]
+        [SupabaseAuthorize(AppRole.SuperAdmin, AppRole.SchoolAdmin)]
+        public async Task<IActionResult> UpdateStatus(Guid id, [FromBody] UpdateInstitutionStatusDto dto)
+        {
+            try
+            {
+                var success = await _service.UpdateInstitutionStatusAsync(id, dto);
+                if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Institution status updated successfully."));
             }
             catch (UnauthorizedAccessException ex)
             {

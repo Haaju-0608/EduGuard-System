@@ -353,8 +353,8 @@ public class AttendanceRecordService : IAttendanceRecordService
         {
             await _notifications.SendToUserAsync(
                 entity.StudentId,
-                "Điểm danh thành công",
-                "Bạn đã được ghi nhận có mặt trong ca điểm danh.",
+                "Attendance recorded successfully",
+                "You have been marked present in the attendance session.",
                 NotificationType.AttendanceSessionStarted,
                 ReferenceTypeEnum.AttendanceSession,
                 entity.SessionId);
