@@ -41,63 +41,6 @@ namespace EduGuardProject.Services
             return (data, totalItems);
         }
 
-        public async Task<TransactionResponseDto> DeductAttendanceFeeAsync(Guid walletId, Guid attendanceSessionId, int studentCount)
-        {
-            if (studentCount <= 0)
-                throw new InvalidOperationException("The number of students must be greater than 0.");
-
-            var session = await _context.AttendanceSessions.FindAsync(attendanceSessionId);
-            if (session == null) throw new InvalidOperationException("Attendance session not found.");
-
-            // Prevent duplicate billing for the same attendance session.
-            if (session.BillingTransId != null)
-                throw new InvalidOperationException("This attendance session has already been paid for and cannot be charged again.");
-
-            if (session.Status != SessionStatus.Completed)
-                throw new InvalidOperationException("The attendance session is not completed yet and cannot be charged.");
-
-            var wallet = await _context.Wallets.FindAsync(walletId);
-            if (wallet == null) throw new InvalidOperationException("School wallet not found.");
-
-            var activePricing = await _context.PricingConfigs
-                .Where(p => p.ServiceType == PricingServiceType.ATTENDANCE_UNIT && p.IsActive)
-                .OrderByDescending(p => p.CreatedAt)
-                .FirstOrDefaultAsync();
-
-            if (activePricing == null) throw new InvalidOperationException("Attendance pricing has not been configured.");
-
-            decimal totalFee = studentCount * activePricing.UnitPrice;
-            if (wallet.Balance < totalFee) throw new InvalidOperationException("Insufficient wallet balance to complete the payment.");
-
-            wallet.Balance -= totalFee;
-            wallet.UpdatedAt = DateTime.UtcNow;
-
-            var transaction = new Transaction
-            {
-                Id = Guid.NewGuid(),
-                WalletId = walletId,
-                PricingConfigId = activePricing.Id,
-                Amount = totalFee,
-                Type = TransactionType.ATTENDANCE_FEE,
-                Status = TransactionStatus.SUCCESS,
-                Description = $"Attendance fee for {studentCount} students (Session: {attendanceSessionId})",
-                ProcessedAt = DateTime.UtcNow,
-                CreatedAt = DateTime.UtcNow,
-                UpdatedAt = DateTime.UtcNow
-            };
-
-            // Persist the transaction id to lock the billed session.
-            session.BillingTransId = transaction.Id;
-
-            _context.Wallets.Update(wallet);
-            _context.Transactions.Add(transaction);
-            _context.AttendanceSessions.Update(session);
-            await _context.SaveChangesAsync();
-            await DispatchWalletUpdatedAsync(wallet, transaction);
-
-            return MapTransaction(transaction);
-        }
-
         public async Task<TransactionResponseDto> DeductProctoringFeeAsync(Guid walletId, Guid examParticipationId, int hours)
         {
             if (hours <= 0)

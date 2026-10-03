@@ -37,21 +37,6 @@ namespace EduGuardProject.Controllers
             }
         }
 
-        [HttpPost("deduct-attendance")]
-        [SupabaseAuthorize(AppRole.SuperAdmin)] // Team AI sẽ nhét Token SuperAdmin vào để gọi hàm này
-        public async Task<IActionResult> DeductAttendanceFee([FromBody] DeductAttendanceRequestDto request)
-        {
-            try
-            {
-                var result = await _transactionService.DeductAttendanceFeeAsync(request.WalletId, request.AttendanceSessionId, request.StudentCount);
-                return Ok(ApiResponse<object>.OnSuccess(result, "Attendance fee deducted successfully."));
-            }
-            catch (Exception ex)
-            {
-                return BadRequest(ApiResponse<object>.OnFail(ex.Message));
-            }
-        }
-
         [HttpPost("deduct-proctoring")]
         [SupabaseAuthorize(AppRole.SuperAdmin)] // Tương tự
         public async Task<IActionResult> DeductProctoringFee([FromBody] DeductProctoringRequestDto request)

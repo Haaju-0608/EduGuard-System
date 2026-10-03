@@ -425,7 +425,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         }
         catch (Exception aiEx)
         {
-            throw new InvalidOperationException($"Python AI processing failed: {aiEx.Message}");
+            throw new InvalidOperationException($"AI processing errors from Python: {aiEx.Message}");
         }
 
         var pgVector = new Pgvector.Vector(liveVector);
@@ -441,7 +441,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         if (!matchedStudentId.HasValue)
         {
             result.IsMatch = false;
-            result.Message = "No face matched any registered student. Please record attendance manually.";
+            result.Message = "No face matching any registered student was found. Please take attendance manually.";
             return result;
         }
 
@@ -463,8 +463,8 @@ public class AttendanceRecordService : IAttendanceRecordService
         {
             result.IsMatch = false;
             result.MatchedButWrongClass = true;
-            result.Message = $"The face matches student {matchedStudent?.FullName} ({matchedStudent?.StudentCode}), " +
-                              $"but the student does not belong to the current class or exam slot. Please record attendance manually.";
+            result.Message = $"The face matches the student {matchedStudent?.FullName} ({matchedStudent?.StudentCode}) " +
+                              $"However, this person does NOT belong to the current class/exam session. Please take attendance manually.";
             return result;
         }
 
@@ -505,7 +505,7 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         result.IsMatch = true;
         result.Record = dto;
-        result.Message = $"Attendance recorded successfully for {matchedStudent?.FullName} ({matchedStudent?.StudentCode}).";
+        result.Message = $"Attendance check successful for {matchedStudent?.FullName} ({matchedStudent?.StudentCode}).";
         return result;
     }
 }
