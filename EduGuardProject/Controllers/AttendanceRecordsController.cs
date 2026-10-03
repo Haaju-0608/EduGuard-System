@@ -108,7 +108,7 @@ public class AttendanceRecordsController : AcademicApiControllerBase
     {
         var photoFile = dto.PhotoFile;
         if (photoFile == null || photoFile.Length == 0)
-            return BadRequest(ApiResponse<object>.OnFail("File ảnh không hợp lệ hoặc trống."));
+            return BadRequest(ApiResponse<object>.OnFail("The image file is invalid or empty."));
 
         try
         {
@@ -116,8 +116,8 @@ public class AttendanceRecordsController : AcademicApiControllerBase
             var result = await _service.CreateByAiSinglePhotoAsync(sessionId, stream, photoFile.FileName);
 
             var message = result.IsMatch
-                ? "Điểm danh AI thành công."
-                : (result.Message ?? "Không khớp.");
+                ? "AI attendance recorded successfully."
+                : (result.Message ?? "No match found.");
 
             return Ok(ApiResponse<AiSinglePhotoAttendanceResultDto>.OnSuccess(result, message));
         }

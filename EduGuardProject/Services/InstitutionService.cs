@@ -90,7 +90,7 @@ namespace EduGuardProject.Services
             var priceConfig = await _pricingConfigService.GetCurrentActiveConfigAsync(serviceType);
             if (priceConfig == null)
                 throw new InvalidOperationException(
-                    "Chưa cấu hình giá gia hạn subscription. Vui lòng liên hệ quản trị hệ thống.");
+                    "Subscription renewal pricing has not been configured. Please contact the system administrator.");
 
             var renewalFee = priceConfig.UnitPrice;
 
@@ -98,11 +98,11 @@ namespace EduGuardProject.Services
             var wallet = await _context.Wallets
                 .FirstOrDefaultAsync(w => w.InstitutionId == institutionId);
             if (wallet == null)
-                throw new InvalidOperationException("Không tìm thấy ví của trường học này.");
+                throw new InvalidOperationException("Wallet not found for this institution.");
 
             if (wallet.Balance < renewalFee)
                 throw new InvalidOperationException(
-                    $"Số dư không đủ để gia hạn. Cần {renewalFee:N0}đ, hiện có {wallet.Balance:N0}đ. Vui lòng nạp thêm tiền.");
+                    $"Insufficient balance to renew the subscription. Required: {renewalFee:N0} VND; available: {wallet.Balance:N0} VND. Please top up your wallet.");
 
             // 3. Trừ tiền + ghi transaction
             wallet.Balance -= renewalFee;
@@ -118,8 +118,8 @@ namespace EduGuardProject.Services
                 Status = TransactionStatus.SUCCESS,
                 // SỬA: ghi rõ trong description có đổi gói hay không, tiện tra cứu sau này
                 Description = entity.BillingModel == newBillingModel
-                    ? $"Gia hạn subscription ({newBillingModel})"
-                    : $"Gia hạn + đổi gói subscription ({entity.BillingModel} -> {newBillingModel})",
+                    ? $"Subscription renewal ({newBillingModel})"
+                    : $"Subscription renewal and plan change ({entity.BillingModel} -> {newBillingModel})",
                 ProcessedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow

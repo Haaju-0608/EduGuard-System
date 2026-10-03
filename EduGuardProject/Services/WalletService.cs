@@ -68,10 +68,10 @@ namespace EduGuardProject.Services
                 .FirstOrDefaultAsync(w => w.InstitutionId == dto.InstitutionId);
 
             if (wallet == null)
-                throw new Exception("Không tìm thấy ví của trường học này.");
+                throw new Exception("Wallet not found for this institution.");
 
             if (dto.Amount <= 0)
-                throw new Exception("Số tiền nạp phải lớn hơn 0.");
+                throw new Exception("The top-up amount must be greater than 0.");
 
             // 2. Tạo Transaction lịch sử
             var transaction = new Transaction
@@ -80,7 +80,7 @@ namespace EduGuardProject.Services
                 Amount = dto.Amount,
                 Type = TransactionType.TOP_UP,
                 Status = TransactionStatus.SUCCESS, // Nạp trực tiếp nên thành công luôn
-                Description = dto.Description ?? "Nạp tiền vào ví hệ thống",
+                Description = dto.Description ?? "System wallet top-up",
                 ProcessedAt = DateTime.UtcNow
             };
 
@@ -116,10 +116,10 @@ namespace EduGuardProject.Services
                 .FirstOrDefaultAsync(w => w.InstitutionId == dto.InstitutionId);
 
             if (wallet == null)
-                throw new Exception("Không tìm thấy ví của trường học này.");
+                throw new Exception("Wallet not found for this institution.");
 
             if (dto.Amount <= 0)
-                throw new Exception("Số tiền nạp phải lớn hơn 0.");
+                throw new Exception("The top-up amount must be greater than 0.");
 
             string tmnCode = _configuration["VnPay:TmnCode"];
             string hashSecret = _configuration["VnPay:HashSecret"];
@@ -140,7 +140,7 @@ namespace EduGuardProject.Services
             vnpay.AddRequestData("vnp_IpAddr", ipAddress);
 
             vnpay.AddRequestData("vnp_Locale", "vn");
-            vnpay.AddRequestData("vnp_OrderInfo", "NapTienVi_EduGuard");
+            vnpay.AddRequestData("vnp_OrderInfo", "EduGuard wallet top-up");
             vnpay.AddRequestData("vnp_OrderType", "other");
 
             string returnUrl = _configuration["VnPay:ReturnUrl"];
@@ -158,7 +158,7 @@ namespace EduGuardProject.Services
                 Amount = dto.Amount,
                 Type = TransactionType.TOP_UP,
                 Status = TransactionStatus.PENDING,   // đổi tên enum member nếu khác
-                Description = dto.Description ?? "Nạp tiền qua VNPay",
+                Description = dto.Description ?? "Wallet top-up via VNPay",
                 VnpayRef = txnRef,
                 CreatedAt = DateTime.UtcNow
             };
@@ -184,7 +184,7 @@ namespace EduGuardProject.Services
 
             bool isValidSignature = vnpay.ValidateSignature(vnp_SecureHash, secretKey);
             if (!isValidSignature)
-                return new VnPayReturnResultDto { Success = false, Message = "Chữ ký không hợp lệ." };
+                return new VnPayReturnResultDto { Success = false, Message = "Invalid signature." };
 
             string responseCode = query["vnp_ResponseCode"];
             string txnRef = query["vnp_TxnRef"];
@@ -194,13 +194,13 @@ namespace EduGuardProject.Services
                 .FirstOrDefaultAsync(t => t.VnpayRef == txnRef);
 
             if (transaction == null)
-                return new VnPayReturnResultDto { Success = false, Message = "Không tìm thấy giao dịch." };
+                return new VnPayReturnResultDto { Success = false, Message = "Transaction not found." };
 
             if (transaction.Status == TransactionStatus.SUCCESS)
                 return new VnPayReturnResultDto
                 {
                     Success = true,
-                    Message = "Giao dịch đã được xử lý trước đó.",
+                    Message = "This transaction has already been processed.",
                     Amount = transaction.Amount,
                     TxnRef = txnRef
                 };
@@ -213,7 +213,7 @@ namespace EduGuardProject.Services
                     transaction.Status = TransactionStatus.FAILED;
                     transaction.ProcessedAt = DateTime.UtcNow;
                     await _context.SaveChangesAsync();
-                    return new VnPayReturnResultDto { Success = false, Message = "Số tiền không khớp.", TxnRef = txnRef };
+                    return new VnPayReturnResultDto { Success = false, Message = "The payment amount does not match.", TxnRef = txnRef };
                 }
             }
 
@@ -222,12 +222,12 @@ namespace EduGuardProject.Services
                 transaction.Status = TransactionStatus.FAILED;
                 transaction.ProcessedAt = DateTime.UtcNow;
                 await _context.SaveChangesAsync();
-                return new VnPayReturnResultDto { Success = false, Message = "Thanh toán không thành công.", TxnRef = txnRef };
+                return new VnPayReturnResultDto { Success = false, Message = "Payment failed.", TxnRef = txnRef };
             }
 
             var wallet = await _context.Wallets.FirstOrDefaultAsync(w => w.Id == transaction.WalletId);
             if (wallet == null)
-                return new VnPayReturnResultDto { Success = false, Message = "Không tìm thấy ví.", TxnRef = txnRef };
+                return new VnPayReturnResultDto { Success = false, Message = "Wallet not found.", TxnRef = txnRef };
 
             wallet.Balance += transaction.Amount;
             wallet.UpdatedAt = DateTime.UtcNow;
@@ -240,7 +240,7 @@ namespace EduGuardProject.Services
             return new VnPayReturnResultDto
             {
                 Success = true,
-                Message = "Nạp tiền thành công.",
+                Message = "Wallet topped up successfully.",
                 Amount = transaction.Amount,
                 TxnRef = txnRef
             };

@@ -38,7 +38,7 @@ public class SubscriptionExpiryBackgroundService : BackgroundService
                     institution.Status = InstitutionStatus.Suspended;
                     institution.UpdatedAt = now;
                     _logger.LogInformation(
-                        "Institution {Id} ({Name}) bị tự động khoá do hết hạn subscription.",
+                        "Institution {Id} ({Name}) was automatically suspended because its subscription expired.",
                         institution.Id, institution.Name);
                 }
 
@@ -47,7 +47,7 @@ public class SubscriptionExpiryBackgroundService : BackgroundService
             }
             catch (Exception ex)
             {
-                _logger.LogError(ex, "Lỗi khi quét subscription hết hạn.");
+                _logger.LogError(ex, "Failed to scan for expired subscriptions.");
             }
 
             await Task.Delay(TimeSpan.FromHours(1), stoppingToken);

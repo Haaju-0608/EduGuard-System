@@ -122,16 +122,16 @@ namespace EduGuardProject.Services
             return Math.Sqrt(sum);
         }
 
-        // MỚI: kiểm tra nhanh participation đã được verify chưa (không quan tâm bằng AI hay tay).
+        // Chỉ duyệt tay mới cho phép bỏ qua xác thực khuôn mặt khi vào thi lại.
         public async Task<bool> IsIdentityVerifiedAsync(
             Guid participationId, CancellationToken cancellationToken = default)
         {
-            var verifiedAt = await _context.ExamParticipations
+            var verifiedBy = await _context.ExamParticipations
                 .AsNoTracking()
                 .Where(p => p.Id == participationId)
-                .Select(p => p.IdentityVerifiedAt)
+                .Select(p => p.IdentityVerifiedBy)
                 .FirstOrDefaultAsync(cancellationToken);
-            return verifiedAt.HasValue;
+            return verifiedBy.HasValue;
         }
     }
 }

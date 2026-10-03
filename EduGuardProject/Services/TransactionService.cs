@@ -80,7 +80,7 @@ namespace EduGuardProject.Services
                 Amount = totalFee,
                 Type = TransactionType.ATTENDANCE_FEE,
                 Status = TransactionStatus.SUCCESS,
-                Description = $"Trừ phí điểm danh cho {studentCount} học sinh (Ca: {attendanceSessionId})",
+                Description = $"Attendance fee for {studentCount} students (Session: {attendanceSessionId})",
                 ProcessedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow
@@ -101,17 +101,17 @@ namespace EduGuardProject.Services
         public async Task<TransactionResponseDto> DeductProctoringFeeAsync(Guid walletId, Guid examParticipationId, int hours)
         {
             if (hours <= 0)
-                throw new InvalidOperationException("Số giờ giám thị phải lớn hơn 0.");
+                throw new InvalidOperationException("Proctoring hours must be greater than 0.");
 
             var participation = await _context.ExamParticipations.FindAsync(examParticipationId);
-            if (participation == null) throw new InvalidOperationException("Không tìm thấy dữ liệu giám thị.");
+            if (participation == null) throw new InvalidOperationException("Exam participation not found.");
 
             // Prevent duplicate billing for the same exam participation.
             if (participation.BillingTransId != null)
-                throw new InvalidOperationException("Ca giám thị này ĐÃ ĐƯỢC THANH TOÁN, không thể trừ tiền lại.");
+                throw new InvalidOperationException("This exam participation has already been paid for and cannot be charged again.");
 
             if (participation.Status == ParticipationStatus.Joined)
-                throw new InvalidOperationException("Học sinh đang thi, chưa thể chốt phí.");
+                throw new InvalidOperationException("The student is still taking the exam. The fee cannot be finalized yet.");
 
             var wallet = await _context.Wallets.FindAsync(walletId);
             if (wallet == null) throw new InvalidOperationException("School wallet not found.");
@@ -121,7 +121,7 @@ namespace EduGuardProject.Services
                 .OrderByDescending(p => p.CreatedAt)
                 .FirstOrDefaultAsync();
 
-            if (activePricing == null) throw new InvalidOperationException("Chưa cấu hình đơn giá giám thị.");
+            if (activePricing == null) throw new InvalidOperationException("Proctoring pricing has not been configured.");
 
             decimal totalFee = hours * activePricing.UnitPrice;
             if (wallet.Balance < totalFee) throw new InvalidOperationException("Insufficient wallet balance to complete the payment.");
@@ -137,7 +137,7 @@ namespace EduGuardProject.Services
                 Amount = totalFee,
                 Type = TransactionType.PROCTORING_FEE,
                 Status = TransactionStatus.SUCCESS,
-                Description = $"Trừ phí giám thị cho {hours} giờ (ParticipationId: {examParticipationId})",
+                Description = $"Proctoring fee for {hours} hours (ParticipationId: {examParticipationId})",
                 ProcessedAt = DateTime.UtcNow,
                 CreatedAt = DateTime.UtcNow,
                 UpdatedAt = DateTime.UtcNow

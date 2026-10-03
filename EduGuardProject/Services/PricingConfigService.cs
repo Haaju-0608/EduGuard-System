@@ -58,7 +58,7 @@ namespace EduGuardProject.Services
         public async Task<PricingConfigResponseDto> CreateConfigAsync(CreatePricingConfigDto dto, Guid adminId)
         {
             if (dto.UnitPrice <= 0)
-                throw new InvalidOperationException("Đơn giá phải lớn hơn 0.");
+                throw new InvalidOperationException("Unit price must be greater than 0.");
 
             // LOGIC: Tắt cấu hình giá đang hoạt động cũ của dịch vụ này đi
             var currentActive = await _repo.GetActiveConfigByServiceTypeAsync(dto.ServiceType);
@@ -124,7 +124,7 @@ namespace EduGuardProject.Services
                 var hasTransactions = await _repo.HasReferencingTransactionsAsync(id);
                 if (hasTransactions)
                     throw new InvalidOperationException(
-                        "Không thể sửa giá của cấu hình đã có giao dịch tham chiếu. Vui lòng tạo cấu hình giá mới (Create) thay vì sửa cái này.");
+                        "The price cannot be changed for a configuration referenced by existing transactions. Please create a new pricing configuration.");
             }
 
             config.ServiceType = dto.ServiceType;

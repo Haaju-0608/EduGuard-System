@@ -95,7 +95,7 @@ public class BiometricDataController : AcademicApiControllerBase
         {
             var success = await _service.RevokeAllForStudentAsync(studentId);
             if (!success) return NotFound(ApiResponse<object>.OnFail("No active biometric data found for this student."));
-            return Ok(ApiResponse<object>.OnSuccess(null!, "Đã thu hồi toàn bộ dữ liệu khuôn mặt của sinh viên."));
+            return Ok(ApiResponse<object>.OnSuccess(null!, "All facial biometric data for the student has been revoked."));
         }
         catch (Exception ex) { return HandleException(ex); }
     }

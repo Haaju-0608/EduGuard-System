@@ -44,7 +44,7 @@ namespace EduGuardProject.Services
             if (userDetail == null)
             {
                 throw new InvalidOperationException(
-                    "Tài khoản tồn tại trên Auth hệ thống nhưng không tìm thấy dữ liệu phân quyền trong Database.");
+                    "The account exists in the authentication system, but its authorization profile was not found in the database.");
             }
 
             return new LoginResponseDto

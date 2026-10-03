@@ -122,13 +122,13 @@ public class CreateBiometricRequestDto
     [Required]
     public string Reason { get; set; } = null!;
 
-    [Required(ErrorMessage = "Vui lòng upload ảnh góc thẳng")]
+    [Required(ErrorMessage = "Please upload a front-facing photo.")]
     public IFormFile FrontFile { get; set; } = null!;
 
-    [Required(ErrorMessage = "Vui lòng upload ảnh nghiêng trái")]
+    [Required(ErrorMessage = "Please upload a left-facing photo.")]
     public IFormFile LeftFile { get; set; } = null!;
 
-    [Required(ErrorMessage = "Vui lòng upload ảnh nghiêng phải")]
+    [Required(ErrorMessage = "Please upload a right-facing photo.")]
     public IFormFile RightFile { get; set; } = null!;
 }
 

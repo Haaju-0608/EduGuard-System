@@ -110,7 +110,7 @@ namespace EduGuardProject.Controllers
             {
                 var success = await _service.RenewSubscriptionAsync(id, dto.BillingModel);
                 if (!success) return NotFound(ApiResponse<object>.OnFail("Institution not found."));
-                return Ok(ApiResponse<object>.OnSuccess(null!, "Gia hạn subscription thành công."));
+                return Ok(ApiResponse<object>.OnSuccess(null!, "Subscription renewed successfully."));
             }
             catch (InvalidOperationException ex)
             {

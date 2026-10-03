@@ -303,7 +303,7 @@ public class AttendanceSessionService : IAttendanceSessionService
             if (wallet == null)
             {
                 _logger.LogWarning(
-                    "Không tìm thấy ví của institution {InstitutionId} để trừ phí điểm danh session {SessionId}.",
+                    "Wallet not found for institution {InstitutionId} when charging attendance session {SessionId}.",
                     cls.InstitutionId, entity.Id);
                 return;
             }
@@ -316,7 +316,7 @@ public class AttendanceSessionService : IAttendanceSessionService
             // được phép làm request UpdateAsync trả về lỗi cho Lecturer (họ không liên quan
             // gì tới việc ví trường có đủ tiền hay chưa).
             _logger.LogError(ex,
-                "Trừ phí điểm danh thất bại cho session {SessionId}: {Message}",
+                "Failed to deduct the attendance fee for session {SessionId}: {Message}",
                 entity.Id, ex.Message);
 
             // Báo cho SchoolAdmin của trường biết để xử lý thủ công (ví dụ nạp thêm tiền).

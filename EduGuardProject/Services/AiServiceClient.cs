@@ -34,7 +34,7 @@ namespace EduGuardProject.Services
             response.EnsureSuccessStatusCode();
 
             var result = await response.Content.ReadFromJsonAsync<FaceVectorResponse>();
-            return result ?? throw new Exception("Không thể trích xuất vector từ bộ 3 ảnh eKYC.");
+            return result ?? throw new Exception("Unable to extract a vector from the three eKYC photos.");
         }
 
         // 🌟 SỬA ĐỔI: Trả về Task<VideoVectorsResponse> nguyên khối thay vì chỉ trả về List<float[]>
@@ -59,11 +59,11 @@ namespace EduGuardProject.Services
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Lỗi trích xuất vector trung bình ({(int)response.StatusCode}): {errorBody}");
+                throw new Exception($"Failed to extract the average vector ({(int)response.StatusCode}): {errorBody}");
             }
 
             var result = await response.Content.ReadFromJsonAsync<AverageVectorResponse>();
-            return result?.Vector ?? throw new Exception("Không nhận được vector từ AI service.");
+            return result?.Vector ?? throw new Exception("No vector was returned by the AI service.");
         }
 
         //CHeck mat khi lam bai thi 
@@ -78,11 +78,11 @@ namespace EduGuardProject.Services
             if (!response.IsSuccessStatusCode)
             {
                 var errorBody = await response.Content.ReadAsStringAsync();
-                throw new Exception($"Lỗi trích xuất vector khuôn mặt ({(int)response.StatusCode}): {errorBody}");
+                throw new Exception($"Failed to extract the face vector ({(int)response.StatusCode}): {errorBody}");
             }
 
             var result = await response.Content.ReadFromJsonAsync<SingleFaceVectorResponse>();
-            return result?.Vector ?? throw new Exception("Không nhận được vector từ AI service.");
+            return result?.Vector ?? throw new Exception("No vector was returned by the AI service.");
         }
     }
 

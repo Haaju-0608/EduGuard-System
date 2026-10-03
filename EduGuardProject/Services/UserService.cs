@@ -75,7 +75,7 @@ namespace EduGuardProject.Services
             var authUser = await adminAuth.CreateUser(adminAttrs);
 
             if (authUser?.Id == null)
-                throw new InvalidOperationException("Lỗi: Supabase không trả về ID người dùng.");
+                throw new InvalidOperationException("Supabase did not return a user ID.");
 
             var realUserId = Guid.Parse(authUser.Id); // Lấy thẳng ID
 
