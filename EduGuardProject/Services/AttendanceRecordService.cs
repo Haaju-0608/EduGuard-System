@@ -425,7 +425,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         }
         catch (Exception aiEx)
         {
-            throw new InvalidOperationException($"Lỗi xử lý AI từ Python: {aiEx.Message}");
+            throw new InvalidOperationException($"AI processing errors from Python: {aiEx.Message}");
         }
 
         var pgVector = new Pgvector.Vector(liveVector);
@@ -441,7 +441,7 @@ public class AttendanceRecordService : IAttendanceRecordService
         if (!matchedStudentId.HasValue)
         {
             result.IsMatch = false;
-            result.Message = "Không nhận diện được khuôn mặt khớp với sinh viên nào đã đăng ký. Vui lòng điểm danh thủ công.";
+            result.Message = "No face matching any registered student was found. Please take attendance manually.";
             return result;
         }
 
@@ -463,8 +463,8 @@ public class AttendanceRecordService : IAttendanceRecordService
         {
             result.IsMatch = false;
             result.MatchedButWrongClass = true;
-            result.Message = $"Khuôn mặt khớp với sinh viên {matchedStudent?.FullName} ({matchedStudent?.StudentCode}) " +
-                              $"nhưng người này KHÔNG thuộc lớp/ca thi hiện tại. Vui lòng điểm danh thủ công.";
+            result.Message = $"The face matches the student {matchedStudent?.FullName} ({matchedStudent?.StudentCode}) " +
+                              $"However, this person does NOT belong to the current class/exam session. Please take attendance manually.";
             return result;
         }
 
@@ -505,7 +505,7 @@ public class AttendanceRecordService : IAttendanceRecordService
 
         result.IsMatch = true;
         result.Record = dto;
-        result.Message = $"Điểm danh thành công cho {matchedStudent?.FullName} ({matchedStudent?.StudentCode}).";
+        result.Message = $"Attendance check successful for {matchedStudent?.FullName} ({matchedStudent?.StudentCode}).";
         return result;
     }
 }

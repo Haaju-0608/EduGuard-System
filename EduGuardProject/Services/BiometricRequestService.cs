@@ -124,7 +124,7 @@ public class BiometricRequestService : IBiometricRequestService
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Lỗi kiểm tra trùng khuôn mặt: {ex.Message}");
+            throw new InvalidOperationException($"Face matching error: {ex.Message}");
         }
 
         if (duplicateOwnerId.HasValue)
@@ -133,12 +133,12 @@ public class BiometricRequestService : IBiometricRequestService
             foreach (var url in uploadedUrls)
             {
                 try { await _storage.DeleteAsync(StorageService.BiometricFacesBucket, url); }
-                catch (Exception ex) { _logger.LogWarning(ex, "Không xoá được ảnh {Url} sau khi phát hiện trùng.", url); }
+                catch (Exception ex) { _logger.LogWarning(ex, "Unable to delete image {Url} after detecting a duplicate.", url); }
             }
 
             throw new InvalidOperationException(
-                "Khuôn mặt này đã được đăng ký bởi một tài khoản khác trong hệ thống. " +
-                "Vui lòng liên hệ quản trị viên nếu đây là nhầm lẫn.");
+                "This face was registered by another account in the system. " +
+                "Please contact the administrator if this is a mistake.");
         }
 
         // 4. Khởi tạo thực thể Request lưu link Supabase URL thu được từ AI Service
@@ -181,7 +181,7 @@ public class BiometricRequestService : IBiometricRequestService
             string.IsNullOrWhiteSpace(entity.LeftImagePath) ||
             string.IsNullOrWhiteSpace(entity.RightImagePath))
         {
-            throw new InvalidOperationException("Thiếu ảnh để trích xuất vector (cần đủ 3 ảnh thẳng/trái/phải).");
+            throw new InvalidOperationException("Missing images for vector extraction (needs 3 images, straight/left/right).");
         }
 
         // mỗi lần chỉ đưa 1 URL nên "average" của 1 phần tử = chính vector đó.
@@ -203,7 +203,7 @@ public class BiometricRequestService : IBiometricRequestService
         }
         catch (Exception ex)
         {
-            throw new InvalidOperationException($"Lỗi trích xuất vector khi duyệt: {ex.Message}");
+            throw new InvalidOperationException($"Vector extraction error during browsing: {ex.Message}");
         }
 
         const double duplicateThreshold = 0.40;
@@ -220,8 +220,8 @@ public class BiometricRequestService : IBiometricRequestService
             if (duplicateOwnerId.HasValue)
             {
                 throw new InvalidOperationException(
-                    "Khuôn mặt này đã được đăng ký bởi một tài khoản khác trong hệ thống. " +
-                    "Không thể duyệt yêu cầu này.");
+                    "This face was registered by another account in the system. " +
+                    "This request cannot be approved.");
             }
         }
 
@@ -294,7 +294,7 @@ public class BiometricRequestService : IBiometricRequestService
             catch (Exception ex)
             {
                 _logger.LogWarning(ex,
-                    "Không xoá được ảnh cũ {Url} khi duyệt đăng ký lại cho student {StudentId}.",
+                    "Unable to delete old image {Url} when re-approving registration for student {StudentId}.",
                     oldUrl, entity.StudentId);
               
             }
@@ -355,7 +355,7 @@ public class BiometricRequestService : IBiometricRequestService
             }
             catch (Exception ex)
             {
-                _logger.LogWarning(ex, "Không xoá được ảnh {Path} của request {RequestId}.", path, entity.Id);
+                _logger.LogWarning(ex, "Unable to delete the {Path} image of the {RequestId} request.", path, entity.Id);
             }
         }
     }
@@ -373,8 +373,8 @@ public class BiometricRequestService : IBiometricRequestService
 
             if (entity.Status == BiometricReqStatus.Approved)
                 throw new InvalidOperationException(
-                    "Không thể xoá yêu cầu đã được duyệt. Nếu muốn đăng ký lại khuôn mặt, " +
-                    "hãy gửi một yêu cầu đăng ký mới.");
+                    "Approved requests cannot be deleted. If you wish to re-register your face, " +
+                    "Please submit a new registration request.");
         }
         else
         {
