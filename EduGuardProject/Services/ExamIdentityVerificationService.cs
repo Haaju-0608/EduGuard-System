@@ -24,9 +24,16 @@ namespace EduGuardProject.Services
         }
 
         public async Task<IdentityVerificationResult> VerifyAsync(
-            Guid participationId, Guid studentId, IFormFile liveCapture,
-            CancellationToken cancellationToken = default)
+     Guid participationId, Guid studentId, IFormFile liveCapture,
+     CancellationToken cancellationToken = default)
         {
+            // SỬA: load participation 1 lần, kiểm tra đúng chủ trước khi làm gì khác.
+            var participation = await _context.ExamParticipations
+                .FirstOrDefaultAsync(p => p.Id == participationId, cancellationToken)
+                ?? throw new InvalidOperationException("Exam participation not found.");
+            if (participation.StudentId != studentId)
+                throw new UnauthorizedAccessException("Access denied.");
+
             var studentInstitutionId = await _context.Users
                 .AsNoTracking()
                 .Where(u => u.Id == studentId)
@@ -61,15 +68,12 @@ namespace EduGuardProject.Services
 
             if (isMatch)
             {
-                var participation = await _context.ExamParticipations.FindAsync(new object[] { participationId }, cancellationToken);
-                if (participation is not null)
-                {
-                    if (snapshotPath is not null)
-                        participation.IdentitySnapshotPath = snapshotPath;
-                    participation.IdentityVerifiedAt = DateTime.UtcNow;
-                    participation.IdentityVerifiedBy = null; // null = AI tự động xác thực
-                    await _context.SaveChangesAsync(cancellationToken);
-                }
+                // SỬA: dùng lại participation đã load ở đầu hàm.
+                if (snapshotPath is not null)
+                    participation.IdentitySnapshotPath = snapshotPath;
+                participation.IdentityVerifiedAt = DateTime.UtcNow;
+                participation.IdentityVerifiedBy = null; // null = AI tự động xác thực
+                await _context.SaveChangesAsync(cancellationToken);
             }
 
             return new IdentityVerificationResult { IsMatch = isMatch, Distance = distance, SnapshotPath = snapshotPath };
@@ -124,14 +128,11 @@ namespace EduGuardProject.Services
 
         // MỚI: kiểm tra nhanh participation đã được verify chưa (không quan tâm bằng AI hay tay).
         public async Task<bool> IsIdentityVerifiedAsync(
-            Guid participationId, CancellationToken cancellationToken = default)
+    Guid participationId, CancellationToken cancellationToken = default)
         {
-            var verifiedAt = await _context.ExamParticipations
+            return await _context.ExamParticipations
                 .AsNoTracking()
-                .Where(p => p.Id == participationId)
-                .Select(p => p.IdentityVerifiedAt)
-                .FirstOrDefaultAsync(cancellationToken);
-            return verifiedAt.HasValue;
+                .AnyAsync(p => p.Id == participationId && p.IdentityVerifiedBy != null, cancellationToken);
         }
     }
 }

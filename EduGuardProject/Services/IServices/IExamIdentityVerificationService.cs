@@ -12,7 +12,7 @@ namespace EduGuardProject.Services.IServices
         Task<bool> ManualApproveIdentityAsync(
             Guid participationId, CancellationToken cancellationToken = default);
 
-        // MỚI: kiểm tra nhanh đã verify chưa (AI hoặc tay), không cần gửi ảnh.
+        // Kiểm tra giám thị đã duyệt tay chưa (AI verify không tính), không cần gửi ảnh.
         Task<bool> IsIdentityVerifiedAsync(
             Guid participationId, CancellationToken cancellationToken = default);
     }
