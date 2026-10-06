@@ -432,11 +432,14 @@ public class AttendanceRecordService : IAttendanceRecordService
         const double threshold = 0.40;
 
         var matchedStudentId = await _context.Database.SqlQueryRaw<Guid?>(@"
-            SELECT user_id AS ""Value"" FROM biometric_data
-            WHERE is_active = true AND (face_vector <-> {0}) < {1}
-            ORDER BY face_vector <-> {0}
-            LIMIT 1", pgVector, threshold)
-            .FirstOrDefaultAsync();
+            SELECT b.user_id AS ""Value"" FROM biometric_data b
+            JOIN users u ON u.id = b.user_id
+            WHERE b.is_active = true
+              AND u.institution_id = {0}
+              AND (b.face_vector <-> {1}) < {2}
+            ORDER BY b.face_vector <-> {1}
+            LIMIT 1", cls!.InstitutionId, pgVector, threshold)
+    .FirstOrDefaultAsync();
 
         if (!matchedStudentId.HasValue)
         {

@@ -109,11 +109,15 @@ public class BiometricRequestService : IBiometricRequestService
                 var pgVector = new Pgvector.Vector(vector);
 
                 var owner = await _context.Database.SqlQueryRaw<Guid?>(@"
-                    SELECT user_id AS ""Value"" FROM biometric_data
-                    WHERE is_active = true AND user_id != {0} AND (face_vector <-> {1}) < {2}
-                    ORDER BY face_vector <-> {1}
-                    LIMIT 1", user.Id, pgVector, duplicateThreshold)
-                    .FirstOrDefaultAsync();
+                    SELECT b.user_id AS ""Value"" FROM biometric_data b
+                    JOIN users u ON u.id = b.user_id
+                    WHERE b.is_active = true
+                      AND b.user_id != {0}
+                      AND u.institution_id = {1}
+                      AND (b.face_vector <-> {2}) < {3}
+                    ORDER BY b.face_vector <-> {2}
+                    LIMIT 1", user.Id, user.InstitutionId!.Value, pgVector, duplicateThreshold)
+    .FirstOrDefaultAsync();
 
                 if (owner.HasValue)
                 {
@@ -211,11 +215,15 @@ public class BiometricRequestService : IBiometricRequestService
         {
             var pgVector = new Pgvector.Vector(vector);
             var duplicateOwnerId = await _context.Database.SqlQueryRaw<Guid?>(@"
-                SELECT user_id AS ""Value"" FROM biometric_data
-                WHERE is_active = true AND user_id != {0} AND (face_vector <-> {1}) < {2}
-                ORDER BY face_vector <-> {1}
-                LIMIT 1", entity.StudentId, pgVector, duplicateThreshold)
-                .FirstOrDefaultAsync();
+                SELECT b.user_id AS ""Value"" FROM biometric_data b
+                JOIN users u ON u.id = b.user_id
+                WHERE b.is_active = true
+                  AND b.user_id != {0}
+                  AND u.institution_id = {1}
+                  AND (b.face_vector <-> {2}) < {3}
+                ORDER BY b.face_vector <-> {2}
+                LIMIT 1", entity.StudentId, studentInstitutionId!.Value, pgVector, duplicateThreshold)
+    .FirstOrDefaultAsync();
 
             if (duplicateOwnerId.HasValue)
             {
