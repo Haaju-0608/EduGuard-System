@@ -209,8 +209,13 @@ public class ViolationLogServices : IViolationLogService
             if (secondsSinceLast < cooldownSeconds)
                 return MapToResponseDto(lastAiViolation);
 
-            // Consecutive-same-type toggle: when disabled, collapse two same-type violations in a row into one.
-            if (!allowConsecutiveSameType && lastAiViolation.violationType == dto.violationType)
+            // Consecutive-same-type toggle: when disabled, collapse two same-type violations in a row into one
+            // — but only while they are close together. The toggle exists to stop one sustained behaviour
+            // (e.g. head turned away for a long time) from being counted over and over; two same-type
+            // violations far apart (e.g. after the student refreshed the page) are separate events.
+            if (!allowConsecutiveSameType
+                && lastAiViolation.violationType == dto.violationType
+                && secondsSinceLast < SameTypeCollapseWindowSeconds)
                 return MapToResponseDto(lastAiViolation);
         }
 
@@ -446,6 +451,11 @@ public class ViolationLogServices : IViolationLogService
     {
         ViolationType.TabSwitch, ViolationType.WindowBlur, ViolationType.ExitFullscreen,
     };
+
+    // Two same-type AI violations further apart than this are counted separately even when
+    // "allow consecutive same type" is off (see CreateAsync). Measured from the last RECORDED
+    // violation, so a behaviour that keeps going is still counted at most once per this window.
+    private const double SameTypeCollapseWindowSeconds = 30;
 
     private static bool IsBrowserViolation(ViolationType type) =>
         BrowserViolationTypes.Contains(type);
