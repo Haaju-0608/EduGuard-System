@@ -140,7 +140,7 @@ namespace EduGuardProject.Services
             vnpay.AddRequestData("vnp_IpAddr", ipAddress);
 
             vnpay.AddRequestData("vnp_Locale", "vn");
-            vnpay.AddRequestData("vnp_OrderInfo", "EduGuard wallet top-up");
+            vnpay.AddRequestData("vnp_OrderInfo", "EduGuard_wallet_top-up");
             vnpay.AddRequestData("vnp_OrderType", "other");
 
             string returnUrl = _configuration["VnPay:ReturnUrl"];
